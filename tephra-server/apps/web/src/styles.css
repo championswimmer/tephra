@@ -618,6 +618,114 @@ html.theme-dark .vault-grid a {
   padding-left: 1rem;
   color: var(--text-muted);
 }
+.rendered-note .callout {
+  --callout-color: 68, 138, 255;
+  background-color: rgba(var(--callout-color), 0.08);
+  border: 1px solid rgba(var(--callout-color), 0.25);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  color: var(--text-normal);
+}
+.rendered-note .callout[data-callout="abstract"],
+.rendered-note .callout[data-callout="summary"],
+.rendered-note .callout[data-callout="tldr"] {
+  --callout-color: 0, 176, 255;
+}
+.rendered-note .callout[data-callout="info"],
+.rendered-note .callout[data-callout="todo"] {
+  --callout-color: 0, 184, 212;
+}
+.rendered-note .callout[data-callout="tip"],
+.rendered-note .callout[data-callout="hint"],
+.rendered-note .callout[data-callout="important"] {
+  --callout-color: 0, 191, 165;
+}
+.rendered-note .callout[data-callout="success"],
+.rendered-note .callout[data-callout="check"],
+.rendered-note .callout[data-callout="done"] {
+  --callout-color: 0, 200, 83;
+}
+.rendered-note .callout[data-callout="question"],
+.rendered-note .callout[data-callout="help"],
+.rendered-note .callout[data-callout="faq"] {
+  --callout-color: 100, 221, 23;
+}
+.rendered-note .callout[data-callout="warning"],
+.rendered-note .callout[data-callout="caution"],
+.rendered-note .callout[data-callout="attention"] {
+  --callout-color: 255, 145, 0;
+}
+.rendered-note .callout[data-callout="failure"],
+.rendered-note .callout[data-callout="fail"],
+.rendered-note .callout[data-callout="missing"],
+.rendered-note .callout[data-callout="danger"],
+.rendered-note .callout[data-callout="error"] {
+  --callout-color: 255, 82, 82;
+}
+.rendered-note .callout[data-callout="bug"] {
+  --callout-color: 245, 0, 87;
+}
+.rendered-note .callout[data-callout="example"] {
+  --callout-color: 124, 77, 255;
+}
+.rendered-note .callout[data-callout="quote"],
+.rendered-note .callout[data-callout="cite"] {
+  --callout-color: 158, 158, 158;
+}
+.rendered-note .callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: rgb(var(--callout-color));
+}
+.rendered-note .callout-icon {
+  display: inline-flex;
+  flex: none;
+}
+.rendered-note .callout-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.rendered-note .callout-content {
+  margin-top: 0.25rem;
+}
+.rendered-note .callout-content > :first-child {
+  margin-top: 0;
+}
+.rendered-note .callout-content > :last-child {
+  margin-bottom: 0;
+}
+.rendered-note details.callout > summary.callout-title {
+  list-style: none;
+  cursor: pointer;
+}
+.rendered-note details.callout > summary.callout-title::-webkit-details-marker {
+  display: none;
+}
+.rendered-note details.callout > summary.callout-title::after {
+  content: "▾";
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+.rendered-note details.callout:not([open]) > summary.callout-title::after {
+  transform: rotate(-90deg);
+}
+.rendered-note ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+.rendered-note li.task-list-item {
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.rendered-note li.task-list-item input[type="checkbox"] {
+  accent-color: var(--interactive-accent);
+  flex: none;
+}
 .raw-source {
   margin: 1.5rem 0;
   white-space: pre-wrap;

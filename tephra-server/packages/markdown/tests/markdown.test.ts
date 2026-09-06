@@ -78,4 +78,58 @@ describe('renderMarkdown', () => {
     expect(rendered.html).toContain('<code>[[not a link]]</code>');
     expect(rendered.html).not.toContain('data-link-path');
   });
+
+  it('renders blockquotes including nesting', async () => {
+    const rendered = await renderMarkdown({ markdown: '> outer\n>> nested', sourcePath: 'Home.md' });
+    expect(rendered.html).toContain('<blockquote>');
+    expect(rendered.html).toContain('outer');
+    expect(rendered.html).toContain('<blockquote>\n<p>nested</p>');
+  });
+
+  it('groups checklists without bullets', async () => {
+    const rendered = await renderMarkdown({ markdown: '- [ ] todo\n- [x] done', sourcePath: 'Home.md' });
+    expect(rendered.html).toContain('<ul class="contains-task-list">');
+    expect(rendered.html).toContain('class="task-list-item"');
+    expect(rendered.html).toContain('checked');
+    expect(rendered.html.match(/<ul/g)?.length).toBe(1);
+  });
+
+  it('renders GFM tables with alignment and inline markup', async () => {
+    const rendered = await renderMarkdown({
+      markdown: '| Directive | Meaning |\n| --------- | ------- |\n| `max-age` | Freshness |',
+      sourcePath: 'Home.md',
+    });
+    expect(rendered.html).toContain('<table>');
+    expect(rendered.html).toContain('<th>Directive</th>');
+    expect(rendered.html).toContain('<td><code>max-age</code></td>');
+  });
+
+  it('does not treat pipes without a delimiter row as a table', async () => {
+    const rendered = await renderMarkdown({ markdown: 'a | b\njust text', sourcePath: 'Home.md' });
+    expect(rendered.html).not.toContain('<table>');
+  });
+
+  it('renders Obsidian callouts with default titles', async () => {
+    const rendered = await renderMarkdown({ markdown: '> [!note]\n> Body text.', sourcePath: 'Home.md' });
+    expect(rendered.html).toContain('<div class="callout" data-callout="note">');
+    expect(rendered.html).toContain('callout-title-inner">Note</div>');
+    expect(rendered.html).toContain('<div class="callout-content">');
+    expect(rendered.html).not.toContain('<blockquote>');
+  });
+
+  it('renders callout custom titles and fold markers', async () => {
+    const custom = await renderMarkdown({ markdown: '> [!tip] Custom\n> Body.', sourcePath: 'Home.md' });
+    expect(custom.html).toContain('callout-title-inner">Custom</div>');
+    const collapsed = await renderMarkdown({ markdown: '> [!faq]- Title\n> Body.', sourcePath: 'Home.md' });
+    expect(collapsed.html).toContain('<details class="callout" data-callout="faq">');
+    expect(collapsed.html).not.toContain(' open>');
+    const expanded = await renderMarkdown({ markdown: '> [!faq]+ Title\n> Body.', sourcePath: 'Home.md' });
+    expect(expanded.html).toContain('<details class="callout" data-callout="faq" open>');
+  });
+
+  it('falls back to note styling for unknown callout types', async () => {
+    const rendered = await renderMarkdown({ markdown: '> [!bogus]\n> Body.', sourcePath: 'Home.md' });
+    expect(rendered.html).toContain('data-callout="bogus"');
+    expect(rendered.html).toContain('callout-title-inner">Bogus</div>');
+  });
 });

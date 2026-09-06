@@ -265,35 +265,247 @@ function renderInline(value: string, options: MarkdownRenderOptions): string {
   return output.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => tokens[Number(index)] ?? '');
 }
 
-export async function renderMarkdown(options: MarkdownRenderOptions): Promise<RenderedNote> {
-  const parsed = parseNote(options.markdown);
-  const { body } = readFrontmatter(options.markdown);
-  const lines = body.split('\n');
+type TableAlign = 'left' | 'center' | 'right' | null;
+
+/** Split a GFM table row on unescaped pipes, stripping optional outer pipes. */
+function splitTableRow(line: string): string[] | null {
+  const cells: string[] = [];
+  let current = '';
+  let escaped = false;
+  let hasPipe = false;
+  for (const ch of line) {
+    if (escaped) {
+      current += ch === '|' ? '|' : `\\${ch}`;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '|') { hasPipe = true; cells.push(current); current = ''; continue; }
+    current += ch;
+  }
+  if (escaped) current += '\\';
+  cells.push(current);
+  if (!hasPipe) return null;
+  if (cells.length > 0 && (cells[0] ?? '').trim() === '') cells.shift();
+  if (cells.length > 0 && (cells[cells.length - 1] ?? '').trim() === '') cells.pop();
+  return cells.map((cell) => cell.trim());
+}
+
+/** Parse a GFM delimiter row (`| --- | :---: | ---: |`). Returns null if invalid. */
+function parseTableDelimiter(line: string): TableAlign[] | null {
+  const cells = splitTableRow(line);
+  if (!cells || cells.length === 0) return null;
+  const aligns: TableAlign[] = [];
+  for (const cell of cells) {
+    const match = /^(:?)-+(:?)$/.exec(cell);
+    if (!match) return null;
+    const left = match[1] === ':';
+    const right = match[2] === ':';
+    aligns.push(left && right ? 'center' : right ? 'right' : left ? 'left' : null);
+  }
+  return aligns;
+}
+
+/** Obsidian callout type aliases map to their canonical type. */
+const CALLOUT_ALIASES: Record<string, string> = {
+  summary: 'abstract',
+  tldr: 'abstract',
+  hint: 'tip',
+  important: 'tip',
+  check: 'success',
+  done: 'success',
+  help: 'question',
+  faq: 'question',
+  caution: 'warning',
+  attention: 'warning',
+  fail: 'failure',
+  missing: 'failure',
+  error: 'danger',
+  cite: 'quote',
+};
+
+const CALLOUT_TYPES = new Set([
+  'note', 'abstract', 'info', 'todo', 'tip', 'success',
+  'question', 'warning', 'failure', 'danger', 'bug', 'example', 'quote',
+]);
+
+const svgIcon = (paths: string): string =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+/** Minimal stroke icons (one per canonical callout type). Decorative only. */
+const CALLOUT_ICONS: Record<string, string> = {
+  note: svgIcon('<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>'),
+  abstract: svgIcon('<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>'),
+  info: svgIcon('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'),
+  todo: svgIcon('<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/>'),
+  tip: svgIcon('<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2Z"/>'),
+  success: svgIcon('<path d="M20 6 9 17l-5-5"/>'),
+  question: svgIcon('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>'),
+  warning: svgIcon('<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/>'),
+  failure: svgIcon('<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>'),
+  danger: svgIcon('<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/>'),
+  bug: svgIcon('<path d="m8 2 1.5 2.5M16 2l-1.5 2.5M12 4v3"/><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M4 10h3M4 15h3M20 10h-3M20 15h-3"/>'),
+  example: svgIcon('<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>'),
+  quote: svgIcon('<path d="M10 7H6a2 2 0 0 0-2 2v7h7v-7H6.5A1.5 1.5 0 0 1 8 7.5V7h2Z"/><path d="M20 7h-4a2 2 0 0 0-2 2v7h7v-7h-4.5A1.5 1.5 0 0 1 18 7.5V7h2Z"/>'),
+};
+
+/**
+ * Render an Obsidian callout (`> [!type] title`). The head match covers the
+ * first quote line; bodyLines are the remaining stripped quote lines.
+ * Unknown types fall back to `note` styling, like Obsidian.
+ */
+function renderCallout(head: RegExpExecArray, bodyLines: string[], options: MarkdownRenderOptions): string {
+  const rawType = (head[1] ?? 'note').toLowerCase();
+  const foldMarker = head[2] ?? '';
+  const customTitle = (head[3] ?? '').trim();
+  const canonical = CALLOUT_ALIASES[rawType] ?? rawType;
+  const colorType = CALLOUT_TYPES.has(canonical) ? canonical : 'note';
+  const title = customTitle !== ''
+    ? customTitle
+    : rawType.charAt(0).toUpperCase() + rawType.slice(1);
+  const icon = CALLOUT_ICONS[colorType] ?? CALLOUT_ICONS.note ?? '';
+  const titleInner = `<div class="callout-icon">${icon}</div><div class="callout-title-inner">${renderInline(title, options)}</div>`;
+  const bodyHtml = renderBlocks(bodyLines, options).join('\n').trim();
+  const content = bodyHtml === '' ? '' : `\n<div class="callout-content">\n${bodyHtml}\n</div>`;
+  const attrs = `class="callout" data-callout="${escapeHtml(rawType)}"`;
+  if (foldMarker !== '') {
+    const open = foldMarker === '+' ? ' open' : '';
+    return `<details ${attrs}${open}>\n<summary class="callout-title">${titleInner}</summary>${content}\n</details>`;
+  }
+  return `<div ${attrs}>\n<div class="callout-title">${titleInner}</div>${content}\n</div>`;
+}
+
+function renderBlocks(lines: string[], options: MarkdownRenderOptions): string[] {
   const html: string[] = [];
   let inFence = false;
   let fence = '';
   let code: string[] = [];
   let paragraph: string[] = [];
+  let quoteBuffer: string[] = [];
+  let listBuffer: Array<{ checked: boolean | null; content: string }> = [];
   const flushParagraph = (): void => {
     if (paragraph.length > 0) html.push(`<p>${renderInline(paragraph.join('\n'), options).replaceAll('\n', '<br>')}</p>`);
     paragraph = [];
   };
-  for (const line of lines) {
+  const flushList = (): void => {
+    if (listBuffer.length === 0) return;
+    const hasTask = listBuffer.some((item) => item.checked !== null);
+    const items = listBuffer.map((item) => {
+      if (item.checked !== null) {
+        const checkedAttr = item.checked ? ' checked' : '';
+        return `<li class="task-list-item"><input type="checkbox" disabled${checkedAttr}> ${renderInline(item.content, options)}</li>`;
+      }
+      return `<li>${renderInline(item.content, options)}</li>`;
+    }).join('\n');
+    html.push(hasTask ? `<ul class="contains-task-list">\n${items}\n</ul>` : `<ul>\n${items}\n</ul>`);
+    listBuffer = [];
+  };
+  const flushQuote = (): void => {
+    if (quoteBuffer.length === 0) return;
+    const head = /^\[!(\w[\w-]*)\]([+-]?)\s*(.*)$/.exec(quoteBuffer[0] ?? '');
+    if (head) {
+      html.push(renderCallout(head, quoteBuffer.slice(1), options));
+    } else {
+      const inner = renderBlocks(quoteBuffer, options).join('\n');
+      if (inner.trim() !== '') html.push(`<blockquote>\n${inner}\n</blockquote>`);
+    }
+    quoteBuffer = [];
+  };
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const quote = /^ {0,3}>\s?(.*)$/.exec(line);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      quoteBuffer.push(quote[1] ?? '');
+      continue;
+    }
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
     if (marker) {
-      if (!inFence) { flushParagraph(); inFence = true; fence = marker.charAt(0); code = []; }
+      if (!inFence) { flushParagraph(); flushQuote(); flushList(); inFence = true; fence = marker.charAt(0); code = []; }
       else if (marker.charAt(0) === fence) { html.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`); inFence = false; }
       continue;
     }
     if (inFence) { code.push(line); continue; }
+    if (line.trim() === '') {
+      if (quoteBuffer.length > 0) {
+        flushList();
+        quoteBuffer.push('');
+      } else {
+        flushParagraph();
+        flushList();
+      }
+      continue;
+    }
     const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (heading) { flushParagraph(); const text = heading[2] ?? ''; html.push(`<h${heading[1]?.length ?? 1} id="${escapeHtml(slugify(text))}">${renderInline(text, options)}</h${heading[1]?.length ?? 1}>`); continue; }
-    if (line.trim() === '') { flushParagraph(); continue; }
-    const list = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.+)$/.exec(line);
-    if (list) { flushParagraph(); const checkbox = list[1] === undefined ? '' : `<input type="checkbox" disabled${list[1].toLowerCase() === 'x' ? ' checked' : ''}> `; html.push(`<ul><li>${checkbox}${renderInline(list[2] ?? '', options)}</li></ul>`); continue; }
+    if (heading) {
+      flushParagraph();
+      flushQuote();
+      flushList();
+      const text = heading[2] ?? '';
+      html.push(`<h${heading[1]?.length ?? 1} id="${escapeHtml(slugify(text))}">${renderInline(text, options)}</h${heading[1]?.length ?? 1}>`);
+      continue;
+    }
+    const listMatch = /^\s*[-*+]\s+(.*)$/.exec(line);
+    if (listMatch) {
+      flushParagraph();
+      flushQuote();
+      const rest = listMatch[1] ?? '';
+      const task = /^\[([ xX])\]\s*(.*)$/.exec(rest);
+      if (task) listBuffer.push({ checked: (task[1] ?? '').toLowerCase() === 'x', content: task[2] ?? '' });
+      else listBuffer.push({ checked: null, content: rest });
+      continue;
+    }
+    // GFM table: header row + delimiter row + consecutive body rows.
+    if (line.includes('|') && index + 1 < lines.length) {
+      const head = splitTableRow(line);
+      const aligns = parseTableDelimiter(lines[index + 1] ?? '');
+      if (head && aligns && head.length > 0 && head.length === aligns.length) {
+        flushParagraph();
+        flushQuote();
+        flushList();
+        const bodyRows: string[][] = [];
+        let cursor = index + 2;
+        while (cursor < lines.length) {
+          const rowLine = lines[cursor] ?? '';
+          if (rowLine.trim() === '') break;
+          const row = splitTableRow(rowLine);
+          if (!row) break;
+          while (row.length < head.length) row.push('');
+          bodyRows.push(row.slice(0, head.length));
+          cursor += 1;
+        }
+        const alignAttr = (align: TableAlign): string => (align ? ` align="${align}"` : '');
+        const thead = `<thead>\n<tr>\n${head.map((cell, cellIndex) => `<th${alignAttr(aligns[cellIndex] ?? null)}>${renderInline(cell, options)}</th>`).join('\n')}\n</tr>\n</thead>`;
+        const tbody = bodyRows.length > 0
+          ? `\n<tbody>\n${bodyRows.map((row) => `<tr>\n${row.map((cell, cellIndex) => `<td${alignAttr(aligns[cellIndex] ?? null)}>${renderInline(cell, options)}</td>`).join('\n')}\n</tr>`).join('\n')}\n</tbody>`
+          : '';
+        html.push(`<table>\n${thead}${tbody}\n</table>`);
+        index = cursor - 1;
+        continue;
+      }
+    }
+    // Lazy continuation: a plain paragraph line directly after quote lines
+    // belongs to the blockquote per CommonMark.
+    if (quoteBuffer.length > 0) {
+      flushList();
+      quoteBuffer.push(line);
+      continue;
+    }
+    flushList();
     paragraph.push(line);
   }
   flushParagraph();
+  flushQuote();
+  flushList();
   if (inFence) html.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+  return html;
+}
+
+export async function renderMarkdown(options: MarkdownRenderOptions): Promise<RenderedNote> {
+  const parsed = parseNote(options.markdown);
+  const { body } = readFrontmatter(options.markdown);
+  const lines = body.split('\n');
+  const html = renderBlocks(lines, options);
   return { ...parsed, html: html.join('\n') };
 }
