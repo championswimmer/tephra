@@ -77,7 +77,6 @@ export function GraphView({
     line: theme.variables['--graph-line'] ?? '#d1d1d1',
     accent: theme.variables['--interactive-accent'] ?? '#7b6cd9',
     text: theme.variables['--text-normal'] ?? '#2e3338',
-    muted: theme.variables['--text-muted'] ?? '#71747b',
   };
 
   useEffect(() => {
@@ -234,19 +233,22 @@ export function GraphView({
           linkDirectionalArrowColor={(link) =>
             paintLinkColor(linkEndpointId(link.source), linkEndpointId(link.target))
           }
-          nodeCanvasObjectMode={() => 'after'}
+          // Labels are painted only for the hovered (or currently-open) node.
+          // Drawing text for every node costs a `fillText` per node per frame,
+          // which dominates the render loop on larger vaults.
+          nodeCanvasObjectMode={(node) =>
+            String(node.id) === activeId ? 'after' : undefined
+          }
           nodeCanvasObject={(node, ctx, globalScale) => {
             const id = String(node.id);
+            if (id !== activeId) return;
             const label = labels.get(id) ?? id;
             const fontSize = 12 / globalScale;
             ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle =
-              activeId === null || isActive(id) ? palette.text : palette.muted;
-            ctx.globalAlpha = activeId !== null && !isActive(id) ? 0.45 : 1;
+            ctx.fillStyle = palette.text;
             ctx.fillText(label, (node.x ?? 0) + 6, (node.y ?? 0));
-            ctx.globalAlpha = 1;
           }}
           onNodeClick={(node) => {
             onOpen(String(node.id));

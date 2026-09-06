@@ -204,6 +204,35 @@ describe('GraphView', () => {
     expect(hexToRgba('#abc', 1)).toBe('rgba(170, 187, 204, 1)');
   });
 
+  it('labels only the active node, leaving the rest unpainted', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} selectedId="c" />);
+    await screen.findByTestId('force-graph');
+    const props = captured.current as unknown as {
+      nodeCanvasObjectMode: (node: { id: string }) => string | undefined;
+      nodeCanvasObject: (
+        node: { id: string; x: number; y: number },
+        ctx: CanvasRenderingContext2D,
+        scale: number,
+      ) => void;
+    };
+    expect(props.nodeCanvasObjectMode({ id: 'c' })).toBe('after');
+    expect(props.nodeCanvasObjectMode({ id: 'a' })).toBeUndefined();
+    const ctx = { font: '', textAlign: '', textBaseline: '', fillStyle: '', fillText: vi.fn() };
+    props.nodeCanvasObject(
+      { id: 'a', x: 0, y: 0 },
+      ctx as unknown as CanvasRenderingContext2D,
+      1,
+    );
+    expect(ctx.fillText).not.toHaveBeenCalled();
+    props.nodeCanvasObject(
+      { id: 'c', x: 4, y: 8 },
+      ctx as unknown as CanvasRenderingContext2D,
+      1,
+    );
+    expect(ctx.fillText).toHaveBeenCalledWith('Gamma', 10, 8);
+  });
+
   it('renders a single-node graph without links', async () => {
     mockGraph({
       revision: 1,
