@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@tephra/protocol": ["tephra-server/packages/protocol/src/index.ts"],
+      "@tephra/core": ["tephra-server/packages/core/src/index.ts"],
+      "@tephra/vault-model": ["tephra-server/packages/vault-model/src/index.ts"],
+      "@tephra/database-core": ["tephra-server/packages/database/core/src/index.ts"],
+      "@tephra/blob-store-core": ["tephra-server/packages/blob-store/core/src/index.ts"],
+      "@tephra/database-sqlite": ["tephra-server/packages/database/sqlite/src/index.ts"],
+      "@tephra/blob-store-filesystem": ["tephra-server/packages/blob-store/filesystem/src/index.ts"],
+      "@tephra/markdown": ["tephra-server/packages/markdown/src/index.ts"],
+      "@tephra/link-resolver": ["tephra-server/packages/link-resolver/src/index.ts"],
+      "@tephra/indexer": ["tephra-server/packages/indexer/src/index.ts"],
+      "@tephra/auth": ["tephra-server/packages/auth/src/index.ts"]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
