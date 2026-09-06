@@ -378,12 +378,6 @@ describe('Tephra API', () => {
     expect(updatedDevice?.name).toBe("MacBook Updated");
 
     // 3. Another user cannot provision a token with this deviceId
-    const otherLogin = await app.request("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "owner@example.com", password: "password-123" }),
-    });
-    // Create another user
     const otherUser = { id: "other-user", email: "other-device@example.com", passwordHash: null, createdAt: 1, updatedAt: 1 };
     await database.users.insert(otherUser);
     const rawOtherSession = "tps_other-raw-session-token";

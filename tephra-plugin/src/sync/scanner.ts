@@ -188,7 +188,7 @@ export class VaultScanner {
         frontmatter[FILE_ID_PROPERTY] = id;
       });
       return true;
-    } catch (error) {
+    } catch {
       // processFrontMatter fails when YAML syntax is invalid (e.g. Templater {{VALUE:tags}} or syntax errors).
       // Fall back to direct content modification to avoid crashing the sync coordinator.
       try {

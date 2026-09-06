@@ -21,6 +21,7 @@
     "test:workspaces": "npm run test --workspaces --if-present",
     "test": "npm run build && npm run test:workspaces",
     "sync:vault": "node e2e/sync-vault.mjs",
+    "sync:plugin": "node scripts/sync-plugin.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:workspaces"
