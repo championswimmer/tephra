@@ -24,7 +24,8 @@ ENV NODE_ENV=production \
     TEPHRA_SQLITE_PATH=/data/tephra.db \
     TEPHRA_BLOB_DRIVER=filesystem \
     TEPHRA_BLOB_PATH=/data/blobs \
-    TEPHRA_MAX_BLOB_BYTES=104857600
+    TEPHRA_MAX_BLOB_BYTES=104857600 \
+    TEPHRA_WEB_ROOT=/app/tephra-server/apps/web/dist
 
 WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
@@ -33,7 +34,6 @@ COPY --from=build --chown=node:node /app/tephra-server ./tephra-server
 
 RUN mkdir -p /data/blobs && chown -R node:node /data
 USER node
-VOLUME ["/data"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
