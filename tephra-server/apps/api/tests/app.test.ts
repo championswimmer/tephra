@@ -286,4 +286,126 @@ describe('Tephra API', () => {
     const revoked = await value.app.request('/api/v1/vaults', { headers: sessionHeaders });
     expect(revoked.status).toBe(401);
   });
+
+  it("validates CSRF with x-csrf-token or x-tephra-csrf and rejects missing or invalid header", async () => {
+    const value = fixture();
+    await value.app.request("/api/v1/auth/bootstrap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "bootstrap-secret", email: "csrf-test@example.com", password: "password-123" }),
+    });
+    const login = await value.app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "csrf-test@example.com", password: "password-123" }),
+    });
+    const loginBody = (await login.json()) as { csrfToken: string };
+    const session = /tephra_session=([^;,]+)/.exec(login.headers.get("set-cookie") ?? "")?.[1];
+
+    // Rejected if no CSRF header
+    const noHeader = await value.app.request("/api/v1/vaults", {
+      method: "POST",
+      headers: {
+        cookie: `tephra_session=${session}; tephra_csrf=${loginBody.csrfToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "No CSRF" }),
+    });
+    expect(noHeader.status).toBe(403);
+    const noHeaderBody = (await noHeader.json()) as { error: { code: string; message: string } };
+    expect(noHeaderBody.error.message).toBe("CSRF validation failed.");
+
+    // Accepted with x-csrf-token
+    const withStandardCsrf = await value.app.request("/api/v1/vaults", {
+      method: "POST",
+      headers: {
+        cookie: `tephra_session=${session}; tephra_csrf=${loginBody.csrfToken}`,
+        "x-csrf-token": loginBody.csrfToken,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Standard CSRF Vault" }),
+    });
+    expect(withStandardCsrf.status).toBe(201);
+
+    // Accepted with x-tephra-csrf
+    const withTephraCsrf = await value.app.request("/api/v1/vaults", {
+      method: "POST",
+      headers: {
+        cookie: `tephra_session=${session}; tephra_csrf=${loginBody.csrfToken}`,
+        "x-tephra-csrf": loginBody.csrfToken,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Tephra CSRF Vault" }),
+    });
+    expect(withTephraCsrf.status).toBe(201);
+  });
+
+  it("provisions token with client-supplied deviceId, upserts device and enforces ownership", async () => {
+    const { app, vault, browserHeaders, database } = await setup();
+    const deviceId = "client-device-123";
+
+    // 1. Provision token with explicit client deviceId
+    const res = await app.request(`/api/v1/vaults/${vault.id}/tokens`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({
+        name: "Obsidian (MacBook)",
+        deviceId,
+        deviceName: "MacBook",
+        platform: "obsidian-plugin",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const savedDevice = await database.devices.findById(deviceId);
+    expect(savedDevice).toBeDefined();
+    expect(savedDevice?.name).toBe("MacBook");
+    expect(savedDevice?.platform).toBe("obsidian-plugin");
+    expect(savedDevice?.userId).toBe(vault.ownerUserId);
+
+    // 2. Provision another token with the same deviceId updates the device
+    const res2 = await app.request(`/api/v1/vaults/${vault.id}/tokens`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({
+        name: "Obsidian (MacBook 2)",
+        deviceId,
+        deviceName: "MacBook Updated",
+        platform: "obsidian-plugin",
+      }),
+    });
+    expect(res2.status).toBe(201);
+    const updatedDevice = await database.devices.findById(deviceId);
+    expect(updatedDevice?.name).toBe("MacBook Updated");
+
+    // 3. Another user cannot provision a token with this deviceId
+    const otherLogin = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "owner@example.com", password: "password-123" }),
+    });
+    // Create another user
+    const otherUser = { id: "other-user", email: "other-device@example.com", passwordHash: null, createdAt: 1, updatedAt: 1 };
+    await database.users.insert(otherUser);
+    const rawOtherSession = "tps_other-raw-session-token";
+    const otherSessionHash = await (await import("@tephra/auth")).hashOpaqueToken(rawOtherSession);
+    await database.sessions.insert({ id: otherSessionHash, userId: otherUser.id, expiresAt: 2_000_000_000_000, createdAt: 1 });
+    const otherVault = { id: "other-vault-1", ownerUserId: otherUser.id, name: "Other Vault", latestRevision: 0, createdAt: 1, updatedAt: 1 };
+    await database.vaults.insert(otherVault);
+
+    const crossUserRes = await app.request(`/api/v1/vaults/${otherVault.id}/tokens`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${rawOtherSession}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Stolen Device Token",
+        deviceId,
+        deviceName: "Imposter",
+      }),
+    });
+    expect(crossUserRes.status).toBe(403);
+    const crossUserBody = (await crossUserRes.json()) as { error: { message: string } };
+    expect(crossUserBody.error.message).toBe("Device belongs to another user.");
+  });
 });

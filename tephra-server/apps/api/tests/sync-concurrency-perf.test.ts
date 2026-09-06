@@ -319,4 +319,43 @@ describe('larger-vault indexing performance (real SQLite + filesystem blobs)', (
       expect(totalMs).toBeLessThan(30_000);
     },
   );
+
+  it("provisions token with client-supplied deviceId on real SQLite without foreign key violation", async () => {
+    const { app, database, vault } = await realFixture();
+    // Login to get session headers
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "owner@example.com", password: "password-123" }),
+    });
+    const loginBody = (await login.json()) as { csrfToken: string };
+    const session = /tephra_session=([^;,]+)/.exec(login.headers.get("set-cookie") ?? "")?.[1];
+    const browserHeaders = {
+      cookie: `tephra_session=${session}; tephra_csrf=${loginBody.csrfToken}`,
+      "x-csrf-token": loginBody.csrfToken,
+      "content-type": "application/json",
+    };
+
+    const deviceId = "obsidian-plugin-device-uuid-1234";
+    const tokenResponse = await app.request(`/api/v1/vaults/${vault.id}/tokens`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({
+        name: "Obsidian (My MacBook)",
+        deviceId,
+        deviceName: "My MacBook",
+        platform: "obsidian-plugin",
+      }),
+    });
+    expect(tokenResponse.status).toBe(201);
+    const tokenData = (await tokenResponse.json()) as { token: { id: string; name: string }; value: string };
+    expect(tokenData.token.name).toBe("Obsidian (My MacBook)");
+    expect(tokenData.value).toMatch(/^tpt_/);
+
+    const savedDevice = await database.devices.findById(deviceId);
+    expect(savedDevice).toBeDefined();
+    expect(savedDevice?.id).toBe(deviceId);
+    expect(savedDevice?.name).toBe("My MacBook");
+    expect(savedDevice?.platform).toBe("obsidian-plugin");
+  });
 });

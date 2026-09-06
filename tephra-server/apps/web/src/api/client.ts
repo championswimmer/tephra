@@ -26,8 +26,9 @@ interface ErrorBody {
 
 function csrfToken(): string | undefined {
   if (typeof document === 'undefined') return undefined;
-  const match = document.cookie.split('; ').find((part) => part.startsWith('tephra_csrf='));
-  return match ? decodeURIComponent(match.slice('tephra_csrf='.length)) : undefined;
+  const match = /(?:^|;\s*)tephra_csrf=([^;]+)/.exec(document.cookie);
+  const token = match?.[1];
+  return token ? decodeURIComponent(token) : undefined;
 }
 
 export class ApiClient {
@@ -40,7 +41,10 @@ export class ApiClient {
     headers.set('Accept', 'application/json');
     const method = (init.method ?? 'GET').toUpperCase();
     const csrf = csrfToken();
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) headers.set('X-CSRF-Token', csrf);
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) {
+      headers.set('x-tephra-csrf', csrf);
+      headers.set('X-CSRF-Token', csrf);
+    }
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {

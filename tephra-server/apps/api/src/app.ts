@@ -403,7 +403,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     const isCookieSession = principal.kind === 'session' && bearer(c) === null;
     if (isCookieSession && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
       const csrfCookie = parseCookies(c.req.header('cookie')).tephra_csrf;
-      const csrfHeader = c.req.header('x-tephra-csrf');
+      const csrfHeader = c.req.header('x-tephra-csrf') ?? c.req.header('x-csrf-token');
       if (!csrfCookie || !csrfHeader || !constantTimeSecretEqual(csrfCookie, csrfHeader)) {
         fail(403, 'VAULT_ACCESS_DENIED', 'CSRF validation failed.');
       }
@@ -487,7 +487,29 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     const body = await jsonBody(c, tokenSchema);
     const now = dependencies.clock.now();
     let deviceId = body.deviceId ?? null;
-    if (!deviceId && body.deviceName) {
+    if (deviceId) {
+      const existingDevice = await dependencies.database.devices.findById(deviceId);
+      if (existingDevice) {
+        if (existingDevice.userId !== principal.user.id) {
+          fail(403, 'VAULT_ACCESS_DENIED', 'Device belongs to another user.');
+        }
+        await dependencies.database.devices.update({
+          ...existingDevice,
+          ...(body.deviceName ? { name: body.deviceName } : {}),
+          ...(body.platform === undefined ? {} : { platform: body.platform }),
+          lastSeenAt: now,
+        });
+      } else {
+        await dependencies.database.devices.insert({
+          id: deviceId,
+          userId: principal.user.id,
+          name: body.deviceName ?? deviceId,
+          ...(body.platform === undefined ? {} : { platform: body.platform }),
+          createdAt: now,
+          lastSeenAt: now,
+        });
+      }
+    } else if (body.deviceName) {
       deviceId = dependencies.ids.generate();
       await dependencies.database.devices.insert({
         id: deviceId,
@@ -666,6 +688,9 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
           lastSeenAt: now,
         });
       } else {
+        if (knownDevice.userId !== transactionToken.userId) {
+          fail(403, 'VAULT_ACCESS_DENIED', 'Device belongs to another user.');
+        }
         await repositories.devices.update({ ...knownDevice, lastSeenAt: now });
       }
       const current = await repositories.vaultFiles.listByVault(vaultId);
