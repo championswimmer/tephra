@@ -2,5 +2,34 @@
   "name": "@tephra/api",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "@tephra/auth": "0.1.0",
+    "@tephra/blob-store-core": "0.1.0",
+    "@tephra/core": "0.1.0",
+    "@tephra/database-core": "0.1.0",
+    "@tephra/protocol": "0.1.0",
+    "@tephra/vault-model": "0.1.0",
+    "hono": "^4.7.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.5.1"
+  }
 }

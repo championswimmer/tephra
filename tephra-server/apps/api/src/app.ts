@@ -1,0 +1,449 @@
+import { Hono, type Context } from 'hono';
+import { z, ZodError, type ZodType } from 'zod';
+import type { Database, TransactionRepositories } from '@tephra/database-core';
+import type { BlobStore } from '@tephra/blob-store-core';
+import type { Clock, IdGenerator, PasswordHasher } from '@tephra/core';
+import {
+  canAccessVault,
+  clearSessionCookie,
+  constantTimeSecretEqual,
+  createOpaqueToken,
+  hashOpaqueToken,
+  parseCookies,
+  sessionCookie,
+  tokenIsActive,
+  type AuthPrincipal,
+} from '@tephra/auth';
+import {
+  hashManifest,
+  sha256Hex,
+  sha256Schema,
+  syncCommitBodySchema,
+  syncPlanBodySchema,
+  type ApiErrorCode,
+  type SyncManifestEntry,
+} from '@tephra/protocol';
+import { diffRevision, type ApiTokenScope, type CurrentVaultFile, type Vault } from '@tephra/vault-model';
+
+const JSON_LIMIT = 2 * 1024 * 1024;
+const DEFAULT_BLOB_LIMIT = 100 * 1024 * 1024;
+const SESSION_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface IndexService {
+  indexVault?(vaultId: string, revision: number): Promise<void>;
+  renderMarkdown?(input: { vaultId: string; fileId: string; markdown: string }): Promise<unknown>;
+  search?(input: { vaultId: string; query: string; limit: number }): Promise<unknown[]>;
+}
+
+export interface ApiDependencies {
+  database: Database;
+  blobStore: BlobStore;
+  clock: Clock;
+  ids: IdGenerator;
+  passwordHasher: PasswordHasher;
+  bootstrapToken?: string;
+  indexService?: IndexService;
+  secureCookies?: boolean;
+  sessionCookieName?: string;
+  maxBlobBytes?: number;
+}
+
+type Variables = { principal: AuthPrincipal };
+type AppContext = Context<{ Variables: Variables }>;
+
+class ApiFailure extends Error {
+  constructor(
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 500 | 503,
+    readonly code: ApiErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const credentialsSchema = z.strictObject({ email: z.email().max(320), password: z.string().min(10).max(1024) });
+const bootstrapSchema = credentialsSchema.extend({ token: z.string().min(1).max(1024) });
+const vaultSchema = z.strictObject({ name: z.string().trim().min(1).max(200) });
+const deleteVaultSchema = z.strictObject({ confirmation: z.string().max(200) });
+const scopesSchema = z.array(z.enum(['vault:read-metadata', 'vault:upload'])).min(1).max(2);
+const tokenSchema = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  deviceId: z.string().min(1).max(200).optional(),
+  deviceName: z.string().trim().min(1).max(200).optional(),
+  platform: z.string().max(100).optional(),
+  scopes: scopesSchema.default(['vault:read-metadata', 'vault:upload']),
+  expiresAt: z.number().int().positive().safe().nullable().default(null),
+});
+
+function fail(status: ApiFailure['status'], code: ApiErrorCode, message: string): never {
+  throw new ApiFailure(status, code, message);
+}
+
+async function jsonBody<T>(c: AppContext, schema: ZodType<T>): Promise<T> {
+  const declared = Number(c.req.header('content-length') ?? 0);
+  if (declared > JSON_LIMIT) fail(413, 'INVALID_MANIFEST', 'Request body is too large.');
+  const text = await c.req.text();
+  if (new TextEncoder().encode(text).byteLength > JSON_LIMIT) {
+    fail(413, 'INVALID_MANIFEST', 'Request body is too large.');
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    fail(400, 'INVALID_MANIFEST', 'Request body must be valid JSON.');
+  }
+  return schema.parse(value);
+}
+
+function bearer(c: AppContext): string | null {
+  const value = c.req.header('authorization');
+  return value?.startsWith('Bearer ') ? value.slice(7) : null;
+}
+
+async function authenticate(c: AppContext, dependencies: ApiDependencies): Promise<AuthPrincipal> {
+  const rawBearer = bearer(c);
+  if (rawBearer !== null) {
+    const token = await dependencies.database.apiTokens.findByTokenHash(await hashOpaqueToken(rawBearer));
+    if (token === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+    if (!tokenIsActive(token, dependencies.clock.now())) fail(401, 'TOKEN_REVOKED', 'Token is revoked or expired.');
+    const user = await dependencies.database.users.findById(token.userId);
+    if (user === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+    return { kind: 'token', token, user };
+  }
+
+  const cookieName = dependencies.sessionCookieName ?? 'tephra_session';
+  const rawSession = parseCookies(c.req.header('cookie'))[cookieName];
+  if (!rawSession) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+  const session = await dependencies.database.sessions.findById(await hashOpaqueToken(rawSession));
+  if (session === null || session.expiresAt <= dependencies.clock.now()) {
+    fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+  }
+  const user = await dependencies.database.users.findById(session.userId);
+  if (user === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+  return { kind: 'session', session, user };
+}
+
+async function ownedVault(c: AppContext, dependencies: ApiDependencies, scope: ApiTokenScope): Promise<Vault> {
+  const principal = c.get('principal');
+  const vault = await dependencies.database.vaults.findById(c.req.param('vaultId'));
+  if (vault === null) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
+  if (!canAccessVault(principal, vault, scope)) fail(403, 'VAULT_ACCESS_DENIED', 'Access to this vault is denied.');
+  return vault;
+}
+
+function requireSession(c: AppContext): Extract<AuthPrincipal, { kind: 'session' }> {
+  const principal = c.get('principal');
+  if (principal.kind !== 'session') fail(403, 'VAULT_ACCESS_DENIED', 'A browser session is required.');
+  return principal;
+}
+
+function fileDto(file: CurrentVaultFile): Record<string, unknown> {
+  return {
+    fileId: file.fileId,
+    path: file.path,
+    blobHash: file.blobHash,
+    size: file.size,
+    mtime: file.mtime,
+    ...(file.mimeType === undefined ? {} : { mimeType: file.mimeType }),
+    kind: file.kind,
+  };
+}
+
+async function verifyManifest(files: readonly SyncManifestEntry[], manifestHash: string): Promise<void> {
+  if ((await hashManifest(files)) !== manifestHash) {
+    fail(400, 'INVALID_MANIFEST', 'Manifest hash does not match its canonical contents.');
+  }
+}
+
+async function requireBlobs(
+  repositories: Pick<TransactionRepositories, 'blobs'>,
+  blobStore: BlobStore,
+  files: readonly SyncManifestEntry[],
+): Promise<void> {
+  const unique = [...new Map(files.map((file) => [file.hash, file])).values()];
+  const metadata = new Map((await repositories.blobs.findByHashes(unique.map((file) => file.hash))).map((blob) => [blob.hash, blob]));
+  for (const file of unique) {
+    const blob = metadata.get(file.hash);
+    if (blob === undefined || blob.size !== file.size || !(await blobStore.has(file.hash))) {
+      fail(409, 'BLOB_MISSING', `Required blob ${file.hash} is missing or has the wrong size.`);
+    }
+  }
+}
+
+export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Variables }> {
+  const app = new Hono<{ Variables: Variables }>();
+
+  app.onError((error, c) => {
+    if (error instanceof ApiFailure) return c.json({ error: { code: error.code, message: error.message } }, error.status);
+    if (error instanceof ZodError) {
+      const messages = error.issues.map((issue) => issue.message);
+      const code: ApiErrorCode = messages.includes('Duplicate manifest path.')
+        ? 'DUPLICATE_PATH'
+        : messages.includes('Duplicate manifest file ID.')
+          ? 'DUPLICATE_FILE_ID'
+          : messages.some((message) => message.includes('canonical vault-relative path'))
+            ? 'INVALID_PATH'
+            : 'INVALID_MANIFEST';
+      return c.json({ error: { code, message: 'Request validation failed.' } }, 400);
+    }
+    return c.json({ error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  });
+
+  app.get('/healthz', (c) => c.json({ status: 'ok' }));
+  app.get('/readyz', async (c) => {
+    try {
+      await dependencies.database.users.count();
+      return c.json({ status: 'ready' });
+    } catch {
+      return c.json({ error: { code: 'INTERNAL_ERROR', message: 'Service is not ready.' } }, 503);
+    }
+  });
+
+  app.get('/api/v1/auth/bootstrap/status', async (c) => c.json({ required: (await dependencies.database.users.count()) === 0 }));
+  app.post('/api/v1/auth/bootstrap', async (c) => {
+    const body = await jsonBody(c, bootstrapSchema);
+    if ((await dependencies.database.users.count()) !== 0) fail(409, 'COMMIT_FAILED', 'Bootstrap has already completed.');
+    if (!dependencies.bootstrapToken || !constantTimeSecretEqual(body.token, dependencies.bootstrapToken)) {
+      fail(401, 'AUTH_REQUIRED', 'Invalid bootstrap token.');
+    }
+    const user = await dependencies.database.transaction(async (repositories) => {
+      if ((await repositories.users.count()) !== 0) fail(409, 'COMMIT_FAILED', 'Bootstrap has already completed.');
+      const now = dependencies.clock.now();
+      const created = { id: dependencies.ids.generate(), email: body.email.toLowerCase(), passwordHash: await dependencies.passwordHasher.hash(body.password), createdAt: now, updatedAt: now };
+      await repositories.users.insert(created);
+      return created;
+    });
+    return c.json({ user: { id: user.id, email: user.email } }, 201);
+  });
+
+  app.post('/api/v1/auth/login', async (c) => {
+    const body = await jsonBody(c, credentialsSchema);
+    const user = await dependencies.database.users.findByEmail(body.email.toLowerCase());
+    const comparisonHash = user?.passwordHash ?? await dependencies.passwordHasher.hash('invalid-login-placeholder');
+    const valid = await dependencies.passwordHasher.verify(body.password, comparisonHash);
+    if (!user || !user.passwordHash || !valid) fail(401, 'AUTH_REQUIRED', 'Invalid email or password.');
+    const raw = createOpaqueToken('tps');
+    const csrfToken = createOpaqueToken('tpc');
+    const now = dependencies.clock.now();
+    await dependencies.database.sessions.insert({ id: await hashOpaqueToken(raw), userId: user.id, createdAt: now, expiresAt: now + SESSION_AGE_MS });
+    c.header('Set-Cookie', sessionCookie(raw, { ...(dependencies.secureCookies === undefined ? {} : { secure: dependencies.secureCookies }), ...(dependencies.sessionCookieName === undefined ? {} : { name: dependencies.sessionCookieName }), maxAgeSeconds: SESSION_AGE_MS / 1000 }));
+    c.header('Set-Cookie', `tephra_csrf=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax${dependencies.secureCookies === false ? '' : '; Secure'}; Max-Age=${SESSION_AGE_MS / 1000}`, { append: true });
+    return c.json({ user: { id: user.id, email: user.email }, csrfToken });
+  });
+
+  app.use('/api/v1/*', async (c, next) => {
+    if (c.req.path === '/api/v1/auth/bootstrap' || c.req.path === '/api/v1/auth/login' || c.req.path === '/api/v1/auth/bootstrap/status') return next();
+    const principal = await authenticate(c, dependencies);
+    c.set('principal', principal);
+    if (principal.kind === 'session' && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+      const csrfCookie = parseCookies(c.req.header('cookie')).tephra_csrf;
+      const csrfHeader = c.req.header('x-tephra-csrf');
+      if (!csrfCookie || !csrfHeader || !constantTimeSecretEqual(csrfCookie, csrfHeader)) {
+        fail(403, 'VAULT_ACCESS_DENIED', 'CSRF validation failed.');
+      }
+    }
+    return next();
+  });
+
+  app.post('/api/v1/auth/logout', async (c) => {
+    const principal = requireSession(c);
+    await dependencies.database.sessions.delete(principal.session.id);
+    c.header('Set-Cookie', clearSessionCookie({ ...(dependencies.secureCookies === undefined ? {} : { secure: dependencies.secureCookies }), ...(dependencies.sessionCookieName === undefined ? {} : { name: dependencies.sessionCookieName }) }));
+    return c.json({ ok: true });
+  });
+  app.get('/api/v1/auth/me', (c) => {
+    const principal = c.get('principal');
+    return c.json({ user: { id: principal.user.id, email: principal.user.email } });
+  });
+
+  app.get('/api/v1/vaults', async (c) => {
+    const principal = requireSession(c);
+    return c.json({ vaults: await dependencies.database.vaults.listByOwner(principal.user.id) });
+  });
+  app.post('/api/v1/vaults', async (c) => {
+    const principal = requireSession(c);
+    const body = await jsonBody(c, vaultSchema);
+    const now = dependencies.clock.now();
+    const vault = { id: dependencies.ids.generate(), ownerUserId: principal.user.id, name: body.name, latestRevision: 0, createdAt: now, updatedAt: now };
+    await dependencies.database.vaults.insert(vault);
+    return c.json({ vault }, 201);
+  });
+
+  app.use('/api/v1/vaults/:vaultId/*', async (c, next) => {
+    const scope = c.req.path.includes('/sync/') || c.req.path.includes('/blobs/') ? 'vault:upload' : 'vault:read-metadata';
+    await ownedVault(c, dependencies, scope);
+    return next();
+  });
+  app.get('/api/v1/vaults/:vaultId', async (c) => c.json({ vault: await ownedVault(c, dependencies, 'vault:read-metadata') }));
+  app.delete('/api/v1/vaults/:vaultId', async (c) => {
+    requireSession(c);
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const body = await jsonBody(c, deleteVaultSchema);
+    if (body.confirmation !== vault.name) fail(409, 'COMMIT_FAILED', 'Vault name confirmation does not match.');
+    await dependencies.database.vaults.delete(vault.id);
+    return c.body(null, 204);
+  });
+
+  app.get('/api/v1/vaults/:vaultId/tokens', async (c) => {
+    requireSession(c);
+    const tokens = await dependencies.database.apiTokens.listByVault(c.req.param('vaultId'));
+    return c.json({ tokens: tokens.map(({ tokenHash: _tokenHash, ...token }) => token) });
+  });
+  app.post('/api/v1/vaults/:vaultId/tokens', async (c) => {
+    const principal = requireSession(c);
+    const body = await jsonBody(c, tokenSchema);
+    const now = dependencies.clock.now();
+    let deviceId = body.deviceId ?? null;
+    if (!deviceId && body.deviceName) {
+      deviceId = dependencies.ids.generate();
+      await dependencies.database.devices.insert({ id: deviceId, userId: principal.user.id, name: body.deviceName, ...(body.platform === undefined ? {} : { platform: body.platform }), createdAt: now, lastSeenAt: now });
+    }
+    const raw = createOpaqueToken('tpt');
+    const token = { id: dependencies.ids.generate(), userId: principal.user.id, vaultId: c.req.param('vaultId'), deviceId, tokenHash: await hashOpaqueToken(raw), name: body.name, scopes: body.scopes, createdAt: now, lastUsedAt: null, expiresAt: body.expiresAt, revokedAt: null };
+    await dependencies.database.apiTokens.insert(token);
+    return c.json({ token: { id: token.id, name: token.name, scopes: token.scopes, expiresAt: token.expiresAt }, value: raw }, 201);
+  });
+  app.delete('/api/v1/vaults/:vaultId/tokens/:tokenId', async (c) => {
+    requireSession(c);
+    const token = await dependencies.database.apiTokens.findById(c.req.param('tokenId'));
+    if (!token || token.vaultId !== c.req.param('vaultId')) fail(404, 'VAULT_NOT_FOUND', 'Token was not found.');
+    await dependencies.database.apiTokens.update({ ...token, revokedAt: dependencies.clock.now() });
+    return c.body(null, 204);
+  });
+
+  app.post('/api/v1/vaults/:vaultId/sync/plan', async (c) => {
+    const body = await jsonBody(c, syncPlanBodySchema);
+    await verifyManifest(body.files, body.manifestHash);
+    const vault = await ownedVault(c, dependencies, 'vault:upload');
+    const existing = await dependencies.database.vaultRevisions.findByManifestHash(vault.id, body.manifestHash);
+    if (existing) return c.json({ status: 'up-to-date', latestRevision: existing.revision, missingBlobs: [] });
+    const metadata = new Map((await dependencies.database.blobs.findByHashes(body.files.map((file) => file.hash))).map((blob) => [blob.hash, blob]));
+    const missingBlobs = [];
+    for (const file of new Map(body.files.map((entry) => [entry.hash, entry])).values()) {
+      const blob = metadata.get(file.hash);
+      if (!blob || blob.size !== file.size || !(await dependencies.blobStore.has(file.hash))) missingBlobs.push({ hash: file.hash, size: file.size });
+    }
+    return c.json({ status: 'upload-required', latestRevision: vault.latestRevision, missingBlobs });
+  });
+
+  app.put('/api/v1/vaults/:vaultId/blobs/:hash', async (c) => {
+    const hash = sha256Schema.parse(c.req.param('hash'));
+    const max = dependencies.maxBlobBytes ?? DEFAULT_BLOB_LIMIT;
+    const declaredText = c.req.header('x-tephra-blob-size');
+    const declared = declaredText === undefined ? Number(c.req.header('content-length')) : Number(declaredText);
+    if (!Number.isSafeInteger(declared) || declared < 0) fail(400, 'INVALID_MANIFEST', 'A valid blob size is required.');
+    if (declared > max) fail(413, 'BLOB_TOO_LARGE', 'Blob exceeds the configured size limit.');
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength !== declared) fail(400, 'BLOB_HASH_MISMATCH', 'Uploaded size does not match the declared size.');
+    if (bytes.byteLength > max) fail(413, 'BLOB_TOO_LARGE', 'Blob exceeds the configured size limit.');
+    if ((await sha256Hex(bytes)) !== hash) fail(400, 'BLOB_HASH_MISMATCH', 'Uploaded content does not match the declared SHA-256 hash.');
+    const existing = await dependencies.database.blobs.findByHash(hash);
+    if (existing && (existing.size !== bytes.byteLength || !(await dependencies.blobStore.has(hash)))) fail(409, 'COMMIT_FAILED', 'Stored blob metadata is inconsistent.');
+    if (!existing) {
+      await dependencies.blobStore.put({ hash, bytes, size: bytes.byteLength, ...(c.req.header('content-type') ? { mimeType: c.req.header('content-type') } : {}) });
+      await dependencies.database.blobs.insert({ hash, size: bytes.byteLength, mimeType: c.req.header('content-type') ?? null, createdAt: dependencies.clock.now() });
+    }
+    return c.json({ hash, stored: existing === null });
+  });
+
+  app.post('/api/v1/vaults/:vaultId/sync/commit', async (c) => {
+    const body = await jsonBody(c, syncCommitBodySchema);
+    await verifyManifest(body.files, body.manifestHash);
+    const vaultId = c.req.param('vaultId');
+    const result = await dependencies.database.transaction(async (repositories) => {
+      await repositories.lockVault(vaultId);
+      const vault = await repositories.vaults.findById(vaultId);
+      if (!vault) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
+      const principal = c.get('principal');
+      if (principal.kind !== 'token') fail(403, 'VAULT_ACCESS_DENIED', 'An upload token is required.');
+      const transactionToken = await repositories.apiTokens.findById(principal.token.id);
+      if (!transactionToken || !tokenIsActive(transactionToken, dependencies.clock.now()) || transactionToken.vaultId !== vaultId || !transactionToken.scopes.includes('vault:upload')) {
+        fail(403, 'VAULT_ACCESS_DENIED', 'Upload token cannot access this vault.');
+      }
+      const existing = await repositories.vaultRevisions.findByManifestHash(vaultId, body.manifestHash);
+      if (existing) {
+        await repositories.apiTokens.update({ ...transactionToken, lastUsedAt: dependencies.clock.now() });
+        return { status: 'up-to-date' as const, revision: existing.revision };
+      }
+      await requireBlobs(repositories, dependencies.blobStore, body.files);
+      const current = await repositories.vaultFiles.listByVault(vaultId);
+      const revision = vault.latestRevision + 1;
+      const now = dependencies.clock.now();
+      const incoming = body.files.map((file) => ({ ...file, blobHash: file.hash }));
+      const diff = diffRevision({ vaultId, revision, createdAt: now, current, incoming, ids: dependencies.ids });
+      await repositories.vaultRevisions.insert({ vaultId, revision, manifestHash: body.manifestHash, deviceId: body.deviceId, createdAt: now });
+      if (diff.versions.length) await repositories.fileVersions.insertMany(diff.versions);
+      for (const file of current) if (!body.files.some((incomingFile) => incomingFile.fileId === file.fileId)) await repositories.vaultFiles.delete(file.fileId);
+      for (const file of body.files) await repositories.vaultFiles.upsert({ fileId: file.fileId, vaultId, path: file.path, blobHash: file.hash, size: file.size, mtime: file.mtime, ...(file.mimeType === undefined ? {} : { mimeType: file.mimeType }), kind: file.kind, updatedRevision: revision });
+      await repositories.vaults.update({ ...vault, latestRevision: revision, updatedAt: now });
+      await repositories.apiTokens.update({ ...transactionToken, lastUsedAt: now });
+      return { status: 'committed' as const, revision };
+    });
+    if (result.status === 'committed' && dependencies.indexService?.indexVault) {
+      void dependencies.indexService.indexVault(vaultId, result.revision).catch(() => undefined);
+    }
+    return c.json(result);
+  });
+
+  app.get('/api/v1/vaults/:vaultId/files', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const files = await dependencies.database.vaultFiles.listByVault(vault.id);
+    return c.json({ revision: vault.latestRevision, files: files.map(fileDto) });
+  });
+  app.get('/api/v1/vaults/:vaultId/tree', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const files = await dependencies.database.vaultFiles.listByVault(vault.id);
+    return c.json({ revision: vault.latestRevision, files: files.map(fileDto) });
+  });
+  app.get('/api/v1/vaults/:vaultId/search', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const query = z.string().trim().min(1).max(200).parse(c.req.query('q'));
+    const limit = Math.min(Number(c.req.query('limit') ?? 50) || 50, 100);
+    const results = dependencies.indexService?.search ? await dependencies.indexService.search({ vaultId: vault.id, query, limit }) : (await dependencies.database.vaultFiles.listByVault(vault.id)).filter((file) => file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0, limit).map(fileDto);
+    return c.json({ revision: vault.latestRevision, results });
+  });
+
+  const findFile = async (c: AppContext): Promise<CurrentVaultFile> => {
+    const file = await dependencies.database.vaultFiles.findById(c.req.param('fileId'));
+    if (!file || file.vaultId !== c.req.param('vaultId')) fail(404, 'VAULT_NOT_FOUND', 'File was not found.');
+    return file;
+  };
+  app.get('/api/v1/vaults/:vaultId/files/:fileId', async (c) => c.json({ file: fileDto(await findFile(c)) }));
+  const rawContent = async (c: AppContext): Promise<Response> => {
+    const file = await findFile(c);
+    const blob = await dependencies.blobStore.get(file.blobHash);
+    if (!blob) fail(404, 'BLOB_MISSING', 'File content is missing.');
+    const contentType = file.mimeType ?? (file.kind === 'markdown' ? 'text/markdown; charset=utf-8' : 'application/octet-stream');
+    const forceDownload = /^(?:text\/html|application\/xhtml\+xml|image\/svg\+xml)(?:;|$)/i.test(contentType);
+    return new Response(blob.bytes, { headers: { 'Content-Type': contentType, 'Content-Length': String(blob.size), 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': 'sandbox', ...(forceDownload ? { 'Content-Disposition': `attachment; filename="${encodeURIComponent(file.path.split('/').at(-1) ?? 'attachment')}"` } : {}) } });
+  };
+  app.get('/api/v1/vaults/:vaultId/files/:fileId/content', rawContent);
+  app.get('/api/v1/vaults/:vaultId/files/:fileId/raw', rawContent);
+  app.get('/api/v1/vaults/:vaultId/attachments/:fileId', rawContent);
+  app.get('/api/v1/vaults/:vaultId/files/:fileId/rendered', async (c) => {
+    const file = await findFile(c);
+    if (file.kind !== 'markdown') fail(400, 'INVALID_MANIFEST', 'Only Markdown files can be rendered.');
+    if (!dependencies.indexService?.renderMarkdown) fail(503, 'INDEX_PENDING', 'Markdown rendering is not available.');
+    const blob = await dependencies.blobStore.get(file.blobHash);
+    if (!blob) fail(404, 'BLOB_MISSING', 'File content is missing.');
+    const markdown = await new Response(blob.bytes).text();
+    return c.json(await dependencies.indexService.renderMarkdown({ vaultId: file.vaultId, fileId: file.fileId, markdown }));
+  });
+  app.get('/api/v1/vaults/:vaultId/files/:fileId/links', async (c) => c.json({ links: await dependencies.database.noteIndex.listLinksBySource(c.req.param('vaultId'), (await findFile(c)).fileId) }));
+  app.get('/api/v1/vaults/:vaultId/files/:fileId/backlinks', async (c) => c.json({ links: await dependencies.database.noteIndex.listLinksByTarget(c.req.param('vaultId'), (await findFile(c)).fileId) }));
+  app.get('/api/v1/vaults/:vaultId/links', async (c) => c.json({ links: await dependencies.database.noteIndex.listLinks(c.req.param('vaultId')) }));
+  app.get('/api/v1/vaults/:vaultId/graph', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const files = (await dependencies.database.vaultFiles.listByVault(vault.id)).filter((file) => file.kind === 'markdown').slice(0, 10_000);
+    const currentIds = new Set(files.map((file) => file.fileId));
+    const metadata = new Map((await dependencies.database.noteIndex.listMetadata(vault.id)).map((item) => [item.fileId, item]));
+    const counts = new Map<string, number>();
+    for (const link of await dependencies.database.noteIndex.listLinks(vault.id)) if (link.targetFileId && currentIds.has(link.sourceFileId) && currentIds.has(link.targetFileId)) {
+      const key = `${link.sourceFileId}\0${link.targetFileId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return c.json({ revision: vault.latestRevision, nodes: files.map((file) => ({ id: file.fileId, path: file.path, title: metadata.get(file.fileId)?.title ?? null })), edges: [...counts].map(([key, count]) => { const [source, target] = key.split('\0'); return { source: source!, target: target!, count }; }) });
+  });
+
+  return app;
+}
