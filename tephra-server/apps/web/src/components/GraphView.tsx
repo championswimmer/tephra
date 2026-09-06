@@ -1,34 +1,137 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ForceGraph2D from 'react-force-graph-2d';
+import type { ForceGraphMethods } from 'react-force-graph-2d';
 import { api } from '../api/client';
 import type { GraphResponse } from '../api/types';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
 
-export function GraphView({ vaultId, onOpen }: { vaultId: string; onOpen: (id: string) => void }) {
+export interface GraphNodeDatum {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface GraphLinkDatum {
+  source: string;
+  target: string;
+  count: number;
+}
+
+export interface ForceGraphDatum {
+  nodes: GraphNodeDatum[];
+  links: GraphLinkDatum[];
+}
+
+/** Map `/graph` API nodes/edges onto the `{ nodes, links }` shape react-force-graph expects. */
+export function mapGraphToForceData(graph: GraphResponse): ForceGraphDatum {
+  return {
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      label: node.title ?? node.path,
+      path: node.path,
+    })),
+    links: graph.edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      count: edge.count,
+    })),
+  };
+}
+
+const ACCENT_NODE = '#bd4b31';
+const DIM_NODE = '#96a29a';
+
+export function GraphView({
+  vaultId,
+  onOpen,
+  selectedId,
+}: {
+  vaultId: string;
+  onOpen: (id: string) => void;
+  selectedId?: string;
+}) {
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<unknown>();
-  const [selected, setSelected] = useState<string>();
-  async function load() {
-    setError(undefined);
-    try {
-      setGraph(await api.graph(vaultId));
-    } catch (caught) {
-      setError(caught);
-    }
-  }
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
+  const fittedRef = useRef(false);
+
   useEffect(() => {
-    void load();
-  }, [vaultId]);
-  const layout = useMemo(() => {
-    if (!graph) return new Map<string, { x: number; y: number }>();
-    const map = new Map<string, { x: number; y: number }>();
-    graph.nodes.forEach((node, index) => {
-      const angle = (index / Math.max(graph.nodes.length, 1)) * Math.PI * 2;
-      const ring = 34 + (index % 3) * 8;
-      map.set(node.id, { x: 50 + Math.cos(angle) * ring, y: 50 + Math.sin(angle) * ring });
-    });
-    return map;
+    let cancelled = false;
+    fittedRef.current = false;
+    setGraph(null);
+    setError(undefined);
+    setHovered(null);
+    void api.graph(vaultId).then(
+      (result) => {
+        if (!cancelled) setGraph(result);
+      },
+      (caught) => {
+        if (!cancelled) setError(caught);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultId, reloadToken]);
+
+  // Size the canvas to its container (the library defaults to window
+  // dimensions, which would overflow the card and break zoom-to-fit). Keep a
+  // fixed height that matches the `.graph-canvas` stylesheet rule.
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const update = () => {
+      const height = Math.min(window.innerHeight * 0.62, 620);
+      setCanvasSize({ width: Math.max(1, element.clientWidth), height });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [graph]);
-  if (error) return <ErrorState error={error} retry={() => void load()} />;
+
+  // Stop the force simulation if the view unmounts mid-flight.
+  useEffect(
+    () => () => {
+      try {
+        graphRef.current?.pauseAnimation();
+      } catch {
+        /* graph already torn down */
+      }
+    },
+    [],
+  );
+
+  const data = useMemo<ForceGraphDatum>(
+    () => (graph ? mapGraphToForceData(graph) : { nodes: [], links: [] }),
+    [graph],
+  );
+
+  // The currently-open note (when provided) and the hovered node stay
+  // highlighted along with their neighbours; everything else is dimmed,
+  // mirroring the old SVG view's active/inactive styling.
+  const activeId = hovered ?? selectedId ?? null;
+  const neighbors = useMemo(() => {
+    if (!graph || !activeId) return new Set<string>();
+    return new Set(
+      graph.edges.flatMap((edge) =>
+        edge.source === activeId
+          ? [edge.target]
+          : edge.target === activeId
+            ? [edge.source]
+            : [],
+      ),
+    );
+  }, [graph, activeId]);
+  const isActive = (id: string) =>
+    activeId === null || id === activeId || neighbors.has(id);
+
+  if (error)
+    return <ErrorState error={error} retry={() => setReloadToken((token) => token + 1)} />;
   if (!graph) return <Loading label="Loading graph…" />;
   if (!graph.nodes.length)
     return (
@@ -36,11 +139,11 @@ export function GraphView({ vaultId, onOpen }: { vaultId: string; onOpen: (id: s
         <p>Notes and resolved links appear after the vault is indexed.</p>
       </EmptyState>
     );
-  const neighbors = new Set(
-    graph.edges.flatMap((edge) =>
-      edge.source === selected ? [edge.target] : edge.target === selected ? [edge.source] : [],
-    ),
-  );
+
+  const activeNode = activeId
+    ? graph.nodes.find((node) => node.id === activeId)
+    : undefined;
+
   return (
     <section className="graph-view" aria-label="Vault graph">
       <div className="section-heading">
@@ -53,58 +156,79 @@ export function GraphView({ vaultId, onOpen }: { vaultId: string; onOpen: (id: s
         </p>
       </div>
       {graph.indexPending && <IndexPending />}
-      <svg viewBox="0 0 100 100" role="img" aria-label="Interactive note relationship graph">
-        {graph.edges.map((edge, i) => {
-          const a = layout.get(edge.source),
-            b = layout.get(edge.target);
-          if (!a || !b) return null;
-          const active = !selected || edge.source === selected || edge.target === selected;
-          return (
-            <line
-              key={`${edge.source}-${edge.target}-${i}`}
-              x1={a.x}
-              y1={a.y}
-              x2={b.x}
-              y2={b.y}
-              className={active ? 'graph-edge active' : 'graph-edge'}
-            />
-          );
-        })}
-        {graph.nodes.map((node) => {
-          const point = layout.get(node.id)!;
-          const active = !selected || selected === node.id || neighbors.has(node.id);
-          return (
-            <g
-              key={node.id}
-              className={active ? 'graph-node active' : 'graph-node'}
-              transform={`translate(${point.x} ${point.y})`}
-              onMouseEnter={() => setSelected(node.id)}
-              onFocus={() => setSelected(node.id)}
-              onClick={() => onOpen(node.id)}
-              role="button"
-              tabIndex={0}
-              aria-label={`Open ${node.title ?? node.path}`}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') onOpen(node.id);
-              }}
-            >
-              <circle r={selected === node.id ? 3 : 2} />
-              <title>{node.title ?? node.path}</title>
-            </g>
-          );
-        })}
-      </svg>
-      {selected && (
+      <div
+        ref={containerRef}
+        className="graph-canvas"
+        role="img"
+        aria-label={`Interactive note relationship graph with ${graph.nodes.length} notes and ${graph.edges.length} connections. The note list below offers the same notes as buttons.`}
+      >
+        <ForceGraph2D
+          ref={graphRef}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          graphData={data}
+          nodeId="id"
+          nodeLabel="label"
+          linkSource="source"
+          linkTarget="target"
+          backgroundColor="#f8f8f4"
+          enableZoomInteraction
+          enablePanInteraction
+          enableNodeDrag
+          cooldownTicks={100}
+          warmupTicks={25}
+          nodeRelSize={4}
+          nodeVal={(node) => (activeId !== null && isActive(String(node.id)) ? 2 : 1)}
+          nodeColor={(node) => (isActive(String(node.id)) ? ACCENT_NODE : DIM_NODE)}
+          linkColor={(link) =>
+            activeId === null ||
+            link.source === activeId ||
+            (typeof link.source === 'object' && link.source?.id === activeId) ||
+            link.target === activeId ||
+            (typeof link.target === 'object' && link.target?.id === activeId)
+              ? 'rgba(189, 75, 49, 0.55)'
+              : 'rgba(150, 162, 154, 0.3)'
+          }
+          linkWidth={(link) => (Number(link.count) > 1 ? 2 : 1)}
+          onNodeClick={(node) => {
+            onOpen(String(node.id));
+          }}
+          onNodeHover={(node) => {
+            // After d3 resolves links, source/target become node objects.
+            setHovered(node ? String(node.id) : null);
+          }}
+          onEngineStop={() => {
+            if (fittedRef.current || data.nodes.length < 2) return;
+            fittedRef.current = true;
+            try {
+              graphRef.current?.zoomToFit(300, 40);
+            } catch {
+              /* canvas already unmounted */
+            }
+          }}
+        />
+      </div>
+      {activeNode && (
         <div className="graph-selection">
-          <span>
-            {graph.nodes.find((node) => node.id === selected)?.title ??
-              graph.nodes.find((node) => node.id === selected)?.path}
-          </span>
-          <button type="button" onClick={() => onOpen(selected)}>
+          <span>{activeNode.title ?? activeNode.path}</span>
+          <button type="button" onClick={() => onOpen(activeNode.id)}>
             Open note
           </button>
         </div>
       )}
+      <ul className="graph-fallback-list" aria-label="Notes in graph">
+        {graph.nodes.map((node) => (
+          <li key={node.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(node.id)}
+              aria-current={node.id === selectedId ? 'true' : undefined}
+            >
+              {node.title ?? node.path}
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

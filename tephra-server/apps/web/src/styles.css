@@ -501,29 +501,35 @@ input {
   margin-top: 1rem;
   border: 1px solid var(--line);
 }
-.graph-view svg {
+.graph-view canvas {
+  display: block;
+}
+.graph-canvas {
   width: 100%;
   height: min(62vh, 620px);
   background: #f8f8f4;
   border: 1px solid var(--line);
   border-radius: 8px;
+  overflow: hidden;
 }
-.graph-edge {
-  stroke: #b7beb8;
-  stroke-width: 0.25;
-  opacity: 0.18;
+.graph-fallback-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
-.graph-edge.active {
-  opacity: 0.7;
+.graph-fallback-list button {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  color: #3e4942;
 }
-.graph-node {
-  fill: #96a29a;
-  opacity: 0.25;
-  cursor: pointer;
-}
-.graph-node.active {
-  fill: var(--accent);
-  opacity: 1;
+.graph-fallback-list button:hover {
+  border-color: #a4ada5;
 }
 .graph-selection {
   display: flex;

@@ -9,7 +9,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { hashManifest } from '../tephra-server/packages/protocol/dist/index.js';
 
@@ -71,7 +70,10 @@ for (const path of paths) {
     bytes,
   });
 }
-const manifestHash = await hashManifest(entries.map(({ bytes, ...rest }) => rest));
+const manifestEntry = ({ fileId, path, hash, size, mtime, mimeType, kind }) => ({
+  fileId, path, hash, size, mtime, mimeType, kind,
+});
+const manifestHash = await hashManifest(entries.map(manifestEntry));
 step('files', `${entries.length} (${entries.filter((e) => e.kind === 'markdown').length} markdown)`);
 step('manifest', manifestHash);
 
@@ -123,7 +125,7 @@ const plugin = (path, init = {}) =>
 const syncBody = {
   deviceId: DEVICE_ID,
   manifestHash,
-  files: entries.map(({ bytes, ...rest }) => rest),
+  files: entries.map(manifestEntry),
 };
 const plan = await (
   await plugin(`/api/v1/vaults/${vault.id}/sync/plan`, {

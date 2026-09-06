@@ -41,3 +41,6 @@ commit, idempotent recommit, files, rendered note, links, graph).
 - [x] Sample vault synced to a local server and visually verified (file
   tree, rendered Home note with resolved links, graph with 16 nodes and
   76 edges)
+- [x] Graph view rebuilt on `react-force-graph-2d` 1.29.1 (MIT, force
+  layout, zoom/pan/drag, click-to-open, keyboard fallback list); canvas
+  sized to its card via ResizeObserver with a jsdom-safe guard

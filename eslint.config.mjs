@@ -20,4 +20,8 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/*.test.tsx'],
     languageOptions: { globals: globals.vitest },
   },
+  {
+    files: ['e2e/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
 );
