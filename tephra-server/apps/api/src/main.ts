@@ -17,10 +17,10 @@ function integerEnvironment(name: string, fallback: number): number {
 }
 
 if ((process.env.TEPHRA_DATABASE_DRIVER ?? 'sqlite') !== 'sqlite') {
-  throw new Error('This Stage 1 runtime currently supports TEPHRA_DATABASE_DRIVER=sqlite only');
+  throw new Error('Tephra is disk-only: TEPHRA_DATABASE_DRIVER must be sqlite');
 }
 if ((process.env.TEPHRA_BLOB_DRIVER ?? 'filesystem') !== 'filesystem') {
-  throw new Error('This Stage 1 runtime currently supports TEPHRA_BLOB_DRIVER=filesystem only');
+  throw new Error('Tephra is disk-only: TEPHRA_BLOB_DRIVER must be filesystem');
 }
 
 const bootstrapToken = process.env.TEPHRA_BOOTSTRAP_TOKEN;

@@ -1,6 +1,0 @@
-{
-  "name": "@tephra/blob-store-r2",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module"
-}

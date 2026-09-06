@@ -24,9 +24,7 @@ ENV NODE_ENV=production \
     TEPHRA_SQLITE_PATH=/data/tephra.db \
     TEPHRA_BLOB_DRIVER=filesystem \
     TEPHRA_BLOB_PATH=/data/blobs \
-    TEPHRA_ALLOW_SIGNUPS=false \
-    TEPHRA_MAX_BLOB_BYTES=104857600 \
-    TEPHRA_LOG_LEVEL=info
+    TEPHRA_MAX_BLOB_BYTES=104857600
 
 WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./

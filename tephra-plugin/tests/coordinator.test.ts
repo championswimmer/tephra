@@ -103,4 +103,26 @@ describe('SyncCoordinator', () => {
     expect(state.manifest['old.png']?.hash).toBe(hash);
     expect(state.lastSuccessfulSyncAt).toBeUndefined();
   });
+  it('does nothing and sets disabled status when enableSync is false', async () => {
+    const state = configuredState();
+    state.settings.enableSync = false;
+    const client = {
+      plan: vi.fn(),
+      uploadBlob: vi.fn(),
+      commit: vi.fn(),
+    };
+    const statuses: unknown[] = [];
+    const coordinator = new SyncCoordinator({
+      app: {} as never,
+      state,
+      scanner: { scan: vi.fn() } as never,
+      saveState: async () => undefined,
+      setStatus: (s) => statuses.push(s),
+      clientFactory: () => client,
+    });
+    await coordinator.requestSync();
+    expect(client.plan).not.toHaveBeenCalled();
+    expect(statuses).toHaveLength(1);
+    expect((statuses[0] as { phase: string }).phase).toBe('disabled');
+  });
 });

@@ -25,6 +25,37 @@ export class TephraHttpError extends Error {
   }
 }
 
+export interface RemoteVault {
+  id: string;
+  name: string;
+  latestRevision: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UserSummary {
+  id: string;
+  email: string;
+}
+
+export interface LoginResult {
+  user: UserSummary;
+  sessionToken: string;
+}
+
+export interface ProvisionTokenResult {
+  token: {
+    id: string;
+    userId: string;
+    vaultId: string;
+    deviceId: string | null;
+    name: string;
+    scopes: string[];
+    createdAt: number;
+  };
+  value: string;
+}
+
 export interface TephraClientLike {
   plan(body: SyncPlanBody): Promise<SyncPlanResponse>;
   uploadBlob(hash: string, bytes: Uint8Array): Promise<void>;
@@ -34,17 +65,106 @@ export interface TephraClientLike {
 export class TephraClient implements TephraClientLike {
   constructor(
     private readonly serverUrl: string,
-    private readonly vaultId: string,
-    private readonly token: string,
+    private readonly vaultId: string = '',
+    private readonly token: string = '',
   ) {}
 
+  async testConnection(serverUrlOverride?: string): Promise<{ ok: boolean; status: number }> {
+    const url = `${this.baseUrl(serverUrlOverride)}/healthz`;
+    try {
+      const response = await this.request({
+        url,
+        method: 'GET',
+        throw: false,
+      });
+      return { ok: response.status >= 200 && response.status < 300, status: response.status };
+    } catch {
+      return { ok: false, status: 0 };
+    }
+  }
+
+  login(email: string, password: string, serverUrlOverride?: string): Promise<LoginResult> {
+    return this.jsonRequest(
+      `${this.baseUrl(serverUrlOverride)}/api/v1/auth/login`,
+      'POST',
+      { email, password },
+      (value) => {
+        const data = value as { user: UserSummary; sessionToken: string };
+        if (!data?.sessionToken || !data?.user?.email) {
+          throw new TephraHttpError(500, 'Invalid login response from server.');
+        }
+        return { user: data.user, sessionToken: data.sessionToken };
+      },
+    );
+  }
+
+  listVaults(sessionToken?: string): Promise<RemoteVault[]> {
+    return this.jsonRequest(
+      `${this.baseUrl()}/api/v1/vaults`,
+      'GET',
+      undefined,
+      (value) => (value as { vaults: RemoteVault[] }).vaults ?? [],
+      sessionToken,
+    );
+  }
+
+  createVault(name: string, sessionToken?: string): Promise<RemoteVault> {
+    return this.jsonRequest(
+      `${this.baseUrl()}/api/v1/vaults`,
+      'POST',
+      { name },
+      (value) => (value as { vault: RemoteVault }).vault,
+      sessionToken,
+    );
+  }
+
+  provisionVaultToken(
+    vaultId: string,
+    input: { name: string; deviceId?: string; deviceName?: string; platform?: string },
+    sessionToken?: string,
+  ): Promise<ProvisionTokenResult> {
+    return this.jsonRequest(
+      `${this.baseUrl()}/api/v1/vaults/${encodeURIComponent(vaultId)}/tokens`,
+      'POST',
+      {
+        name: input.name,
+        ...(input.deviceId ? { deviceId: input.deviceId } : {}),
+        ...(input.deviceName ? { deviceName: input.deviceName } : {}),
+        platform: input.platform ?? 'obsidian-plugin',
+      },
+      (value) => value as ProvisionTokenResult,
+      sessionToken,
+    );
+  }
+
+  getVault(vaultId?: string, tokenOverride?: string): Promise<RemoteVault> {
+    const targetId = vaultId ?? this.vaultId;
+    return this.jsonRequest(
+      `${this.baseUrl()}/api/v1/vaults/${encodeURIComponent(targetId)}`,
+      'GET',
+      undefined,
+      (value) => (value as { vault: RemoteVault }).vault,
+      tokenOverride,
+    );
+  }
+
+  async logout(sessionToken?: string): Promise<void> {
+    await this.jsonRequest(
+      `${this.baseUrl()}/api/v1/auth/logout`,
+      'POST',
+      {},
+      () => undefined,
+      sessionToken,
+    );
+  }
+
   plan(body: SyncPlanBody): Promise<SyncPlanResponse> {
-    return this.jsonRequest('/sync/plan', 'POST', body, syncPlanResponseSchema.parse);
+    return this.jsonRequest(this.vaultUrl('/sync/plan'), 'POST', body, syncPlanResponseSchema.parse);
   }
 
   async uploadBlob(hash: string, bytes: Uint8Array): Promise<void> {
     const response = await this.request({
-      url: this.url(`/blobs/${encodeURIComponent(hash)}`),
+      url: this.vaultUrl(`/blobs/${encodeURIComponent(hash)}`),
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -60,26 +180,34 @@ export class TephraClient implements TephraClientLike {
   }
 
   commit(body: SyncCommitBody): Promise<SyncCommitResponse> {
-    return this.jsonRequest('/sync/commit', 'POST', body, syncCommitResponseSchema.parse);
+    return this.jsonRequest(this.vaultUrl('/sync/commit'), 'POST', body, syncCommitResponseSchema.parse);
   }
 
   private async jsonRequest<T>(
-    endpoint: string,
+    url: string,
     method: string,
-    body: unknown,
+    body: unknown | undefined,
     parse: (value: unknown) => T,
+    tokenOverride?: string,
   ): Promise<T> {
-    const response = await this.request({
-      url: this.url(endpoint),
+    const token = tokenOverride ?? this.token;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.versionHeaders(),
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const options: RequestUrlParam = {
+      url,
       method,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        ...this.versionHeaders(),
-      },
-      body: JSON.stringify(body),
+      headers,
       throw: false,
-    });
+    };
+    if (body !== undefined) {
+      options.body = JSON.stringify(body);
+    }
+    const response = await this.request(options);
     this.assertSuccess(response.status, response.text);
     return parse(response.json);
   }
@@ -97,8 +225,13 @@ export class TephraClient implements TephraClientLike {
     }
   }
 
-  private url(endpoint: string): string {
-    return `${this.serverUrl.replace(/\/+$/, '')}/api/v1/vaults/${encodeURIComponent(this.vaultId)}${endpoint}`;
+  private baseUrl(serverUrlOverride?: string): string {
+    return (serverUrlOverride ?? this.serverUrl).replace(/\/+$/, '');
+  }
+
+  private vaultUrl(endpoint: string, vaultIdOverride?: string): string {
+    const targetId = vaultIdOverride ?? this.vaultId;
+    return `${this.baseUrl()}/api/v1/vaults/${encodeURIComponent(targetId)}${endpoint}`;
   }
 
   private assertSuccess(status: number, text: string): void {

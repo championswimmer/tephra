@@ -1,315 +1,196 @@
-# Headless Obsidian Sync Sidecar (self-hosted)
+# Headless Obsidian Sync Sidecar (disk-only)
 
-> Status: research + implementation plan
-> Depends on: `001-TEPHRA_STAGE1_PLAN.md`, `004-DEPLOYMENT_PROFILES.md`
-> Profile: single-user self-hosted only
+> Status: implementation plan
+> Depends on: `001-TEPHRA_STAGE1_PLAN.md`, disk layout from `003-MULTI_TENANT_PERSISTENCE.md`
+> Profile: single-user self-hosted, Compose/VM targets with a shared `/data`
 > Last updated: 2026-09-06
 
-## 1. Context and user outcome
+## 1. Context and outcome
 
-A self-hosting Tephra user already pays for **official Obsidian Sync** and wants
-the Tephra web mirror to stay fresh without leaving a laptop/phone online and
-without installing the Tephra plugin on every device.
+A self-hoster with paid **official Obsidian Sync** wants the Tephra mirror
+fresh without leaving a laptop online. Because live storage is disk-only,
+the answer is trivial: run the official headless CLI on the same machine,
+checking out into the **same `/data` volume** the server already uses, and
+poll-push each checkout through the **existing plan/upload/commit protocol**.
 
-Outcome: on the same VM/host that runs Tephra, an **opt-in sidecar** keeps a
-local vault checkout in sync via **official Obsidian Sync**, and a small
-**bridge loop** pushes that checkout into Tephra through the **existing
-Stage 1 plan/upload/commit protocol**. The Tephra server itself does not speak
-the Sync protocol and does not change.
+No new volumes. No file watching. No second service. One sidecar container
+runs a loop: `ob sync` (pull) each vault, then push each vault, then sleep.
 
-This plan is research-backed. Key finding: Obsidian now ships an official
-headless CLI (`obsidian-headless`, open beta, Feb 2026) that supersedes the old
-Xvfb + full-desktop hacks. The sidecar must use the official CLI, not a
-reverse-engineered Sync server.
+Research basis (fetched Sep 2026): official `obsidian-headless` CLI
+(`obsidianmd/obsidian-headless`: `ob login`, `sync-list-remote`,
+`sync-setup`, `sync`, `sync-config`, `sync-status`; Node 22+; `--json`),
+official help at `obsidian.md/help/headless`, Docker patterns from
+`crosbyh/obsidian-headless-sync-docker` (`*_FILE` secrets, `DEVICE_NAME`,
+persistent CLI state). The old Xvfb + full-desktop path is rejected.
 
-Sources consulted (fetched Sep 2026):
-
-- Official CLI repo + command reference: `obsidianmd/obsidian-headless`
-  (`ob login`, `sync-list-remote`, `sync-setup`, `sync`, `sync --continuous`,
-  `sync-config`, `sync-status`, `sync-unlink`; Node 22+; `--json` mode).
-- Official help: `obsidian.md/help/headless`, `obsidian.md/help/sync/headless`.
-- npm: `obsidian-headless` 0.0.8.
-- Community Docker wrappers (patterns only, not dependencies):
-  `crosbyh/obsidian-headless-sync-docker` (official-CLI based, `OBSIDI­AN_AUTH_TOKEN`,
-  `VAULT_NAME`, `VAULT_PASSWORD_FILE`, `DEVICE_NAME`, `SYNC_MODE`,
-  `SYNC_ONESHOT`, multi-vault, `*_FILE` secrets, `sync-status` healthcheck,
-  s6/read-only-rootfs hardening) and `belphemur/obsidian-headless` docs
-  (Compose, PUID/PGID, `pull`/`mirror` modes, periodic rescan).
-- Legacy Xvfb path: `rolle.design` headless guide (Ubuntu 22.04, Xvfb +
-  Openbox + x11vnc + systemd, Oct 2024, self-notes "no longer necessary
-  because Obsidian Headless was released Feb 2026"); `rup12.net` headless
-  guide (updated Mar 2026: "fully fledged headless client … disregard"
-  the X11 section); Obsidian forum Xvfb/GPU-crash threads
-  (`--disable-gpu --disable-software-rasterizer`, `xvfb-run`).
-
-## 2. Scope
-
-- Add an opt-in, documented Compose sidecar for **Profile A (single-user
-  self-hosted)** that:
-  1. runs official `ob sync --continuous` (or one-shot on a timer),
-  2. runs a Tephra bridge loop that pushes the local checkout into Tephra
-     via the existing plugin protocol,
-  3. persists Sync device identity across restarts.
-- Support one Obsidian account and 1..N vaults mapped to 1..N Tephra vaults.
-- Support standard and end-to-end-encrypted vaults (password via secret file).
-- Document one-time login/token capture, vault linking, sync modes,
-  healthchecks, backups, rotation, and rollback.
-- Add a bounded smoke script proving checkout → Tephra commit → browser read.
-
-### Explicit non-goals
-
-- No change to the Tephra sync protocol, schema, auth, or reader API.
-- No web-to-vault writes, merging, or Stage 2 behavior. The bridge never
-  writes into the vault checkout; Stage 1 read-only invariants stand.
-- No hosted/multi-user support: per-user Obsidian credentials on a shared
-  server are out of scope (privacy, secret sprawl, ToS risk).
-- No Xvfb/full-desktop path as a supported option (documented only as
-  rejected legacy).
-- No unofficial Sync protocol reimplementation or self-hosted Sync server
-  (e.g. `obi-sync-docs`, LiveSync/CouchDB, Relay, git/Syncthing bridges).
-  Those replace official Sync; this plan piggybacks on it.
-- No baking Sync credentials into the Tephra API image or process.
-- No `latest`-only deployment, no secrets committed to the repo.
-- No `PROGRESS.md` update until verified per repo rules.
-
-## 3. Invariants and security constraints
-
-From `AGENTS.md` plus this plan:
-
-- Original file bytes canonical; blobs immutable + SHA-256 verified;
-  successful commits revisioned (unchanged — bridge reuses the same path
-  as `e2e/sync-vault.mjs` and the plugin).
-- Shared packages stay browser-safe; Node-only code lives in adapters and
-  the bridge entrypoint.
-- Never log tokens, passwords, cookies, vault contents, DB URLs, or
-  object-store credentials. Redact bridge/CLI output on failure.
-- Secrets only via environment files with mode 600 or Docker/Podman
-  secrets mounted at `/run/secrets/*` and referenced by `*_FILE` vars.
-  Setting both plain and `_FILE` variants of the same credential is a
-  startup error (fail closed, list all offending vars).
-- Sync auth token and vault E2E password are independent credentials;
-  never confuse account password with vault encryption password.
-- Sidecar runs unprivileged (fixed PUID/PGID mapping documented), with
-  `no-new-privileges`, read-only root filesystem where supported, and a
-  persistent config volume so restarts reuse the same Sync device identity
-  instead of registering a new device each boot.
-- Recommended `SYNC_MODE` for Stage 1 is `pull-only` (or `mirror-remote`):
-  download remote changes, ignore/revert local changes. `bidirectional`
-  is allowed only when the operator understands the checkout is
-  Tephra-bridge-read-only and no other writer touches it.
-- The bridge mounts the checkout **read-only**; the Sync process owns
-  writes. Any bridge write attempt into the checkout is a bug.
-- Requires the operator's own paid Obsidian Sync subscription; the token
-  persists until explicit logout/revocation. Document revocation.
-
-## 4. Architecture
+## 2. Design
 
 ```text
 Obsidian Sync cloud (official, paid)
-        ^  (Sync protocol — only `ob` speaks it)
+        ^  only `ob` speaks the Sync protocol
         |
-obsidian-sync container (official obsidian-headless CLI)
-  - `ob sync --continuous` (or one-shot via timer)
-  - volumes: vault-data:/vault:rw, sync-state:/data/config
+tephra-sync sidecar (one container, same /data volume)
+  loop every BRIDGE_INTERVAL_SECS (default 60):
+    for each mapped vault:
+      ob sync --path /data/checkouts/<slug>      # pull-only, one-shot
+      bridge push → http://tephra:8080           # plan/upload/commit, no-op if unchanged
         |
-vault-data volume (plain Markdown files, `.obsidian` included)
-        |
-tephra-bridge container (Node 22, read-only mount of vault-data)
-  - walk → manifest → plan → upload missing blobs → commit → verify
-  - auth: Tephra vault-scoped device token (existing `vault:upload` scope)
-        |  (existing Stage 1 HTTP API — no new routes)
-        v
-Tephra container (unchanged image: API + web, SQLite + blobs in /data)
+Tephra container (unchanged image; /data/tephra.db + /data/blobs)
 ```
 
-Why two sidecar containers instead of one: the Sync CLI owns the checkout
-read-write; the bridge only needs read + HTTP. Sharing `vault-data`
-between two minimal containers preserves least privilege and lets either
-be restarted/upgraded independently. A single-container s6 variant is an
-acceptable implementation detail, but the plan's default is two services.
+`/data` layout (from plan 003):
 
-Why not bake into the Tephra image: mixes concerns, bloats the audited
-server image with Sync credentials, breaks the one-process-per-container
-and unprivileged-server posture in plans 001/004.
+```text
+/data/checkouts/<slug>/   # `ob` working copy per vault, owned by the sync process
+/data/sync-state/         # XDG_CONFIG_HOME: token cache + device identity (persistent)
+/data/snapshots/          # backup staging (plan 005)
+```
 
-## 5. Affected files/packages and ownership
+Why poll instead of `--continuous` + watcher: a one-shot `ob sync` that exits
+before the push eliminates partial-checkout races, background supervision,
+and in-flight detection. Interval sync (default 60 s) is plenty fresh for a
+read-only mirror. `SYNC_ONESHOT=true` reuses the same loop for cron/Job use.
 
-New files (non-overlapping with active plans 002–005):
+Why one container instead of sync+bridge split: both are operator-trusted on
+the same VM/disk with the same lifecycle; the bridge mounts the checkout
+read-only *by convention* (it never writes there — tested, see §6) and the
+split bought nothing but Compose complexity.
 
-- `tephra-server/deploy/docker/compose.sync-sidecar.yml` (new): extends
-  `compose.yml` with `obsidian-sync` + `tephra-bridge` services, `vault-data`
-  + `sync-state` volumes, secret mappings, healthchecks. Does not modify
-  `compose.yml` or `Dockerfile`.
-- `tephra-server/deploy/docker/Dockerfile.sync-sidecar` (new): minimal
-  `node:22-bookworm-slim` + `npm i -g obsidian-headless@<pinned>` +
-  `get-token` helper; runs as non-root; no Tephra source copied in.
-- `tephra-server/deploy/docker/obsidian-sync-entrypoint.sh` (new):
-  idempotent `sync-setup` then `sync --continuous` (or one-shot when
-  `SYNC_ONESHOT=true`); applies `sync-config` (mode, conflict strategy,
-  file-types, excluded-folders); validates `*_FILE` vs plain conflicts.
-- `e2e/sync-bridge.mjs` (new, extracted from `e2e/sync-vault.mjs`):
-  reusable walk/manifest/plan/upload/commit/verify used by both the demo
-  script and the bridge loop. `sync-vault.mjs` becomes a thin wrapper.
-- `e2e/sync-sidecar-smoke.mjs` (new): bounded Compose smoke (see §8).
-- `tephra-server/deploy/docker/README-sync-sidecar.md` (new): operator
-  runbook (setup, E2E, modes, rotation, backup, rollback).
-- `.env.example`, `tephra-server/.env.example`: additive `*_FILE`-first
-  Sync/bridge variables (placeholders only).
+## 3. Non-goals
+
+- No server/protocol/schema changes; no new routes, headers, or migrations.
+- No web-to-vault writes or merging; Stage 1 read-only invariants stand.
+- No hosted/multi-user support (per-user Sync credentials on shared infra).
+- No Xvfb/desktop, no unofficial Sync reimplementations, no self-hosted Sync servers.
+- No Sync credentials in the Tephra image or process.
+- Platform scope: Compose and single-VM targets (GCE PD, EC2/EBS) where
+  `/data` is trivially shared. Volume-per-service platforms (Railway, ECS,
+  Cloud Run) stay on plugin sync — the sidecar cannot mount their volume
+  from a second service.
+- No `PROGRESS.md` update until verified.
+
+## 4. Configuration
+
+One vault = one numbered set; checkout dir is the slugified remote name
+(lowercase, non-alnum → `-`; collision = startup error). Secrets prefer
+`*_FILE` (mode 600 / `/run/secrets/*`); plain values for local trials only;
+setting both forms of one credential is a startup error.
+
+| Variable | Required | Notes |
+| -------- | -------- | ----- |
+| `OBSIDIAN_AUTH_TOKEN_FILE` | yes | account token from one-time `get-token` (`ob login`) |
+| `VAULT_NAME_<n>` | yes | exact remote name, case-sensitive (`VAULT_NAME_1`, `_2`, …) |
+| `VAULT_PASSWORD_<n>_FILE` | if E2E | vault encryption password, not the account password |
+| `TEPHRA_VAULT_ID_<n>` | yes | target Tephra vault UUID for vault `<n>` |
+| `TEPHRA_DEVICE_TOKEN_<n>_FILE` | yes | vault-scoped `vault:upload` token for vault `<n>` |
+| `TEPHRA_API_URL` | yes | e.g. `http://tephra:8080` |
+| `DEVICE_NAME` | no | default `tephra-mirror`; shown in Sync history |
+| `SYNC_MODE` | no | `pull` (default) or `mirror`; `bidirectional` refused |
+| `BRIDGE_INTERVAL_SECS` | no | default `60` |
+| `PUID`/`PGID` | no | checkout owner; rootless Docker → `0:0` |
+
+Validation: entrypoint fails before any sync when the token is missing,
+both plain+`_FILE` forms of one credential are set, a slug collides, a
+`TEPHRA_VAULT_ID_<n>` has no matching `VAULT_NAME_<n>` (or vice versa), or
+`SYNC_MODE` is unknown. Errors list every offending variable; no secrets echoed.
+
+## 5. Files (new; no existing files modified except `sync-vault.mjs` slimming)
+
+- `tephra-server/deploy/docker/Dockerfile.sync` — `node:22-bookworm-slim` +
+  pinned `obsidian-headless`, non-root user, `get-token` helper. No Tephra
+  source copied in.
+- `tephra-server/deploy/docker/sync-entrypoint.sh` — `_FILE` resolution,
+  one-time `ob login` (token) + `ob sync-setup` per vault (idempotent),
+  `sync-config` (pull/mirror), then the loop.
+- `tephra-server/deploy/docker/compose.sync.yml` — overlay: `tephra-sync`
+  service sharing `/data` with `tephra`, `restart: unless-stopped`,
+  healthcheck via `ob sync-status` + last-push age file.
+- `e2e/sync-bridge.mjs` — extracted walk/manifest/plan/upload/commit/verify
+  from `e2e/sync-vault.mjs` (`--interval`, `--oneshot`); `sync-vault.mjs`
+  becomes a thin wrapper; regression gate is `npm run sync:vault`.
+- `e2e/sync-smoke.mjs` — fixture-mode smoke (pre-seeded checkout, no
+  credentials in CI).
+- `tephra-server/deploy/docker/README-sync.md` — runbook: paid-Sync
+  prerequisite, `get-token` → `sync-list-remote` → secrets → up → logs;
+  E2E check (desktop Settings → Sync → Encryption password); `$`-escaping
+  warning (use `*_FILE`); PUID/PGID table; rotation (`ob logout` + revoke +
+  fresh token + wipe `/data/sync-state`); backup (Tephra `/data` as before;
+  checkout re-creatable from cloud); rollback (stop overlay; plugin sync resumes).
 - `.agents/plans/006-HEADLESS_OBSIDIAN_SYNC.md` (this file).
 
-No changes to: `apps/api/*`, `packages/*`, migrations, plugin source,
-`Dockerfile`, `compose.yml`, Railway/AWS/Vercel/Cloudflare targets.
+## 6. Steps
 
-## 6. Configuration
-
-Prefer the community-established names so operators can reuse prior art.
-All secrets prefer `*_FILE`; plain values are for local trials only.
-
-| Variable | Service | Required | Notes |
-| -------- | ------- | -------- | ----- |
-| `OBSIDIAN_AUTH_TOKEN_FILE` | obsidian-sync | yes | `/run/secrets/obsidian_token`; or `OBSIDIAN_AUTH_TOKEN` locally |
-| `VAULT_NAME` / `VAULT_NAME_<n>` | obsidian-sync | yes (first run) | exact remote name, case-sensitive; numbered form for multi-vault → subdirs |
-| `VAULT_PASSWORD_FILE` / `VAULT_PASSWORD_<n>_FILE` | obsidian-sync | if E2E | vault encryption password, not account password; `$` safe via files |
-| `DEVICE_NAME` | obsidian-sync | no | default `tephra-mirror`; shown in Sync history |
-| `SYNC_MODE` | obsidian-sync | no | `pull-only` (default here) \| `mirror-remote` \| `bidirectional` |
-| `CONFLICT_STRATEGY` | obsidian-sync | no | `merge` default |
-| `EXCLUDED_FOLDERS` | obsidian-sync | no | comma-separated |
-| `FILE_TYPES` | obsidian-sync | no | e.g. `image,audio,video,pdf,unsupported` |
-| `SYNC_ONESHOT` | obsidian-sync | no | `true` → sync once + exit (cron/K8s Job mode) |
-| `PUID` / `PGID` | obsidian-sync | no | match checkout owner; rootless Docker → `0:0` |
-| `TEPHRA_API_URL` | bridge | yes | e.g. `http://tephra:8080` (Compose DNS) |
-| `TEPHRA_VAULT_ID` | bridge | yes | target Tephra vault UUID |
-| `TEPHRA_DEVICE_TOKEN_FILE` | bridge | yes | vault-scoped `vault:upload` token |
-| `BRIDGE_INTERVAL_SECS` | bridge | no | default `60`; debounce + full-manifest push |
-| `VAULT_HOST_PATH` | host | yes | persistent checkout dir or `vault-data` volume |
-
-Validation: entrypoint fails before Sync when token/vault missing, both
-plain+`_FILE` set, or `SYNC_MODE` unknown. Bridge fails before polling
-when API/vault/token missing or checkout unreadable. Errors list every
-offending variable; no secrets echoed.
-
-## 7. Ordered implementation steps
-
-### Phase 0 — Extract reusable bridge (no behavior change)
+### Phase 0 — Extract bridge (no behavior change)
 
 1. Extract walk (skip dotfiles + `.obsidian`), frontmatter-id-or-`f-<hash>`,
-   SHA-256 manifest, plan/upload/commit, rendered+graph verify from
-   `e2e/sync-vault.mjs` into `e2e/sync-bridge.mjs` with `--interval`,
-   `--oneshot`, `--read-only-checkout` flags.
-2. Rewire `sync-vault.mjs` to import it; `npm run sync:vault` still passes.
-3. Gate: `npm run check`.
+   SHA-256 manifest, plan/upload/commit, rendered+graph verify into
+   `e2e/sync-bridge.mjs`.
+2. Rewire `sync-vault.mjs` as a wrapper; `npm run sync:vault` passes.
+3. Gate: `npm run check` (modulo the pre-existing `tephra-website/.astro`
+   lint noise).
 
-### Phase 1 — Sidecar image + entrypoint
+### Phase 1 — Sidecar image + loop
 
-1. Add `Dockerfile.sync-sidecar` (pinned `obsidian-headless` version,
-   non-root user, `get-token` helper wrapping `ob login` → prints
-   `OBSIDIAN_AUTH_TOKEN` once).
-2. Add `obsidian-sync-entrypoint.sh`: `_FILE` resolution + conflict check,
-   one-time `ob sync-setup --vault … --device-name …` (idempotent),
-   `ob sync-config` application, then `exec ob sync --continuous`
-   (or single `ob sync` when `SYNC_ONESHOT=true`).
-3. Unit-test the shell arg-building (mode map: `pull-only→pull`,
-   `mirror-remote→mirror`) without network.
-4. Gate: image builds; `sync-list-remote` works with a throwaway token
-   path in CI dry-run (no real credentials).
+1. `Dockerfile.sync` (pinned CLI, non-root, `get-token`).
+2. `sync-entrypoint.sh`: validation → login/setup/config → loop
+   (`ob sync --path …` then bridge push per vault, sleep, repeat;
+   exit after one pass when `SYNC_ONESHOT=true`).
+3. Shell arg-building covered without network (mode map `pull→pull`,
+   `mirror→mirror`, `bidirectional` rejected).
+4. Gate: image builds; `sync-list-remote` works with a throwaway token path.
 
-### Phase 2 — Compose + bridge wiring
+### Phase 2 — Compose overlay + docs + smoke
 
-1. Add `compose.sync-sidecar.yml`: `obsidian-sync` (rw on `vault-data`,
-   `sync-state:/data/config` for CLI state/device identity) + `tephra-bridge`
-   (ro on `vault-data`, bridge env, `restart: unless-stopped`, healthcheck
-   via `ob sync-status` in sync container + bridge last-commit age).
-2. Document one-time flow: `get-token` → `ob sync-list-remote` → fill
-   `.env.sync` / secrets → `docker compose -f compose.yml -f
-   compose.sync-sidecar.yml up -d` → logs.
-3. Gate: `docker compose -f … config` validates; clean host reaches
-   `healthy`.
+1. `compose.sync.yml`; one-time flow documented; `compose config` validates.
+2. `README-sync.md` runbook (setup, E2E, rotation, backup, rollback).
+3. `e2e/sync-smoke.mjs` fixture-mode smoke.
+4. Gate: smoke passes locally; real-Sync standard+E2E vaults verified
+   manually once (never in CI).
 
-### Phase 3 — Docs + smoke
-
-1. Write `README-sync-sidecar.md`: paid-Sync prerequisite, E2E check
-   (desktop Settings → Sync → Encryption password), `$`-escaping warning
-   for `.env` vs `*_FILE`, PUID/PGID table, multi-vault mapping,
-   rotation (`ob logout` + revoke + fresh `get-token` + recreate
-   `sync-state`), backup (Tephra `/data` as before; `sync-state` persistent;
-   `vault-data` re-creatable from cloud), rollback (stop sidecar stack;
-   plugin sync resumes unchanged).
-2. Add `e2e/sync-sidecar-smoke.mjs`: push fixture via `ob` one-shot (or
-   pre-seeded checkout in CI without credentials), assert bridge commit
-   revision increments, rendered notes + graph match `sync-vault` asserts,
-   restart preserves device identity, `mirror-remote` leaves no remote diff.
-3. Gate: smoke passes against local Compose with a fixture checkout (CI
-   uses fixture mode; real-Sync path is a documented manual gate).
-
-## 8. Tests and verification commands
+## 7. Verification
 
 ```bash
 npm run check
-docker build -f tephra-server/deploy/docker/Dockerfile.sync-sidecar -t tephra-sync-sidecar:test .
-docker compose -f tephra-server/deploy/docker/compose.yml -f tephra-server/deploy/docker/compose.sync-sidecar.yml config
-VAULT_DIR=sample-vault npm run sync:vault   # regression: extraction changed nothing
-node e2e/sync-sidecar-smoke.mjs             # fixture-mode smoke
+docker build -f tephra-server/deploy/docker/Dockerfile.sync -t tephra-sync:test .
+docker compose -f tephra-server/deploy/docker/compose.yml -f tephra-server/deploy/docker/compose.sync.yml config
+VAULT_DIR=sample-vault npm run sync:vault
+node e2e/sync-smoke.mjs
 ```
 
-Required assertions:
+Assertions: commit/recommit-idempotency unchanged; bytes + index/links/graph
+identical to plugin push; restart reuses device identity; pull/mirror produce
+zero remote mutations; bad config fails fast secret-free; bridge never writes
+into a checkout (read-only assertion in smoke).
 
-- bootstrap/login/plan/upload/commit/recommit-idempotency unchanged.
-- Rendered Markdown + attachment bytes identical to checkout source.
-- Index/links/graph identical to plugin-pushed result for same vault.
-- Restart of `obsidian-sync` reuses device identity (no duplicate device
-  in `sync-list-local` / Sync history beyond the first).
-- `pull-only`/`mirror-remote` produce zero remote mutations from bridge
-  activity (bridge writes nothing locally; Sync uploads nothing).
-- Missing token/vault, plain+`_FILE` conflict, bad `SYNC_MODE` fail fast
-  with secret-free errors.
-- `npm run check` passes; no new `lint`/`typecheck` regressions.
-
-Manual gate (real Sync account, never in CI): one E2E vault + one
-standard vault each complete setup → continuous sync → bridge commit →
-browser file/render/attachment/link/graph read → rotation drill.
-
-## 9. API/schema/migration changes
-
-None. The bridge is an HTTP client of the existing Stage 1 routes
-(`sync/plan`, `blobs/:hash`, `sync/commit`, `files`, `rendered`, `graph`)
-with an existing vault-scoped device token. No new endpoints, headers,
-protocol versions, or migrations.
-
-## 10. Compatibility, deployment, and rollback risks
+## 8. Risks
 
 | Risk | Mitigation |
 | ---- | ---------- |
-| `obsidian-headless` is open beta; CLI flags drift | pin image tag to CLI version; entrypoint asserts `ob --help` surface at build; document upgrade = rebuild + fixture smoke |
-| Token/E2E password leak via `docker inspect`/logs | `*_FILE` secrets, mode 600, read-only rootfs, `no-new-privileges`, redaction tests; placeholders-only examples |
-| Duplicate Sync devices on every restart | persistent `sync-state` volume (`XDG_CONFIG_HOME`); never delete it except for factory-reset; smoke asserts stable identity |
-| Bridge pushes partial checkout mid-Sync | interval full-manifest push + Sync one-shot completion gate; skip while `sync-status` reports in-flight; content-addressing makes retries safe |
-| Bidirectional foot-gun (bridge dir edited → upload to Sync cloud) | default `pull-only`; bridge mount is read-only; docs warn; smoke asserts no remote diff in pull/mirror modes |
-| Large vault initial sync RAM/time | one-shot first sync + bounded smoke; `EXCLUDED_FOLDERS`/`FILE_TYPES` knobs; same 100 MiB blob cap applies |
-| Xvfb/desktop fallback temptation | explicitly rejected; official CLI needs no display, no `--no-sandbox`, no GPU flags |
-| Multi-user credential sprawl | sidecar is Profile A only; hosted profile keeps plugin-token model from plans 002–004 |
-| Operator deletes `vault-data` expecting data loss | documented re-creatable-from-cloud; Tephra `/data` remains the backed-up mirror dataset |
-| Rollback | `docker compose -f compose.yml -f compose.sync-sidecar.yml down` (or `SYNC_ONESHOT` off); Tephra image/data untouched; plugin sync resumes |
+| CLI is open beta; flags drift | pinned version; build-time `ob --help` assert; upgrade = rebuild + smoke |
+| Secret leak via inspect/logs | `*_FILE`, mode 600, `no-new-privileges`, redaction; placeholders-only docs |
+| Duplicate Sync devices | persistent `/data/sync-state`; wipe only for factory reset |
+| Partial checkout pushed | one-shot `ob sync` exits before push; content-addressing makes retry safe |
+| Bidirectional foot-gun | refused at startup; pull/mirror only |
+| Platform without shared `/data` (Railway/ECS/Cloud Run) | out of scope; plugin sync there |
 
-## 11. Completion checklist
+## 9. Checklist
 
-- [ ] `sync-bridge.mjs` extracted; `sync:vault` regression passes.
-- [ ] Pinned sidecar image builds and `get-token`/`sync-list-remote` flow documented.
-- [ ] `compose.sync-sidecar.yml` validates and reaches healthy on a clean host (fixture mode).
-- [ ] Pull-only default verified to produce no remote mutations.
-- [ ] Restart preserves Sync device identity.
-- [ ] Real-Sync manual gate (standard + E2E vault) browsed end-to-end.
-- [ ] Runbook covers setup, E2E, modes, rotation, backup, rollback with no secrets.
-- [ ] No server/protocol/schema changes; Stage 1 read-only invariants hold.
+- [ ] Bridge extracted; `sync:vault` regression passes.
+- [ ] Sidecar image builds; `get-token`/`sync-list-remote` documented.
+- [ ] Overlay validates; healthy on clean host (fixture mode).
+- [ ] Pull/mirror verified mutation-free; restart preserves device identity.
+- [ ] Real-Sync manual gate (standard + E2E) browsed end-to-end.
+- [ ] Runbook covers setup/E2E/rotation/backup/rollback, no secrets.
+- [ ] No server/protocol/schema changes; Stage 1 read-only holds.
 - [ ] `npm run check` passes.
 
-## 12. References
+## 10. References
 
 - `001-TEPHRA_STAGE1_PLAN.md` (read-only mirror, blob/revision invariants).
-- `004-DEPLOYMENT_PROFILES.md` (Profile A single-container defaults; sidecar is additive).
-- `e2e/sync-vault.mjs`, `tephra-server/apps/api/src/main.ts` (protocol + runtime composition).
-- Official CLI: `github.com/obsidianmd/obsidian-headless`, `obsidian.md/help/headless`,
-  `obsidian.md/help/sync/headless`, `npmjs.com/package/obsidian-headless`.
-- Community patterns: `github.com/crosbyh/obsidian-headless-sync-docker`,
-  `belphemur.github.io/obsidian-headless/installation/docker.html`.
-- Legacy Xvfb background: `rolle.design/setting-up-a-headless-obsidian-instance-for-syncing`,
-  `rup12.net/posts/running-obsidian-headless`, Obsidian forum headless/Xvfb threads.
+- `003-MULTI_TENANT_PERSISTENCE.md` (`/data` layout, one volume per tenant).
+- `004-DEPLOYMENT_PROFILES.md` (Compose/VM targets; sidecar needs shared `/data`).
+- `005-STORAGE_ENGINES.md` (snapshots cover sidecar state too).
+- `e2e/sync-vault.mjs`, `tephra-server/apps/api/src/main.ts`.
+- Official CLI: `github.com/obsidianmd/obsidian-headless`,
+  `obsidian.md/help/headless`, `npmjs.com/package/obsidian-headless`.
+- Patterns: `github.com/crosbyh/obsidian-headless-sync-docker`.

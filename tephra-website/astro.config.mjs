@@ -2,5 +2,5 @@
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://tephra.dev',
+  site: 'https://tephra.arnav.tech',
 });

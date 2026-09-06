@@ -34,7 +34,6 @@ export default defineRailway(() => {
       TEPHRA_SQLITE_PATH: '/data/tephra.db',
       TEPHRA_BLOB_DRIVER: 'filesystem',
       TEPHRA_BLOB_PATH: '/data/blobs',
-      TEPHRA_ALLOW_SIGNUPS: 'false',
       // Resolves to the service's public domain at runtime (for example
       // https://tephra.up.railway.app). Do not set PORT; the app already
       // binds the injected $PORT.

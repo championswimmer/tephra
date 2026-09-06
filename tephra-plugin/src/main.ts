@@ -30,6 +30,7 @@ export default class TephraPlugin extends Plugin {
 
   onunload(): void {
     this.eventBuffer?.dispose();
+    this.eventBuffer = undefined;
   }
 
   async persistState(): Promise<void> {
@@ -38,11 +39,22 @@ export default class TephraPlugin extends Plugin {
 
   async settingsChanged(sync = true): Promise<void> {
     await this.persistState();
-    if (this.eventBuffer) this.createEventBuffer();
+    if (!this.state.settings.enableSync) {
+      this.eventBuffer?.dispose();
+      this.eventBuffer = undefined;
+      this.updateStatus({ phase: 'disabled', message: 'Managed (Sync Off)', at: Date.now() });
+      return;
+    }
+    this.createEventBuffer();
     if (sync && this.coordinator) await this.syncNow(false);
   }
 
   async syncNow(showNotice = false): Promise<void> {
+    if (!this.state.settings.enableSync) {
+      if (showNotice)
+        new Notice('Tephra direct sync is disabled (Sidecar / External Sync mode).');
+      return;
+    }
     if (!this.coordinator) return;
     try {
       await this.coordinator.requestSync();
@@ -65,7 +77,14 @@ export default class TephraPlugin extends Plugin {
       saveState: () => this.persistState(),
       setStatus: (status) => this.updateStatus(status),
     });
-    this.createEventBuffer();
+
+    if (this.state.settings.enableSync) {
+      this.createEventBuffer();
+      void this.syncNow(false);
+    } else {
+      this.updateStatus({ phase: 'disabled', message: 'Managed (Sync Off)', at: Date.now() });
+    }
+
     this.registerEvent(this.app.vault.on('create', (file) => this.bufferFileEvent('create', file)));
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -88,9 +107,10 @@ export default class TephraPlugin extends Plugin {
       }),
     );
     this.registerInterval(
-      window.setInterval(() => void this.syncNow(false), RECONCILIATION_INTERVAL_MS),
+      window.setInterval(() => {
+        if (this.state.settings.enableSync) void this.syncNow(false);
+      }, RECONCILIATION_INTERVAL_MS),
     );
-    void this.syncNow(false);
   }
 
   private createEventBuffer(): void {
@@ -107,6 +127,7 @@ export default class TephraPlugin extends Plugin {
   }
 
   private bufferPathEvent(event: VaultEvent): void {
+    if (!this.state.settings.enableSync) return;
     this.eventBuffer?.add(event);
   }
 

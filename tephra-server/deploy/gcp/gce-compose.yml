@@ -1,26 +1,26 @@
+# Compose bundle for a GCP Compute Engine VM (disk-only, single tenant).
+# The PD is mounted at /data by gce-startup.sh. One tenant = one VM + one disk.
+# Optional headless Sync sidecar (plan 006) mounts the same /data volume.
 services:
   tephra:
-    build:
-      context: ../../..
-      dockerfile: tephra-server/deploy/docker/Dockerfile
-    image: tephra:local
+    image: <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/tephra:<TAG>
     restart: unless-stopped
     init: true
     ports:
-      - '${TEPHRA_PORT:-8080}:8080'
+      - '127.0.0.1:8080:8080'
     environment:
       PORT: '8080'
       HOST: '0.0.0.0'
-      TEPHRA_PUBLIC_URL: '${TEPHRA_PUBLIC_URL:-http://localhost:8080}'
+      TEPHRA_PUBLIC_URL: '${TEPHRA_PUBLIC_URL:?set TEPHRA_PUBLIC_URL}'
       TEPHRA_SESSION_SECRET: '${TEPHRA_SESSION_SECRET:?set TEPHRA_SESSION_SECRET}'
-      TEPHRA_BOOTSTRAP_TOKEN: '${TEPHRA_BOOTSTRAP_TOKEN:?set TEPHRA_BOOTSTRAP_TOKEN}'
+      TEPHRA_BOOTSTRAP_TOKEN: '${TEPHRA_BOOTSTRAP_TOKEN:-}'
       TEPHRA_DATABASE_DRIVER: 'sqlite'
       TEPHRA_SQLITE_PATH: '/data/tephra.db'
       TEPHRA_BLOB_DRIVER: 'filesystem'
       TEPHRA_BLOB_PATH: '/data/blobs'
       TEPHRA_MAX_BLOB_BYTES: '${TEPHRA_MAX_BLOB_BYTES:-104857600}'
     volumes:
-      - tephra-data:/data
+      - /data:/data
     healthcheck:
       test:
         - CMD
@@ -33,6 +33,3 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  tephra-data:

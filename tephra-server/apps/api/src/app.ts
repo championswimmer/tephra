@@ -144,15 +144,26 @@ function bearer(c: AppContext): string | null {
 async function authenticate(c: AppContext, dependencies: ApiDependencies): Promise<AuthPrincipal> {
   const rawBearer = bearer(c);
   if (rawBearer !== null) {
-    const token = await dependencies.database.apiTokens.findByTokenHash(
-      await hashOpaqueToken(rawBearer),
-    );
-    if (token === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
-    if (!tokenIsActive(token, dependencies.clock.now()))
-      fail(401, 'TOKEN_REVOKED', 'Token is revoked or expired.');
-    const user = await dependencies.database.users.findById(token.userId);
-    if (user === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
-    return { kind: 'token', token, user };
+    const tokenHash = await hashOpaqueToken(rawBearer);
+    const token = await dependencies.database.apiTokens.findByTokenHash(tokenHash);
+    if (token !== null) {
+      if (!tokenIsActive(token, dependencies.clock.now()))
+        fail(401, 'TOKEN_REVOKED', 'Token is revoked or expired.');
+      const user = await dependencies.database.users.findById(token.userId);
+      if (user === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+      return { kind: 'token', token, user };
+    }
+
+    const session = await dependencies.database.sessions.findById(tokenHash);
+    if (session !== null) {
+      if (session.expiresAt <= dependencies.clock.now())
+        fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+      const user = await dependencies.database.users.findById(session.userId);
+      if (user === null) fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
+      return { kind: 'session', session, user };
+    }
+
+    fail(401, 'AUTH_REQUIRED', 'Authentication is required.');
   }
 
   const cookieName = dependencies.sessionCookieName ?? 'tephra_session';
@@ -364,7 +375,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
       `tephra_csrf=${encodeURIComponent(csrfToken)}; Path=/; SameSite=Lax${dependencies.secureCookies === false ? '' : '; Secure'}; Max-Age=${SESSION_AGE_MS / 1000}`,
       { append: true },
     );
-    return c.json({ user: { id: user.id, email: user.email }, csrfToken });
+    return c.json({ user: { id: user.id, email: user.email }, sessionToken: raw, csrfToken });
   });
 
   app.use('/api/v1/*', async (c, next) => {
@@ -376,7 +387,8 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
       return next();
     const principal = await authenticate(c, dependencies);
     c.set('principal', principal);
-    if (principal.kind === 'session' && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
+    const isCookieSession = principal.kind === 'session' && bearer(c) === null;
+    if (isCookieSession && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
       const csrfCookie = parseCookies(c.req.header('cookie')).tephra_csrf;
       const csrfHeader = c.req.header('x-tephra-csrf');
       if (!csrfCookie || !csrfHeader || !constantTimeSecretEqual(csrfCookie, csrfHeader)) {

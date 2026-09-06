@@ -11,6 +11,7 @@ import type { BlobSource } from './uploader';
 
 export type SyncPhase =
   | 'idle'
+  | 'disabled'
   | 'scanning'
   | 'planning'
   | 'uploading'
@@ -65,6 +66,10 @@ export class SyncCoordinator {
 
   private async reconcile(): Promise<void> {
     const { state } = this.options;
+    if (!state.settings.enableSync) {
+      this.status('disabled', 'Managed (Sync Off)');
+      return;
+    }
     if (
       !state.settings.serverUrl ||
       !state.settings.vaultId ||

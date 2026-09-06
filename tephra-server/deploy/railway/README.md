@@ -88,9 +88,7 @@ exists and a clean template deploy passes the first-boot smoke above.
 
 ## Scaling and future paths
 
-Horizontal scaling requires the PostgreSQL database adapter and an
-S3-compatible shared blob store; configure those only when those adapters
-are implemented and tested for the release being deployed (see plans
-`002-AUTHENTICATION_MODES.md` through `004-DEPLOYMENT_PROFILES.md`). Do not
-provision a Railway Bucket for this profile — the Stage 1 runtime supports
-filesystem blobs only.
+More tenants means more services, each with its own volume (never share one
+volume across services or replicas while SQLite/filesystem storage is in
+use). A private Railway bucket may hold periodic snapshot tarballs (backup
+only — see plan `005-STORAGE_ENGINES.md`); it never serves live blobs.

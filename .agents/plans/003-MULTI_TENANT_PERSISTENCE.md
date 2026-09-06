@@ -1,428 +1,215 @@
-# Tephra Multi-Tenant Persistence and Isolation
+# Tephra Multi-Tenant Persistence and Isolation (disk-only)
 
 > Status: implementation plan
 > Depends on: `001-TEPHRA_STAGE1_PLAN.md`; auth identities from `002-AUTHENTICATION_MODES.md`
 > Required before: enabling multi-user signup or executing `004-DEPLOYMENT_PROFILES.md` hosted mode
+> Supersedes: all PostgreSQL/S3/RLS content previously in this file (dropped 2026-09-06; see doctrine below)
 > Last updated: 2026-09-06
 
 ## Outcome
 
-Tephra will safely serve many users from one application and shared infrastructure. Each user is
-a Stage 1 personal tenant and can own multiple private vaults. Tenant separation applies to API
-authorization, database queries, blob storage, indexing, jobs, quotas, garbage collection, and
-observability.
+Tephra serves many users through **one VM + one disk per tenant**, never through
+shared database or object infrastructure. Each tenant is a full single-tenant
+Tephra instance (own container, own volume, own SQLite file) holding that
+tenant's vaults in **separate per-vault folders on the one volume mount**.
 
-The current SQLite/filesystem implementation remains supported for single-user installations.
-The new PostgreSQL/S3-compatible implementation supplies shared, horizontally scalable state for
-the hosted deployment.
+Tenant separation is therefore a **deployment boundary** (OS process + volume
+mount), with the existing application-level owner checks kept as
+defense in depth inside an instance.
 
-## Current state
+## Storage doctrine (canonical, replaces all S3/Postgres plans)
 
-Useful foundations already exist:
+- **Live stores are disk-only, always:** SQLite + filesystem blobs. There is no
+  PostgreSQL adapter, no S3/R2/D1 live adapter, and no serverless runtime target.
+  `TEPHRA_DATABASE_DRIVER`/`TEPHRA_BLOB_DRIVER` remain fail-closed pins
+  (`sqlite`/`filesystem`; anything else refuses to start, as today in
+  `apps/api/src/main.ts:19-24`).
+- **One volume per tenant.** Same user, many vaults: one mount, separate
+  per-vault folders (see layout). Many tenants: many VMs, many disks — never
+  one shared database or bucket.
+- **Object storage is backup-only:** periodic whole-vault snapshots (tarballs)
+  may be copied to a private bucket by an external uploader. Snapshots never
+  serve live reads/writes. See `005-STORAGE_ENGINES.md`.
+- **Why:** the headless Obsidian Sync sidecar (plan 006) needs a real local
+  checkout on a POSIX filesystem next to the server. Disk-only keeps Sync,
+  server, bridge, and backup on one machine with one failure domain.
 
-- `vaults.owner_user_id` associates a vault with a user;
-- vault list and most vault routes check ownership;
-- plugin tokens bind `user_id`, `vault_id`, and scopes;
-- database and blob-store interfaces separate infrastructure from API code;
-- successful vault commits are transactional and revisions are serialized;
-- PostgreSQL and S3 workspace packages already exist as empty placeholders.
+## Data layout on the volume
 
-Gaps that prevent safe hosted use:
+```text
+/data/
+  tephra.db                 # single SQLite for this tenant/instance (all its vaults)
+  blobs/…                   # global content-addressed store (existing sharded layout, unchanged)
+  checkouts/<vault-id>/     # headless Obsidian Sync working copy per vault (plan 006; reserved)
+  sync-state/               # `ob` CLI device identity (plan 006; reserved)
+  snapshots/                # local snapshot staging before upload (see 005-STORAGE_ENGINES.md)
+```
 
-- repositories expose unscoped `findById`/`listByVault` methods that are easy to call without an
-  owner predicate;
-- blob metadata and physical objects are keyed globally by hash;
-- sync planning can reveal that another user already stored a matching hash;
-- indexing and garbage collection accept vault/hash IDs without explicit tenant context;
-- PostgreSQL, S3, hosted migrations, and cross-adapter contract suites do not exist;
-- no database-level isolation protects against a missed application predicate;
-- no per-user resource ceilings prevent one tenant exhausting shared storage.
+No database migration is required for this layout: the existing schema and
+blob layout are unchanged. `checkouts/`, `sync-state/`, and `snapshots/` are
+new top-level directories created on demand; the server ignores them.
 
 ## Tenant model
 
 For Stage 1:
 
 ```text
-tenant_id := authenticated user.id
-one user -> many vaults
-one vault -> one owner user
+tenant := one deployed instance (one VM/container + one volume + one tephra.db)
+one tenant -> one user (single_user) or a future small tenant set
+one user -> many vaults (per-vault folders on the tenant volume)
+one vault -> one owner user (existing vaults.owner_user_id)
 ```
 
-Do not add an organizations table. A later sharing/teams plan can introduce a separate tenant and
-membership model with an explicit migration.
+Do not add an organizations table. A later sharing/teams plan can introduce a
+separate membership model with an explicit migration.
 
-Establish tenant context from the authenticated principal:
+Application-level rules (keep, SQLite-enforced):
 
-```ts
-interface TenantContext {
-  ownerUserId: string;
-  principalKind: 'session' | 'vault_token' | 'internal_job';
-}
-```
-
-Client-supplied IDs select a resource only after the server verifies it belongs to this context.
+- Tenant context is derived from the verified session, verified vault token,
+  or trusted internal job — never from client-supplied IDs alone.
+- Keep the repository split from the previous revision of this plan
+  (`auth` vs tenant-scoped vs maintenance repositories) so request handlers
+  cannot accidentally use unscoped access. Implement it on SQLite only.
+- A plugin token remains restricted to one owner and one vault.
+- Blob writes remain immutable, size-checked, server SHA-256-verified.
+- Successful commits remain all-or-nothing and monotonically revisioned.
+- Quotas are disk quotas: `TEPHRA_MAX_VAULTS_PER_USER`,
+  `TEPHRA_MAX_FILES_PER_VAULT`, `TEPHRA_MAX_UNIQUE_BLOB_BYTES_PER_USER`
+  (unique bytes within this instance). Stable `QUOTA_EXCEEDED` error code;
+  never overload auth errors.
 
 ## Scope
 
-- Refactor persistence interfaces so tenant-owned operations require owner context.
-- Namespace blob metadata and physical objects by user.
-- Migrate existing SQLite/filesystem data without changing canonical bytes or revisions.
-- Implement full PostgreSQL and S3-compatible adapters.
-- Add PostgreSQL row-level security as defense in depth.
-- Make indexing, jobs, garbage collection, and usage accounting tenant-aware.
-- Add configurable per-user vault, file, and unique-byte limits.
-- Add exhaustive two-user negative authorization and adapter parity tests.
+- Harden SQLite/owner checks and tenant-scoped repositories (SQLite only).
+- Add disk quota admission + `user_usage` reconciliation (SQLite tables only).
+- Implement per-vault folder conventions for checkouts and snapshot staging.
+- Document the one-VM-one-disk-per-tenant hosting rule and its backup/restore.
+- Exhaustive two-user negative authorization tests on the single-instance model.
 
 ## Non-goals
 
-- Organizations, shared vaults, per-vault collaborators, or user-to-user transfers.
-- Cross-user blob deduplication.
-- Billing or plan-specific entitlements.
-- Per-tenant database/schema/bucket provisioning.
-- End-to-end encryption or per-tenant KMS keys.
-- D1/R2, Vercel, or Cloudflare runtime adapters.
-- Direct browser uploads to S3.
-- Changing the Stage 1 sync protocol unless required to report a quota error.
-
-## Security invariants
-
-1. A vault, file, revision, blob hash, object key, token, or job ID is not authorization.
-2. Tenant context comes from a verified session, verified vault token, or trusted internal job.
-3. API code cannot obtain an unscoped tenant repository accidentally.
-4. A plugin token remains restricted to one owner and one vault.
-5. The same hash uploaded by two users creates two logical and physical tenant objects.
-6. No response or meaningful status distinction reveals another tenant's blob existence.
-7. Index rows, queued jobs, cache keys, usage rows, logs, and GC candidates retain owner context.
-8. PostgreSQL request connections use a role subject to forced RLS; migrations use a separate
-   role.
-9. Pooled PostgreSQL connections never retain a previous request's tenant setting.
-10. Blob writes remain immutable, size-checked, and server-verified with SHA-256.
-11. Successful commits remain all-or-nothing and monotonically revisioned.
-12. Deleting one user's vault or blobs cannot affect another user's data.
-
-## Persistence contracts
-
-### Tenant-scoped database access
-
-Split global authentication repositories from tenant repositories:
-
-```ts
-interface Database {
-  auth: AuthRepositories;
-  forTenant<T>(
-    ownerUserId: string,
-    operation: (repositories: TenantRepositories) => Promise<T>,
-  ): Promise<T>;
-  transactionForTenant<T>(
-    ownerUserId: string,
-    operation: (repositories: TenantTransactionRepositories) => Promise<T>,
-  ): Promise<T>;
-  maintenance: MaintenanceRepositories;
-}
-```
-
-Rules:
-
-- `TenantRepositories` does not accept an owner ID from each caller; the adapter binds it when
-  the scoped view/transaction is created.
-- Vault lookup becomes owner-scoped and returns null for a foreign vault.
-- File, revision, token, device, index, usage, and job methods operate only through the scoped
-  repository.
-- `MaintenanceRepositories` exposes only named operations needed by migrations, cleanup, and
-  reconciliation. It is never injected into request handlers.
-- Background job handlers reopen a tenant scope from the job's stored `owner_user_id`, then
-  revalidate the referenced vault/resource.
-
-### Tenant-scoped blobs
-
-Change the BlobStore key:
-
-```ts
-interface BlobKey {
-  namespace: string; // derived from ownerUserId, never email or vault name
-  hash: string;
-}
-```
-
-All `has`, `put`, `get`, and `delete` calls use `BlobKey`. The filesystem and S3 key layout is:
-
-```text
-users/<owner-user-uuid>/blobs/<hash[0..2]>/<hash[2..4]>/<hash>
-```
-
-The namespace builder validates UUID-like internal IDs and never accepts separators or raw user
-input. S3 buckets are private; the application streams authenticated content rather than issuing
-public object URLs.
-
-### Quotas
-
-Add global configuration defaults, overridable later by billing work:
-
-```text
-TEPHRA_MAX_VAULTS_PER_USER
-TEPHRA_MAX_FILES_PER_VAULT
-TEPHRA_MAX_UNIQUE_BLOB_BYTES_PER_USER
-```
-
-Track unique blob bytes within a user namespace. Check vault/file limits in the same transaction
-as vault creation or sync commit. `sync/plan` creates bounded, expiring reservations for its
-missing hashes; blob PUT requires a matching reservation in multi-user mode. Admission counts
-current unique bytes plus active reservations, preventing concurrent orphan uploads from bypassing
-the limit. Commit consumes reservations and updates usage; expiry and tenant-scoped GC remove
-abandoned uploads.
-
-Use a stable API error code such as `QUOTA_EXCEEDED`; do not overload auth/authorization errors.
+- PostgreSQL, RLS, connection pooling, hosted migrations, cross-adapter suites.
+- S3/R2/D1 or any live object-store adapter; presigned/direct uploads.
+- Organizations, shared vaults, collaborators, user-to-user transfers.
+- Cross-user blob deduplication (moot: tenants do not share disks).
+- Per-tenant KMS keys or application-layer blob encryption (snapshots rely on
+  provider-side bucket encryption + transport TLS; see 005).
+- Vercel/Cloudflare/serverless runtimes (deleted; no persistent disk).
+- Billing or plan entitlements.
+- Changing the Stage 1 sync protocol except to report `QUOTA_EXCEEDED`.
 
 ## Schema and migrations
 
-### Tenant blob schema
+SQLite only, additive migrations under `tephra-server/migrations/sqlite/`
+(never edit a released migration):
 
-Replace the global blob primary key with:
+- Keep the current global blob table/keying (deduplication within a tenant
+  disk is safe and intended).
+- Add `user_usage(owner_user_id, vault_count, unique_blob_count,
+  unique_blob_bytes, updated_at)` plus a reconciliation operation recomputed
+  from canonical rows.
+- Quota admission counts current usage; `sync/plan` over-limit fails with
+  `QUOTA_EXCEEDED` before any blob write.
 
-```text
-blobs(
-  owner_user_id TEXT NOT NULL,
-  hash TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  mime_type TEXT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY(owner_user_id, hash)
-)
-```
-
-`vault_files` and `file_versions` must reference the owner-qualified blob. Either add
-`owner_user_id` to those tables with composite foreign keys, or use an equivalent schema that
-makes a cross-owner reference impossible at the database level. The implementation must choose
-the composite-key form unless an adapter limitation is documented in this plan before coding.
-
-Add:
-
-```text
-user_usage(
-  owner_user_id PRIMARY KEY,
-  vault_count,
-  unique_blob_count,
-  unique_blob_bytes,
-  updated_at
-)
-
-blob_upload_reservations(
-  owner_user_id,
-  vault_id,
-  hash,
-  size,
-  expires_at,
-  created_at,
-  PRIMARY KEY(owner_user_id, vault_id, hash)
-)
-```
-
-Quota admission counts distinct `(owner_user_id, hash)` values across active reservations so two
-vaults owned by the same user do not reserve the same bytes twice. Blob PUT still requires the
-reservation for the specific vault/token being used.
-
-### SQLite migration
-
-Do not edit migration 001. The next migration runs with the server stopped and:
-
-1. creates owner-qualified tables;
-2. derives the owner of every current/historical blob by joining files/versions to vaults;
-3. copies each physical hash object into each owner's namespace;
-4. verifies every copied object's size and SHA-256;
-5. inserts owner-qualified rows and references;
-6. verifies row counts, revision histories, manifests, and foreign keys;
-7. atomically switches tables only after all verification succeeds.
-
-Keep old global objects for one release as rollback data. Remove them only through a later,
-explicit cleanup command. The migration performs a free-space preflight and is resumable or
-clearly fails before schema cutover.
-
-### PostgreSQL schema and RLS
-
-Create `tephra-server/migrations/postgres/` with schema parity and a migration ledger. Use
-separate deployed roles:
-
-- migration owner role: schema changes only, never used by API/worker;
-- application role: least privilege, not superuser, not table owner, no `BYPASSRLS`;
-- worker role: same restrictions as the application role, plus execute permission only on named
-  job-claim/maintenance functions;
-- operator maintenance role: not available to serving processes and used only by documented
-  reconciliation/migration commands.
-
-Enable and force RLS on vaults, devices, tokens, blobs, files, revisions, versions, note metadata,
-links, index state, usage, and tenant jobs. Policies compare direct `owner_user_id` or join through
-an owner-scoped vault.
-
-At the beginning of every tenant transaction, set `app.owner_user_id` transaction-locally. A
-missing setting fails closed. Commit or rollback before returning the connection to the pool.
-Never use session-scoped `SET` with pooled connections.
-
-Cross-tenant job claiming must not give the worker a general RLS bypass. Expose a narrowly scoped
-`SECURITY DEFINER` claim function that returns only claim metadata, fixes its `search_path`, and is
-executable only by the worker role. After a claim, the worker opens a normal tenant transaction
-for `owner_user_id` and revalidates the resource before doing work.
-
-### PostgreSQL commit serialization
-
-Preserve current sync semantics by locking the vault row in the tenant transaction before
-reading its latest revision. Concurrent commits to one vault serialize; commits to different
-vaults/users proceed independently. Manifest-hash idempotency remains owner/vault scoped.
-
-## S3-compatible adapter
-
-Implement `@tephra/blob-store-s3` with:
-
-- the AWS SDK S3 client behind the BlobStore interface;
-- endpoint, region, bucket, path-style, and workload-identity/static-credential configuration;
-- private namespaced keys;
-- bounded streaming reads and writes;
-- server-side SHA-256 and byte-count verification before the object becomes committed metadata;
-- conditional/idempotent immutable writes;
-- safe delete and not-found behavior;
-- no bucket listing on request paths;
-- sanitized errors that never include credentials or signed request data.
-
-For an initial implementation, stream to a temporary tenant key, verify, then promote/copy to the
-immutable final key and remove the temporary key. Document platform limits. Multipart/direct
-client upload is deferred.
+No Postgres schema, no RLS policies, no roles, no `migrations/postgres/`.
 
 ## Tenant-aware derived work
 
-- Change `IndexService.indexVault` to receive `{ ownerUserId, vaultId, revision }`.
-- Every search, render, link, backlink, and graph lookup runs in a tenant scope.
-- Job payloads include `owner_user_id`, validate a versioned schema, and recheck ownership.
-- Metrics may include bounded internal owner/vault IDs only where cardinality is controlled; do
-  not put emails, filenames, note titles, or contents in labels/logs.
-- Blob GC selects candidates within one owner namespace and rechecks current and historical
-  references in the deletion transaction.
-- Add a reconciliation operation that recomputes `user_usage` from canonical database rows.
+- `IndexService.indexVault` receives `{ ownerUserId, vaultId, revision }`.
+- Every search/render/link/backlink/graph lookup runs in a tenant scope.
+- Job payloads include `owner_user_id`, validate a versioned schema, recheck ownership.
+- Blob GC selects candidates and rechecks current + historical references in
+  the deletion transaction (single-disk, no batch-delete API needed).
+- Logs/metrics never carry emails, filenames, titles, or contents.
 
 ## Affected areas
 
-- `tephra-server/packages/database/core/`: scoped/global/maintenance interfaces.
-- `tephra-server/packages/database/sqlite/`: scoped implementation and migration.
-- `tephra-server/packages/database/postgres/`: complete adapter, pool, migrations, RLS.
-- `tephra-server/packages/blob-store/core/`: `BlobKey`/namespace-aware contract.
-- `tephra-server/packages/blob-store/filesystem/`: namespaced layout and migration helper.
-- `tephra-server/packages/blob-store/s3/`: complete S3-compatible adapter.
-- `tephra-server/packages/vault-model/`: owner-qualified blob and usage types.
-- `tephra-server/apps/api/`: tenant derivation, routes, sync, index, GC, quota checks.
-- API/database/blob tests and hosted integration fixtures.
-- threat model, server README, migration and recovery documentation.
+- `tephra-server/packages/database/core/`: scoped/global/maintenance interfaces (SQLite only).
+- `tephra-server/packages/database/sqlite/`: scoped implementation, quota schema.
+- `tephra-server/packages/blob-store/filesystem/`: per-vault checkout/snapshot
+  folder helpers (live blob layout unchanged).
+- `tephra-server/packages/vault-model/`: usage/quota types.
+- `tephra-server/apps/api/`: tenant derivation, quota checks, GC scoping.
+- API/database/blob tests; threat model, server README, recovery docs.
+- `tephra-server/deploy/{docker,railway,aws,gcp}/`: one-volume-per-tenant examples.
 
-Shared domain packages remain browser-safe. PostgreSQL, filesystem, and S3 APIs remain in Node
+Deleted and out of scope: `packages/database/postgres/`,
+`packages/database/d1/`, `packages/blob-store/s3/`,
+`packages/blob-store/r2/`, `deploy/vercel/`, `deploy/cloudflare/`.
+
+Shared domain packages remain browser-safe. Filesystem APIs stay in Node
 adapters and entrypoints.
 
 ## Implementation sequence
 
-### Phase 1 — Authorization contract and negative matrix
+### Phase 1 — Authorization contract and negative matrix (SQLite)
 
-1. Build reusable Alice/Bob fixtures, each with multiple vaults and plugin tokens.
-2. Cover every vault route and service with owner, foreign-user, foreign-vault-token, revoked,
-   and unknown-ID cases.
+1. Build reusable Alice/Bob fixtures, each with multiple vaults and tokens.
+2. Cover every vault route/service with owner, foreign-user,
+   foreign-vault-token, revoked, and unknown-ID cases.
 3. Refactor database interfaces into auth, tenant, and maintenance scopes.
-4. Move handlers and index services to tenant-scoped access without changing storage layout.
+4. Move handlers/index services to tenant-scoped access without storage changes.
 
-Gate: no request handler imports or receives maintenance/unscoped repositories; the full existing
-API suite passes.
+Gate: no request handler imports maintenance/unscoped repositories; full
+existing API suite passes.
 
-### Phase 2 — Blob namespace and SQLite migration
+### Phase 2 — Disk quotas and per-vault folders
 
-1. Add `BlobKey` and update filesystem behavior.
-2. Add owner-qualified blob schema and references.
-3. Update plan/upload/commit/read/index/GC flows.
-4. Implement the verified existing-data migration and rollback retention.
-5. Add quota schema, checks, and reconciliation.
+1. Add `user_usage` schema, admission checks, reconciliation command.
+2. Add checkout/snapshot folder conventions + server-ignores-them tests.
+3. Single-user upgrade path verified byte- and revision-identical.
 
-Gate: two users uploading the same hash have independent metadata and objects; deletion/GC of one
-does not affect the other; upgraded single-user data is byte-identical and revision-identical.
+Gate: over-quota plan fails cleanly; usage drift reconciles; existing data untouched.
 
-### Phase 3 — PostgreSQL adapter and RLS
+### Phase 3 — One-VM-per-tenant hosting acceptance
 
-1. Implement migrations and all repository contracts.
-2. Add transaction-local tenant context and forced RLS.
-3. Implement vault row locking and outbox job claiming.
-4. Add deployed-role assertions to readiness/startup.
-5. Run the contract and concurrency suites against PostgreSQL.
+1. Provision two independent instances (two volumes, two DBs) per 004.
+2. Prove identical content on both, zero cross-access (network boundary, not
+   just app predicates), independent backup/restore.
+3. Document tenant provisioning/deprovisioning (create VM+disk; delete both).
 
-Gate: wrong or missing tenant context fails at both repository and database-policy layers, and
-pooled-connection reuse cannot leak prior tenant context.
-
-### Phase 4 — S3 adapter and shared-state integration
-
-1. Implement namespaced streaming object operations.
-2. Exercise temporary upload, verification, promotion, idempotency, and cleanup.
-3. Run complete sync/browse/index/GC tests with PostgreSQL plus S3-compatible test storage.
-4. Run two API processes concurrently against the shared adapters.
-
-Gate: hosted persistence passes clean-start, restart, concurrent commit, identical-hash,
-cross-tenant, and failure-recovery tests.
+Gate: tenants share nothing; deleting one tenant's disk cannot affect another.
 
 ## Tests and verification
 
-The Alice/Bob matrix must include:
-
-- vault list/create/get/delete;
-- token list/create/revoke and token use against another vault;
-- sync plan, blob upload, and commit;
-- files, tree, search, metadata, raw content, attachment, rendered note;
-- links, backlinks, graph, index state/job;
-- identical hashes, quota accounting, GC, and deletion.
-
-Adapter tests:
-
-- run one database contract suite against SQLite and PostgreSQL;
-- run one blob contract suite against filesystem and S3-compatible storage;
-- migrate a schema-1 SQLite fixture with multiple vaults, revisions, indexes, and shared hashes;
-- test PostgreSQL RLS with correct, wrong, and missing context and the real deployed app role;
-- test pooled connection reuse, concurrent bootstrap/token consume/outbox claim/vault commit;
-- inject failures before/after object write, metadata insert, commit, and GC delete.
-
-Run:
+Alice/Bob matrix (single instance): vault list/create/get/delete; token
+list/create/revoke and cross-vault use; sync plan/blob/commit; files, tree,
+search, metadata, raw, attachment, rendered; links, backlinks, graph, index;
+quota accounting, GC, deletion.
 
 ```bash
 npm test --workspace=@tephra/database-sqlite
-npm test --workspace=@tephra/database-postgres
 npm test --workspace=@tephra/blob-store-filesystem
-npm test --workspace=@tephra/blob-store-s3
 npm test --workspace=@tephra/api
 npm run check
 ```
 
-Also run the hosted integration compose suite with two API processes and the existing web/plugin
-E2E sync flow.
+Plus the two-instance no-shared-state acceptance in §Phase 3.
 
 ## Rollout and rollback
 
-- Land tenant-scoped repository APIs before enabling multi-user registration.
-- The SQLite blob migration requires a backup, downtime, free-space preflight, and post-migration
-  hash/revision verification.
-- Use expand/migrate/verify/contract schema changes. Do not drop global blob tables/objects in the
-  same release that switches readers.
-- PostgreSQL migrations are backward-compatible across one rolling application release.
-- If quota accounting drifts, close signup/upload admission conservatively and run reconciliation;
-  do not delete canonical content.
-- If S3 promotion fails, leave the database uncommitted and clean temporary objects later.
-- Never roll back by pointing new schema code at old global objects without the documented
-  compatibility reader or restoring the coordinated backup.
+- Land scoped repositories before any multi-user registration work.
+- Quota tables are additive; rollback is code-only while signup stays closed.
+- If usage accounting drifts, close admission conservatively and reconcile;
+  never delete canonical content.
+- Tenant deprovisioning (disk deletion) is irreversible: require a verified
+  snapshot in object storage first (see 005).
 
 ## Completion checklist
 
-- [ ] Every tenant-owned API/service operation requires server-derived owner context.
+- [ ] Every tenant-owned operation requires server-derived owner context.
 - [ ] Request handlers cannot access maintenance repositories.
-- [ ] Blobs are logically and physically namespaced by user.
-- [ ] Existing SQLite/filesystem installations migrate without byte or revision changes.
-- [ ] SQLite/filesystem behavior remains supported for single-user mode.
-- [ ] PostgreSQL passes all database, transaction, migration, and RLS contracts.
-- [ ] S3-compatible storage passes immutable streaming blob contracts.
-- [ ] Indexing, jobs, quotas, GC, logs, and metrics preserve tenant context.
-- [ ] The full Alice/Bob negative matrix passes on both persistence profiles.
-- [ ] Multi-user signup remains closed until plan 004 deployment acceptance passes.
+- [ ] Disk quotas enforced with `QUOTA_EXCEEDED`; reconciliation passes.
+- [ ] Per-vault checkout/snapshot folders reserved; server ignores them.
+- [ ] One-VM-one-disk-per-tenant proven with two independent instances.
+- [ ] No Postgres/S3/serverless code, config, or docs remain in live paths.
+- [ ] Multi-user signup remains closed until plan 004 hosting acceptance passes.
 - [ ] `npm run check` passes.
 
 ## References
 
-- `001-TEPHRA_STAGE1_PLAN.md`, sections 4, 7–9, 14–16, 27–30, 36, 37, and 56.
-- `002-AUTHENTICATION_MODES.md` for authenticated identities and auth outbox behavior.
-- [OWASP Multi-Tenant Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multi_Tenant_Security_Cheat_Sheet.html)
-- [PostgreSQL Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- `001-TEPHRA_STAGE1_PLAN.md` (read-only mirror, blob/revision invariants).
+- `002-AUTHENTICATION_MODES.md` for authenticated identities.
+- `004-DEPLOYMENT_PROFILES.md` for the one-volume-per-tenant rule.
+- `005-STORAGE_ENGINES.md` for the disk engine + snapshot backup design.
+- `006-HEADLESS_OBSIDIAN_SYNC.md` for checkout/sync-state folder consumers.

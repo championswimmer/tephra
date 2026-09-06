@@ -14,7 +14,7 @@ Stage 1 supports CommonMark-style Markdown, YAML frontmatter metadata, headings,
 
 ## Deployment status
 
-Docker with SQLite/filesystem is the reference runtime. Railway uses the Docker profile with a volume declared in `.railway/railway.ts` and mounted at `/data`. PostgreSQL, S3, R2, D1, Vercel, and Cloudflare directories preserve adapter boundaries or document future work; they are not assumed operational unless CI explicitly tests them.
+Docker with SQLite/filesystem is the reference runtime. Railway uses the Docker profile with a volume declared in `.railway/railway.ts` and mounted at `/data`. AWS uses ECS/EFS or EC2/EBS; GCP uses a Compute Engine VM with Persistent Disk or Cloud Run with Filestore. Live storage is disk-only on every target: SQLite plus filesystem blobs on one volume per tenant. Object storage (S3/GCS/Railway bucket) holds periodic snapshot tarballs only, never live blobs. There are no PostgreSQL, S3-live, R2, D1, Vercel, or Cloudflare adapters.
 
 ## Mobile constraint
 

@@ -1,0 +1,77 @@
+# Cloud Run service skeleton for Tephra (disk-only, single tenant).
+# Filestore NFS is mounted at /data. minInstances=maxInstances=1 ALWAYS:
+# SQLite + filesystem blobs are single-writer. Replace every <PLACEHOLDER>.
+# Deploy: gcloud run services replace cloudrun-service.yaml --region=<REGION>
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: tephra
+  namespace: '<PROJECT_NUMBER>'
+  labels:
+    cloud.googleapis.com/location: <REGION>
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/minScale: '1'
+        run.googleapis.com/maxScale: '1'
+        run.googleapis.com/vpc-access-connector: <VPC_CONNECTOR>
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      serviceAccountName: <SERVICE_ACCOUNT_EMAIL>
+      containers:
+        - image: <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/tephra:<TAG>
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+          env:
+            - name: HOST
+              value: '0.0.0.0'
+            - name: PORT
+              value: '8080'
+            - name: TEPHRA_PUBLIC_URL
+              value: <HTTPS_PUBLIC_URL>
+            - name: TEPHRA_DATABASE_DRIVER
+              value: 'sqlite'
+            - name: TEPHRA_SQLITE_PATH
+              value: '/data/tephra.db'
+            - name: TEPHRA_BLOB_DRIVER
+              value: 'filesystem'
+            - name: TEPHRA_BLOB_PATH
+              value: '/data/blobs'
+            - name: TEPHRA_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: <SESSION_SECRET_NAME>
+                  key: latest
+            - name: TEPHRA_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: <BOOTSTRAP_SECRET_NAME>
+                  key: latest
+          volumeMounts:
+            - name: tephra-data
+              mountPath: /data
+      volumes:
+        - name: tephra-data
+          nfs:
+            server: <FILESTORE_IP>
+            path: /<FILESTORE_SHARE>
+  traffic:
+    - percent: 100
+      latestRevision: true

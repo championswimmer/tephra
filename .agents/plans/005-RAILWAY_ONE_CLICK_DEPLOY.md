@@ -64,12 +64,10 @@ Docker Compose uses. No server code changes are required.
   (documented default: `Dockerfile`). The repo root must stay the build
   context (npm workspace). Source: `variables/reference`,
   `builds/dockerfiles`.
-- **Buckets are a non-goal for this slice.** The Stage 1 runtime hard-rejects
-  `TEPHRA_BLOB_DRIVER=s3` (`apps/api/src/main.ts:19-24`) and
-  `@tephra/blob-store-s3` is an empty placeholder. Railway Buckets
-  (S3-compatible, private, per-environment credentials) become relevant only
-  with the multi-user hosted profile (plans 002–004). No bucket is provisioned
-  here.
+- **Buckets are backup-only.** The Stage 1 runtime is disk-only
+  (`apps/api/src/main.ts:19-24` pins `sqlite`/`filesystem`). A Railway Bucket
+  may hold periodic snapshot tarballs (plan 005-STORAGE_ENGINES.md) but never
+  live blobs. No bucket is provisioned here.
 
 ## 3. Scope
 
@@ -94,7 +92,8 @@ Docker Compose uses. No server code changes are required.
 
 ### Explicit non-goals
 
-- PostgreSQL, Railway Buckets/object storage, S3 adapter work (plans 002–004).
+- Disk-only doctrine (plans 003/004/005-STORAGE_ENGINES): filesystem blobs only, snapshots to buckets.
+- Multi-tenant scale-out = one service + one volume per tenant (plan 004 Profile B).
 - Multi-replica / multi-region operation (volumes forbid it).
 - Zero-downtime redeploys for the volume profile (Railway blocks two live
   mounts; brief downtime is inherent — document, don't fight).
@@ -153,7 +152,6 @@ export default defineRailway(() => {
       TEPHRA_SQLITE_PATH: "/data/tephra.db",
       TEPHRA_BLOB_DRIVER: "filesystem",
       TEPHRA_BLOB_PATH: "/data/blobs",
-      TEPHRA_ALLOW_SIGNUPS: "false",
       TEPHRA_PUBLIC_URL: "https://${{RAILWAY_PUBLIC_DOMAIN}}",
       TEPHRA_SESSION_SECRET: preserve(),
       TEPHRA_BOOTSTRAP_TOKEN: preserve(),
@@ -209,8 +207,9 @@ Cover, in order:
 4. Operations: redeploy downtime note, no-scaling rule, backup pointer
    (volume backups tab / schedules), restore-into-new-volume flow, upgrade =
    redeploy + authenticated smoke test.
-5. Scaling/future pointer: horizontal scale needs the PostgreSQL + bucket
-   profile (plans 002–004); do not attach a second service to this volume.
+5. Scaling/future pointer: more tenants = more services, each with its own
+   volume (plan 004 Profile B); snapshots (not live blobs) may go to a
+   private bucket.
 
 ### Step 4 — Update server README + compatibility note
 

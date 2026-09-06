@@ -30,9 +30,7 @@
         { "name": "TEPHRA_SQLITE_PATH", "value": "/data/tephra.db" },
         { "name": "TEPHRA_BLOB_DRIVER", "value": "filesystem" },
         { "name": "TEPHRA_BLOB_PATH", "value": "/data/blobs" },
-        { "name": "TEPHRA_ALLOW_SIGNUPS", "value": "false" },
-        { "name": "TEPHRA_MAX_BLOB_BYTES", "value": "104857600" },
-        { "name": "TEPHRA_LOG_LEVEL", "value": "info" }
+        { "name": "TEPHRA_MAX_BLOB_BYTES", "value": "104857600" }
       ],
       "secrets": [
         {

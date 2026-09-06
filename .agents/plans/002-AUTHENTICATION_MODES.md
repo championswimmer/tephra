@@ -62,7 +62,8 @@ The missing or incomplete pieces are:
 - Social login, OIDC, SAML, passkeys, MFA, or account linking.
 - Billing, subscriptions, plan entitlements, or a hosted operator dashboard.
 - Support-agent impersonation or a global web administrator capable of reading vaults.
-- Implementing PostgreSQL, S3, or deployment infrastructure; those belong to plans 003 and 004.
+- Implementing deployment infrastructure; that belongs to plans 003 and 004.
+  (Persistence is disk-only SQLite/filesystem; there are no PostgreSQL/S3 adapters.)
 - Web editing, server-to-vault writes, or any other Stage 2 behavior.
 
 ## Decisions

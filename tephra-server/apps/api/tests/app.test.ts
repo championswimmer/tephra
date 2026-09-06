@@ -223,4 +223,67 @@ describe('Tephra API', () => {
       minimumPluginVersion: MINIMUM_PLUGIN_VERSION,
     });
   });
+  it('supports bearer-authenticated sessions for non-browser clients without CSRF', async () => {
+    const value = fixture();
+    await value.app.request('/api/v1/auth/bootstrap', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'bootstrap-secret', email: 'owner@example.com', password: 'password-123' }),
+    });
+
+    const login = await value.app.request('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@example.com', password: 'password-123' }),
+    });
+    expect(login.status).toBe(200);
+    const { sessionToken, user } = (await login.json()) as { sessionToken: string; user: { id: string; email: string } };
+    expect(sessionToken).toMatch(/^tps_/);
+    expect(user.email).toBe('owner@example.com');
+
+    const sessionHeaders = {
+      authorization: `Bearer ${sessionToken}`,
+      'content-type': 'application/json',
+    };
+
+    const me = await value.app.request('/api/v1/auth/me', { headers: sessionHeaders });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toEqual({ user });
+
+    const vaultsList = await value.app.request('/api/v1/vaults', { headers: sessionHeaders });
+    expect(vaultsList.status).toBe(200);
+    expect(await vaultsList.json()).toEqual({ vaults: [] });
+
+    const createVault = await value.app.request('/api/v1/vaults', {
+      method: 'POST',
+      headers: sessionHeaders,
+      body: JSON.stringify({ name: 'Obsidian Cloud Vault' }),
+    });
+    expect(createVault.status).toBe(201);
+    const { vault } = (await createVault.json()) as { vault: Vault };
+    expect(vault.name).toBe('Obsidian Cloud Vault');
+
+    const createToken = await value.app.request(`/api/v1/vaults/${vault.id}/tokens`, {
+      method: 'POST',
+      headers: sessionHeaders,
+      body: JSON.stringify({
+        name: 'Obsidian Plugin (MacBook Pro)',
+        deviceName: 'MacBook Pro',
+        platform: 'obsidian-plugin',
+      }),
+    });
+    expect(createToken.status).toBe(201);
+    const { token: apiToken, value: rawToken } = (await createToken.json()) as { token: ApiToken; value: string };
+    expect(rawToken).toMatch(/^tpt_/);
+    expect(apiToken.name).toBe('Obsidian Plugin (MacBook Pro)');
+
+    const logout = await value.app.request('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: sessionHeaders,
+    });
+    expect(logout.status).toBe(200);
+
+    const revoked = await value.app.request('/api/v1/vaults', { headers: sessionHeaders });
+    expect(revoked.status).toBe(401);
+  });
 });

@@ -3,6 +3,9 @@ import Base from '../layouts/Base.astro';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 
+const rawBase = import.meta.env.BASE_URL ?? "/";
+const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+
 const scenarios = [
   'Your laptop is at home.',
   'You are on a machine that will never have Obsidian installed.',
@@ -137,7 +140,7 @@ const comparisons = [
           <p class="micro">Self-hosted · Your domain · Your login · AGPL-3.0</p>
         </div>
         <div class="hero-art">
-          <img src="/logo-main.svg" alt="Tephra logo: an ash cloud rising from an obsidian crystal" width="360" height="360" />
+          <img src={`${base}logo-main.svg`} alt="Tephra logo: an ash cloud rising from an obsidian crystal" width="360" height="360" />
         </div>
       </div>
     </section>
@@ -259,7 +262,7 @@ const comparisons = [
     <section id="name" class="etym">
       <div class="wrap etym-inner">
         <div class="etym-art">
-          <img src="/logo-main.svg" alt="" width="220" height="220" />
+          <img src={`${base}logo-main.svg`} alt="" width="220" height="220" />
         </div>
         <div>
           <span class="eyebrow">The name</span>

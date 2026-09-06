@@ -175,5 +175,4 @@ contents are never logged) and verify `/healthz` and `/readyz` respond.
 - Vault ID: the part of the web URL after `/v/`
 - Tokens tab: `/v/<vault-id>/tokens` — create one token per device
 - Plugin settings: server URL, vault ID, upload token, device name, **Sync now**
-- Security: HTTPS in production, `TEPHRA_ALLOW_SIGNUPS=false`, bootstrap token
-  removed after first setup
+- Security: HTTPS in production, bootstrap token removed after first setup

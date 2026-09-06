@@ -3,7 +3,7 @@
 Two checked-in skeletons deploy the existing Node Docker image to ECS on
 Fargate behind an Application Load Balancer, with persistent storage on EFS.
 They cover the stateful single-replica profile (SQLite + filesystem blobs at
-`/data`). Field names follow the ECS task-definition parameters reference
+`/data`, one tenant per service+access-point). Field names follow the ECS task-definition parameters reference
 (docs.aws.amazon.com, researched September 2026).
 
 ## Files
@@ -29,7 +29,7 @@ IDs, ARNs, or secrets.
   `TEPHRA_SESSION_SECRET` and `TEPHRA_BOOTSTRAP_TOKEN` (independent
   high-entropy values, e.g. `openssl rand -hex 32` each).
 - An execution role (image pull + secret injection + awslogs) and a task role
-  (EFS client + future S3 access), per the ECS IAM roles documentation.
+  (EFS client + snapshot upload to S3), per the ECS IAM roles documentation.
 
 ## Deploy
 
@@ -62,14 +62,14 @@ IDs, ARNs, or secrets.
 - Back up EFS (AWS Backup or equivalent) and test restores; treat backups as
   private data and encrypt them off-host.
 
-## Scaled profile (contract, not provisioned here)
+## Scaled profile (more tenants, not bigger shared infra)
 
-Horizontal scaling needs the PostgreSQL adapter on RDS plus the S3 blob-store
-adapter on a private bucket, with S3 access via the ECS **task role** (not
-static keys) wherever possible. Set `TEPHRA_DATABASE_DRIVER=postgres` with
-`TEPHRA_DATABASE_URL`, and `TEPHRA_BLOB_DRIVER=s3` with the `TEPHRA_S3_*`
-vars. Serialize migrations across deployments. Never run multiple tasks
-against container-local SQLite or filesystem blobs.
+More tenants means more independent single-task services (or EC2 instances),
+each with its own EFS access point or EBS volume — never a shared database.
+Object storage (private S3) holds periodic snapshot tarballs only
+(`tephra snapshot upload`), never live blobs. Serialize per-instance
+migrations across deployments. Never run multiple tasks against one
+SQLite file or blob directory.
 
 ## Why no Copilot manifest or `apprunner.yaml` here
 

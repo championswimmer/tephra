@@ -33,20 +33,11 @@ under `/data`.
 | `TEPHRA_PUBLIC_URL`           | Browser-visible origin, including scheme             | required in production         |
 | `TEPHRA_SESSION_SECRET`       | Signs/protects browser sessions                      | required; no safe default      |
 | `TEPHRA_BOOTSTRAP_TOKEN`      | One-time proof used to create the first admin        | required for first setup       |
-| `TEPHRA_ALLOW_SIGNUPS`        | Permit later public account registration             | `false`                        |
-| `TEPHRA_DATABASE_DRIVER`      | `sqlite` or an available remote adapter              | `sqlite`                       |
+| `TEPHRA_DATABASE_DRIVER`      | Must be `sqlite` (only live database)                | `sqlite`                       |
 | `TEPHRA_SQLITE_PATH`          | SQLite database file                                 | `/data/tephra.db` in the image |
-| `TEPHRA_DATABASE_URL`         | PostgreSQL connection string for that adapter        | unset                          |
-| `TEPHRA_BLOB_DRIVER`          | `filesystem` or an available object-store adapter    | `filesystem`                   |
+| `TEPHRA_BLOB_DRIVER`          | Must be `filesystem` (only live blob store)          | `filesystem`                   |
 | `TEPHRA_BLOB_PATH`            | Filesystem blob root                                 | `/data/blobs` in the image     |
-| `TEPHRA_S3_ENDPOINT`          | Optional S3-compatible endpoint                      | unset                          |
-| `TEPHRA_S3_REGION`            | S3 region                                            | unset                          |
-| `TEPHRA_S3_BUCKET`            | S3 bucket                                            | unset                          |
-| `TEPHRA_S3_ACCESS_KEY_ID`     | S3 access key (prefer workload roles where possible) | unset                          |
-| `TEPHRA_S3_SECRET_ACCESS_KEY` | S3 secret key                                        | unset                          |
-| `TEPHRA_S3_FORCE_PATH_STYLE`  | Use path-style S3 requests                           | `false`                        |
 | `TEPHRA_MAX_BLOB_BYTES`       | Maximum accepted blob size                           | `104857600` (100 MiB)          |
-| `TEPHRA_LOG_LEVEL`            | Server log verbosity                                 | `info`                         |
 
 Never commit a real `.env`. Generate independent high-entropy session and bootstrap
 secrets, for example with `openssl rand -hex 32`. Platform request limits can be lower
@@ -162,9 +153,9 @@ candidates. Run collection as a periodic maintenance job, not on the sync hot pa
 ## Migration policy
 
 SQLite migrations live in `tephra-server/migrations/sqlite/` (for example
-`001_initial.sql`). They auto-run on Node.js server startup via `openSqliteDatabase`
-(`tephra-server/packages/database/sqlite`): a fresh database executes the migration
-transactionally and records the schema version with `PRAGMA user_version`; an
+`001_initial.sql`). They auto-run on Node.js server startup: a fresh database
+executes the migration transactionally and records the schema version with
+`PRAGMA user_version`; an
 up-to-date database is left untouched and a newer-than-supported database fails fast
 instead of starting. Never edit a released migration. Schema changes ship as a new
 numbered migration file plus code that understands the previous version.
@@ -183,18 +174,22 @@ device, report the device, OS, and browser version.
 
 ## Deployment targets
 
+Live storage is disk-only on every target: one container/VM + one disk per
+tenant (SQLite + filesystem at `/data`). Object storage holds periodic
+snapshot tarballs only — never live blobs.
+
 - [Railway](deploy/railway/README.md): same Docker image, declared via
   `.railway/railway.ts` (service + `/data` volume, one replica) — deploy with
   `railway config apply` or a published template.
-- [AWS](deploy/aws/README.md): single-host Docker guidance and the scalable adapter
-  contract.
-- [Vercel](deploy/vercel/README.md): stateless function/remote-storage adapter contract;
-  the Docker image is not a Vercel deployment.
-- [Cloudflare](deploy/cloudflare/README.md): Worker/D1/R2 adapter contract; the Node image
-  is not Worker-compatible.
+- [AWS](deploy/aws/README.md): ECS/EFS single-task guidance plus EC2/EBS;
+  snapshots to private S3.
+- [GCP](deploy/gcp/README.md): Compute Engine VM + Persistent Disk, or
+  Cloud Run + Filestore; snapshots to private GCS.
 
-Only use adapters that are implemented and tested in the release you deploy. The
-existence of an adapter contract does not claim a working hosted deployment.
+Only use targets whose skeletons have passed a clean-environment smoke test
+for the release being deployed. Multi-tenant hosting means more independent
+single-disk instances (see `.agents/plans/004-DEPLOYMENT_PROFILES.md`), never
+a shared database.
 
 ## Security notes
 

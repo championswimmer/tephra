@@ -1,50 +1,54 @@
-# Tephra Deployment Profiles
+# Tephra Deployment Profiles (disk-only)
 
 > Status: implementation plan
 > Depends on: `001-TEPHRA_STAGE1_PLAN.md`, `002-AUTHENTICATION_MODES.md`, and
 > `003-MULTI_TENANT_PERSISTENCE.md`
-> Profiles: single-user self-hosted and multi-user hosted service
+> Profiles: single-user self-hosted and one-VM-per-tenant hosted
+> Supersedes: all PostgreSQL/S3 hosted-service content previously in this file (dropped 2026-09-06)
 > Last updated: 2026-09-06
 
 ## Outcome
 
-Tephra will publish and test two honest deployment profiles built from the same source and
-production image:
+Tephra publishes and tests disk-only deployment profiles built from the same
+source and production image. Every profile is **one container + one volume +
+one port**; tenants scale by adding VMs/disks, never by sharing a database.
 
-| Profile                 | Runtime                              | Persistence                               | Scale                                                          |
-| ----------------------- | ------------------------------------ | ----------------------------------------- | -------------------------------------------------------------- |
-| Single-user self-hosted | One Node container serving API + web | SQLite + filesystem under `/data`         | Exactly one replica                                            |
-| Multi-user hosted       | Stateless Node API/web plus worker   | PostgreSQL + private S3-compatible bucket | Start with one API; scale horizontally after concurrency tests |
+| Profile | Runtime | Persistence | Scale |
+| ------- | ------- | ----------- | ----- |
+| Single-user self-hosted | One Node container: API + web | One disk: SQLite + filesystem at `/data` | Exactly one replica |
+| Hosted per-tenant | Same image, one instance per tenant | One disk per tenant (same layout) | One VM/disk per tenant; N tenants = N instances |
 
-The single-user profile remains the default and keeps the existing “one container, one volume,
-one port” promise. The hosted profile is not documented as available until auth, tenant
-isolation, PostgreSQL, S3, email, and deployment smoke tests all pass.
+The single-user profile remains the default and keeps the “one container, one
+volume, one port” promise. The hosted profile is N copies of the same shape
+with per-tenant volumes, secrets, and backups — not a shared stateless service.
 
-Railway is the first concrete hosted-service reference because the repository already contains a
-Railway deployment and Railway can provide PostgreSQL and S3-compatible buckets. The topology is
-vendor-neutral; AWS documentation remains as a production alternative after the same adapters
-are verified.
+Targets: Docker Compose (reference), Railway (volume), AWS (EFS/EBS), **GCP
+(Compute Engine PD or Cloud Run + Filestore)**. No Vercel/Cloudflare (deleted:
+no persistent disk).
 
 ## Scope
 
-- Produce one immutable Node image with explicit `serve`, `worker`, and `migrate` commands.
-- Preserve and test Docker Compose and Railway single-user deployments.
-- Add a non-production local hosted integration stack using PostgreSQL and S3-compatible storage.
-- Add a Railway multi-user pilot with separate API, worker, and migration responsibilities.
-- Update AWS guidance for the verified stateless PostgreSQL/S3 profile without making AWS
-  mandatory.
-- Add strict configuration validation, health/readiness, migration, backup/restore, secret
+- Produce one immutable Node image with `serve`, `worker`, `migrate` commands
+  (worker/migrate operate on the local disk; no shared queue).
+- Preserve and test Compose + Railway single-user deployments.
+- Add/refresh AWS disk guidance (EFS + EBS) and add GCP disk guidance
+  (GCE PD + Cloud Run/Filestore) with skeletons + READMEs.
+- Per-vault folder layout (`checkouts/`, `sync-state/`, `snapshots/`) mounted
+  for the headless Sync sidecar (plan 006).
+- Snapshot-to-object-storage backup guides per platform (S3, GCS, Railway bucket).
+- Strict configuration validation, health/readiness, backup/restore, secret
   rotation, signup kill-switch, deploy, and rollback runbooks.
-- Add deployment smoke scripts that exercise real authentication, sync, and browser reads.
+- Deployment smoke scripts exercising real auth, sync, and browser reads.
 
 ## Non-goals
 
-- Provisioning or changing a live Railway/AWS account as part of plan authoring.
+- Provisioning or changing a live Railway/AWS/GCP account as part of plan authoring.
 - Kubernetes, Redis, Kafka, or a microservice split.
-- Cloudflare Workers/D1/R2 or Vercel Functions.
-- Multi-region active/active operation.
-- Zero-downtime deploys for the SQLite/filesystem profile.
-- Direct browser-to-S3 upload tickets.
+- Cloudflare Workers/D1/R2 or Vercel Functions (deleted targets).
+- Multi-region active/active operation for one tenant.
+- Zero-downtime deploys for the disk profile.
+- Direct browser-to-object-storage upload tickets.
+- Shared PostgreSQL/S3 hosted service (dropped; see doctrine in plan 003).
 - Billing, metering, subscriptions, or customer support tooling.
 - Claiming a provider configuration works before it passes a clean-environment smoke test.
 
@@ -59,45 +63,43 @@ Build one multi-stage Docker image from the npm workspace root. It contains:
 - no source `.env`, credentials, vault data, or generated secrets;
 - an unprivileged runtime user and read-only application filesystem where supported.
 
-Expose commands through package scripts or a small CLI:
+Expose commands:
 
 ```text
 tephra serve
 tephra worker
 tephra migrate
 tephra doctor
+tephra snapshot create|verify|restore|upload|prune-local
+tephra auth reset-single-user-password
 ```
 
-`doctor` is read-only and validates configuration, public URL, database connectivity/schema,
-blob-store access, deployed PostgreSQL role properties, email configuration in multi-user mode,
-and mode/storage compatibility. It must not print secrets or send test email unless an explicit
-separate command is requested.
+`doctor` is read-only: validates configuration, public URL, SQLite
+connectivity/schema, blob-store mount sentinel + free space, snapshot
+configuration (without secrets), and mode/storage compatibility. Never prints
+secrets or vault contents.
 
-Use an immutable version/commit image tag in deployments. Do not deploy production using only
-`latest`.
+Use an immutable version/commit image tag. Do not deploy production on `latest` alone.
 
-## Configuration matrix
+## Configuration matrix (all profiles)
 
-| Variable                           | Single-user                      | Multi-user                                            |
-| ---------------------------------- | -------------------------------- | ----------------------------------------------------- |
-| `TEPHRA_INSTANCE_MODE`             | `single_user`                    | `multi_user`                                          |
-| `TEPHRA_SIGNUP_MODE`               | `closed` only                    | `closed` initially; `open` after acceptance           |
-| `TEPHRA_PUBLIC_URL`                | required in production           | required HTTPS origin                                 |
-| `TEPHRA_SESSION_SECRET`            | required                         | required, shared by API replicas                      |
-| `TEPHRA_AUTH_TOKEN_ENCRYPTION_KEY` | unset                            | required, shared by API and worker                    |
-| `TEPHRA_TRUSTED_PROXY_COUNT`       | explicit for chosen ingress      | explicit for chosen ingress                           |
-| `TEPHRA_BOOTSTRAP_TOKEN`           | required only before first setup | forbidden                                             |
-| `TEPHRA_DATABASE_DRIVER`           | `sqlite`                         | `postgres`                                            |
-| `TEPHRA_SQLITE_PATH`               | `/data/tephra.db`                | forbidden                                             |
-| `TEPHRA_DATABASE_URL`              | unset                            | required; least-privileged application role           |
-| `TEPHRA_MIGRATION_DATABASE_URL`    | unset                            | migrate command only; never injected into API/worker  |
-| `TEPHRA_BLOB_DRIVER`               | `filesystem`                     | `s3`                                                  |
-| `TEPHRA_BLOB_PATH`                 | `/data/blobs`                    | forbidden                                             |
-| S3 endpoint/region/bucket          | unset                            | required; credentials optional with workload identity |
-| Email driver/from/credentials      | unset                            | required in multi-user mode                           |
+| Variable | Value (all profiles) |
+| -------- | -------------------- |
+| `TEPHRA_INSTANCE_MODE` | `single_user` (default) / `multi_user` only with per-tenant instances + closed signup until acceptance |
+| `TEPHRA_SIGNUP_MODE` | `closed` (only value until 002+003+004 acceptance) |
+| `TEPHRA_PUBLIC_URL` | required HTTPS origin in production |
+| `TEPHRA_SESSION_SECRET` | required, per-instance secret |
+| `TEPHRA_TRUSTED_PROXY_COUNT` | explicit for chosen ingress |
+| `TEPHRA_BOOTSTRAP_TOKEN` | required only before first setup, then removed |
+| `TEPHRA_DATABASE_DRIVER` | `sqlite` (pinned; anything else fails startup) |
+| `TEPHRA_SQLITE_PATH` | `/data/tephra.db` |
+| `TEPHRA_BLOB_DRIVER` | `filesystem` (pinned; anything else fails startup) |
+| `TEPHRA_BLOB_PATH` | `/data/blobs` |
+| `TEPHRA_BLOB_REQUIRE_MOUNT` | `true` in production |
+| `TEPHRA_BLOB_MIN_FREE_BYTES` | per-platform headroom |
+| `TEPHRA_SNAPSHOT_*` | backup-only uploader config (bucket, prefix, key file); never live paths |
 
-Startup fails before listening when the selected mode and storage/auth configuration disagree.
-The Docker default remains single-user with signup closed.
+Startup fails before listening when storage/mount configuration disagrees.
 
 ## Profile A — single-user self-hosted
 
@@ -108,272 +110,209 @@ Internet or private network
         |
 HTTPS reverse proxy / platform ingress
         |
-one Tephra container :8080
+one Tephra container :8080 (+ optional obsidian-sync + bridge sidecars, plan 006)
         |
-/data/tephra.db + /data/blobs
+/data: tephra.db + blobs/ + checkouts/ + sync-state/ + snapshots/
 ```
 
 Supported initial paths:
 
-- Docker Compose on a VPS/home server/NAS with a named or bind-mounted `/data` volume;
-- one Railway service with one persistent volume mounted at `/data`;
-- the existing single-task AWS/EFS reference, clearly marked as stateful and single replica.
+- Docker Compose on a VPS/home server/NAS with a named or bind-mounted `/data`;
+- one Railway service with one persistent volume at `/data`;
+- AWS: single-task ECS/EFS or single EC2 with EBS at `/data`;
+- GCP: single GCE VM with Persistent Disk, or one Cloud Run service + Filestore.
 
 ### First deployment
 
 1. Generate independent high-entropy session and bootstrap secrets.
 2. Configure the public URL and TLS proxy/platform domain.
-3. Start exactly one container and wait for `/readyz`.
-4. Open `/setup`, enter the bootstrap token, and create the only account.
-5. Remove `TEPHRA_BOOTSTRAP_TOKEN` from runtime configuration and restart.
-6. Create a vault and vault-scoped plugin token.
-7. Sync a small real vault and verify file, rendered note, attachment, link, and graph reads.
-8. Run an initial coordinated backup and prove it can be restored into a disposable instance.
+3. Provision the disk (volume/PD/EFS/Filestore) and attach at `/data`.
+4. Start exactly one container; wait for `/readyz`.
+5. Open `/setup`, enter the bootstrap token, create the only account.
+6. Remove `TEPHRA_BOOTSTRAP_TOKEN`; restart.
+7. Create a vault + vault-scoped plugin token; sync a small real vault;
+   verify file, rendered note, attachment, link, graph reads.
+8. Run an initial snapshot (`tephra snapshot create` + `upload`) and prove
+   restore into a disposable instance.
 
 ### Operations
 
-- `/healthz` reports process liveness.
-- `/readyz` validates database schema/access and blob-store readability/writability with a
-  non-user probe that is cleaned immediately.
-- Never scale the service above one replica with SQLite/filesystem storage.
-- Back up SQLite and the blob directory as one logical dataset. Prefer stopped backups for the
-  simplest supported path; an online path must use SQLite's backup API and coordinate blob
-  copying.
-- Run expired-session/auth-token cleanup and owner-scoped blob GC on a documented schedule.
-- Password recovery uses the local operator command from plan 002, never a reopened bootstrap.
+- `/healthz` = process liveness; `/readyz` = SQLite schema + blob mount
+  sentinel + free-space + non-user probe (cleaned immediately).
+- Never scale above one replica per volume.
+- Back up `/data` as one logical dataset (stopped-archive or SQLite
+  backup-API + coordinated blob copy), plus periodic off-host snapshots.
+- Expired-session cleanup + blob GC on a documented schedule.
+- Password recovery via local operator command (plan 002), never reopened bootstrap.
 
 ### Upgrade and rollback
 
-1. Record the current image digest and run authenticated pre-upgrade smoke.
-2. Stop the container and take a coordinated `/data` backup.
-3. Run `tephra doctor`, then `tephra migrate` once.
-4. Start the new immutable image and run authenticated sync/browse smoke.
-5. Retain the backup and prior image through the rollback window.
+1. Record image digest; run authenticated pre-upgrade smoke.
+2. Stop container; snapshot `/data` (local + upload).
+3. `tephra doctor`, then `tephra migrate` once.
+4. Start new image; run authenticated sync/browse smoke.
+5. Retain snapshot + prior image through the rollback window; rollback is
+   stop + restore snapshot, never old code on new schema.
 
-If a migration has not crossed a destructive contract phase, roll back the image. Otherwise stop
-the service and restore the coordinated backup; never point older code at a newer unsupported
-schema.
+## Profile B — hosted per-tenant (one VM + one disk per tenant)
 
-## Profile B — multi-user hosted service
-
-### Topology
+### Topology (per tenant)
 
 ```text
-HTTPS ingress
-    |
-Tephra API/web service (one replica for pilot, 2+ after validation)
-    |---------------- PostgreSQL
-    |---------------- private S3-compatible bucket
-
-Tephra worker service
-    |---------------- PostgreSQL auth/index outbox
-    |---------------- email provider
-    |---------------- private S3-compatible bucket
-
-one-shot migration job uses a separate database migration role
+HTTPS ingress (per tenant domain or path-routed)
+        |
+one Tephra instance (same image, tenant's secrets)
+        |
+tenant's disk: tephra.db + blobs/ + checkouts/ + sync-state/ + snapshots/
+        |
+snapshot copies → private bucket (S3/GCS/Railway, backup only)
 ```
 
-API and web remain same-origin. API and worker containers have no persistent local volume. The
-application database role is not the migration/table-owner role and is subject to forced RLS.
+The operator provisions N independent copies of Profile A. Tenants share
+nothing: no shared database, bucket, volume, or secret. Tenant onboarding =
+provision disk + instance + secrets + domain; offboarding = final snapshot,
+then delete instance + disk.
 
 ### Railway pilot layout
 
-Use one Railway project with separate `staging` and `production` environments:
+One Railway project, per-tenant services (or per-tenant projects for strong
+billing separation):
 
-- `tephra-api`: repository Dockerfile, command `tephra serve`, health path `/readyz`;
-- `tephra-worker`: same image, command `tephra worker`, no public domain;
-- `Postgres`: managed PostgreSQL service;
-- one project bucket: S3-compatible private blob storage;
-- migration release step/job: same image, command `tephra migrate` with migration credentials.
+- `tephra-<tenant>`: repo Dockerfile, `tephra serve`, `/readyz` health path,
+  own `tephra-data-<tenant>` volume at `/data`, own secrets.
+- Snapshot upload to a private Railway bucket via scheduled job/command
+  (bucket holds snapshots only, never live blobs).
+- Migration = one-shot `tephra migrate` with the instance stopped.
 
-Because this is an npm workspace with shared packages, keep the repository root as Docker build
-context; do not set a restrictive service root directory. Pin Node through the Docker image.
+### AWS layout
 
-Use Railway variable references for database connectivity and inject bucket credentials as
-secrets. Do not commit bucket credentials, database URLs, SMTP secrets, session secrets, or real
-domains in `railway.json`.
+- Per tenant: one ECS service (`desiredCount: 1`) + EFS access point, or one
+  EC2/Lightsail instance + EBS volume; ALB path/host routing; secrets in
+  Secrets Manager/SSM; snapshots to private S3 via lifecycle rules.
+- Keep the existing `deploy/aws/*.json` EFS skeletons; add an EC2+EBS Compose
+  variant in `deploy/aws/README.md`.
 
-Start the pilot with one API and one worker. Prove two API replicas pass session, rate-limit,
-outbox-claim, RLS, sync-commit, and rolling-restart tests before increasing production replicas.
+### GCP layout (new)
 
-### Hosted first deployment
+- **Option 1 — GCE VM (recommended first):** one `e2-micro`/equivalent VM per
+  tenant + one balanced Persistent Disk mounted at `/data`; Compose runs the
+  Tephra + optional sidecar stack; static IP + Cloud DNS + managed TLS via a
+  small HTTPS LB or Caddy/Traefik on the VM; snapshots via `gcloud compute
+  disks snapshot` + `tephra snapshot upload` to private GCS.
+- **Option 2 — Cloud Run + Filestore:** one service per tenant
+  (`--min-instances 1 --max-instances 1`, VPC connector, Filestore NFS at
+  `/data`); HTTPS built in; snapshots to GCS via scheduled Cloud Scheduler +
+  `snapshot upload`.
+- Skeletons: `tephra-server/deploy/gcp/` with a startup-script/compose
+  bundle for GCE and a `service.yaml` + Filestore guide for Cloud Run
+  (reference-only until smoke-tested, same honesty rule as AWS).
 
-1. Provision staging PostgreSQL, bucket, email sender/domain, API, and worker.
-2. Create separate migration and application database roles and verify the application role is
-   not superuser/table owner/`BYPASSRLS`.
-3. Configure mode `multi_user`, signup `closed`, HTTPS public URL, shared session secret, quotas,
-   and provider credentials.
-4. Run `tephra doctor` and the one-shot migration job.
-5. Start the worker, then API; wait for readiness and zero migration drift.
-6. Run a two-account staging smoke: register/verify/login, create multiple vaults, sync equal-hash
-   content, browse, attempt every cross-account access, revoke sessions/tokens, and restore.
-7. Repeat on production with signup closed.
-8. Open signup only after alarms, backup/PITR, restore drill, and the security matrix are green.
+### Hosted acceptance (per tenant instance)
 
-### Hosted release sequence
-
-1. Build and scan one immutable image; deploy the same digest to staging.
-2. Run backward-compatible migrations once with the migration role.
-3. Roll worker and API, then run deployment smoke and observe queue lag/errors.
-4. Promote the same digest to production.
-5. Run migrations once, roll worker, roll API, and run authenticated smoke.
-6. Keep destructive schema/object cleanup in a later release after the rollback window.
-
-`TEPHRA_SIGNUP_MODE=closed` is the immediate kill switch for registration. It must not interrupt
-existing login, plugin sync, or read-only browsing.
-
-### Hosted operations
-
-- PostgreSQL: automated backups/PITR, connection/pool limits, migration history, restore drills.
-- Bucket: private access, encryption, lifecycle for temporary uploads, versioning/retention as
-  appropriate, restore/delete tests.
-- Email: delivery failure/bounce monitoring and sender-domain configuration.
-- Worker: health, oldest-ready-job age, retries, dead letters, and idempotent replay.
-- API: readiness, latency/error rate, authentication rate-limit events, quota rejections, storage
-  errors, and repeated cross-tenant denials without logging private request data.
-- Secrets: platform secret manager, least privilege, documented rotation. Rotating the session
-  secret logs out all browser sessions; plugin tokens are independent.
-- Deleted data: document active-store deletion and backup retention in the privacy notice.
+Same gates as Profile A first deployment, plus: two tenant instances hold
+identical-hash content with zero cross-access; deleting tenant B's disk
+provably affects tenant A not at all; each tenant restores independently
+from its own snapshot.
 
 ## Deployment files
 
-Expected changes:
+- `tephra-server/deploy/docker/Dockerfile`: `serve`/`worker`/`migrate`/`snapshot` image.
+- `tephra-server/deploy/docker/compose.yml`: retained single-user profile
+  (+ optional sidecar overlay from plan 006).
+- `tephra-server/deploy/railway/railway.single-user.json` → IaC: one replica/volume docs.
+- `tephra-server/deploy/aws/`: stateful ECS/EFS + EC2/EBS files (S3 sections
+  rewritten as snapshot-backup only).
+- `tephra-server/deploy/gcp/` (new): GCE startup + Cloud Run skeletons + README.
+- `tephra-server/deploy/vercel/`, `deploy/cloudflare/`: **deleted**.
+- `tephra-server/apps/api/src/main.ts`: `serve` composition w/ fail-closed pins.
+- `tephra-server/apps/api/src/cli.ts`: migrate/doctor/snapshot/operator commands.
+- `.env.example`, READMEs, threat/privacy docs.
+- `e2e/deploy-single-user.mjs`, `e2e/deploy-tenant-pair.mjs` (new smoke scripts).
 
-- `tephra-server/deploy/docker/Dockerfile`: shared `serve`/`worker`/`migrate` image.
-- `tephra-server/deploy/docker/compose.yml`: retained single-user profile.
-- `tephra-server/deploy/docker/compose.hosted-test.yml` (new): PostgreSQL plus S3-compatible
-  integration environment, explicitly non-production.
-- `tephra-server/deploy/railway/railway.single-user.json`: one replica/volume documentation.
-- `tephra-server/deploy/railway/railway.multi-user.example.json`: API reference configuration;
-  worker/migration setup documented where one service config cannot express the whole project.
-- `tephra-server/deploy/railway/README.md`: both profiles, variable references, bucket, migration,
-  smoke, rollback.
-- `tephra-server/deploy/aws/`: retain stateful ECS/EFS files; add or update only the stateless
-  PostgreSQL/S3 contract verified by plan 003.
-- `tephra-server/apps/api/src/main.ts`: `serve` composition.
-- `tephra-server/apps/api/src/worker.ts`: outbox/index worker.
-- `tephra-server/apps/api/src/cli.ts`: migrate/doctor/operator commands.
-- `.env.example`, `tephra-server/.env.example`, root/server READMEs, threat/privacy docs.
-- `e2e/deploy-single-user.mjs` and `e2e/deploy-multi-user.mjs` (new): bounded smoke scripts.
-
-Do not update `PROGRESS.md` until the corresponding profile is deployed from a clean environment
-and verified.
+Do not update `PROGRESS.md` until the profile is deployed from a clean
+environment and verified.
 
 ## Implementation sequence
 
 ### Phase 1 — Image and command contract
 
-1. Add `serve`, `worker`, `migrate`, and `doctor` entrypoints with strict mode validation.
-2. Update the Dockerfile to ship all entrypoints and migrations as an unprivileged image.
-3. Add build metadata endpoint/output without exposing environment secrets.
-4. Verify graceful API/worker shutdown and migration locking.
+1. `serve`/`worker`/`migrate`/`doctor`/`snapshot` entrypoints + strict validation.
+2. Dockerfile ships all entrypoints + migrations as unprivileged image.
+3. Graceful shutdown; migration locking (single-writer; lock file on disk).
 
-Gate: the image runs every command locally and fails unsafe configuration before accepting
-traffic.
+Gate: image runs every command locally; unsafe config fails before traffic.
 
-### Phase 2 — Single-user profile
+### Phase 2 — Single-user profile (+ GCP)
 
-1. Update Compose and stateful Railway/AWS examples with explicit single-user mode.
-2. Add setup, backup, restore, upgrade, rollback, and recovery documentation.
-3. Add single-user deploy smoke automation.
-4. Deploy from a clean volume and restore into another clean volume.
+1. Compose + Railway + AWS refresh (disk-only wording, snapshot guides).
+2. New GCP GCE + Cloud Run skeletons + README.
+3. Setup/backup/restore/upgrade/rollback/recovery docs per platform.
+4. Deploy smoke per platform from a clean disk; restore into another clean disk.
 
-Gate: one documented command path yields a working one-container install, and restore preserves
-the account, plugin tokens, vault bytes, and revision history.
+Gate: one documented path per platform yields a working install; restore
+preserves account, tokens, bytes, revisions.
 
-### Phase 3 — Hosted integration profile
+### Phase 3 — Per-tenant hosting acceptance
 
-1. Add the non-production PostgreSQL/S3-compatible compose stack.
-2. Wire API, worker, migration, SMTP test sink, shared session secret, and quotas.
-3. Run the two-account and two-API process suites from plans 002 and 003.
-4. Exercise backup/restore and a failed migration/deploy rollback.
+1. Two independent instances, identical-hash content, cross-access attempts.
+2. Independent snapshot/restore per tenant.
+3. Tenant onboard/offboard runbook (provision → smoke → snapshot → delete).
 
-Gate: all hosted behavior works without local persistent API/worker state.
-
-### Phase 4 — Railway pilot
-
-1. Document/create the API, worker, PostgreSQL, bucket, staging, and production layout.
-2. Add example service configs and exact variable mapping without real secrets.
-3. Deploy staging with signup closed, run migration and smoke, then validate two API replicas.
-4. Deploy production with signup closed, run restore drill and security acceptance.
-5. Enable controlled signup, observe, then open signup.
-
-Gate: a clean Railway environment can be deployed from the runbook and survives API/worker
-restart without session, job, or tenant-isolation failure.
-
-### Phase 5 — AWS stateless reference
-
-1. Update AWS documentation/config examples to use the verified image and commands with ALB,
-   ECS API/worker, RDS PostgreSQL, and private S3.
-2. Use task roles instead of static S3 credentials where possible.
-3. Document networking, secrets, migration job, backups, health, scaling, and rollback.
-4. Validate config schemas and, when an AWS test environment is available, run the same smoke
-   suite. Until then, label it reference-only rather than supported.
+Gate: tenants share nothing; deletion is provably isolated.
 
 ## Verification
-
-Build and local checks:
 
 ```bash
 npm run check
 docker build -f tephra-server/deploy/docker/Dockerfile -t tephra:test .
 docker compose -f tephra-server/deploy/docker/compose.yml config
-docker compose -f tephra-server/deploy/docker/compose.hosted-test.yml config
 ```
 
-Required smoke assertions:
+Smoke assertions: health vs readiness split; config errors block listen;
+migrations run once; restart/restore preserve data; registration closed and
+mode-disabled routes unreachable; two tenants share nothing; real plugin
+upload → verified revision → browser read; snapshot→wipe→restore identical;
+rollback follows the non-destructive path.
 
-- health and readiness distinguish process health from dependency readiness;
-- configuration errors prevent listening;
-- migrations run once under concurrency;
-- self-host restart and restore preserve data;
-- hosted API/worker replacement preserves sessions/jobs;
-- registration is closed by default and mode-disabled routes stay unreachable;
-- two users can each own several vaults and cannot access each other's resources;
-- real plugin upload creates a verified revision and the browser reads it;
-- same-hash cross-user upload, GC, and deletion remain isolated;
-- rollback follows the documented non-destructive path.
-
-Validate deployment configuration with provider schemas/CLI before reporting support. Run bounded
-logs/metrics checks after any real deployment; do not rely only on a “deployed” status.
+Validate provider configs with current CLI schemas before claiming support.
+Bounded logs/metrics checks after any real deploy.
 
 ## Risks and mitigations
 
-| Risk                                   | Mitigation                                                                        |
-| -------------------------------------- | --------------------------------------------------------------------------------- |
-| Self-host accidentally enables signup  | invalid mode combination; signup defaults closed                                  |
-| Hosted service starts on local storage | startup rejects SQLite/filesystem in multi-user mode                              |
-| Multiple SQLite replicas corrupt state | deployment config pins one replica; readiness/doctor warn and docs forbid scaling |
-| API replicas race migrations           | separate one-shot migration command and database migration lock                   |
-| Worker duplicates email/index work     | transactional claim, lease, idempotency key, retry tests                          |
-| New image cannot read migrated data    | backward-compatible expand/contract migrations and staging rollback drill         |
-| Blob/schema rollback loses data        | delay destructive cleanup; coordinated backups; verified restore                  |
-| Secrets leak into files/logs           | platform secret injection, redaction tests, placeholder-only examples             |
-| Email outage blocks new users          | durable outbox/retry/resend; existing login/sync/browse unaffected                |
-| Open signup abuse                      | default closed, database rate limits, quotas, monitoring, one-step kill switch    |
-| Provider docs/config drift             | validate against current official schema/CLI during implementation                |
+| Risk | Mitigation |
+| ---- | ---------- |
+| Self-host accidentally enables signup | invalid mode combo; signup defaults closed |
+| Operator points two instances at one disk | per-tenant volume/provision checklist; mount sentinel store-id check |
+| Multiple SQLite writers corrupt state | one replica/VM per disk; docs forbid sharing; sentinel fails fast |
+| New image cannot read migrated data | backward-compatible expand/contract; staging rollback drill |
+| Blob/snapshot rollback loses data | delayed destructive cleanup; verified snapshots before upgrade |
+| Secrets leak into files/logs | platform secret injection, redaction tests, placeholder-only examples |
+| Snapshot bucket public | private-by-default docs, no public-URL code, checklist item |
+| Provider docs/config drift | validate against current official schema/CLI during implementation |
+| GCP guidance untested | label reference-only until the same smoke passes on GCP |
 
 ## Completion checklist
 
-- [ ] One immutable image provides serve, worker, migrate, and doctor commands.
-- [ ] Unsafe mode/storage/email configuration fails before serving.
-- [ ] Single-user Docker and Railway remain one-container/one-volume/one-port workflows.
-- [ ] Single-user setup, backup, restore, upgrade, rollback, and recovery are exercised.
-- [ ] Hosted runtime uses PostgreSQL/S3 and no local persistent API/worker state.
-- [ ] Migration, application, and maintenance database privileges are separated.
-- [ ] Hosted worker retries auth/index jobs safely.
-- [ ] Hosted two-account isolation and real plugin/browser smoke pass.
-- [ ] Railway staging and production runbooks contain no secrets and pass clean deployment tests.
-- [ ] AWS remains clearly labeled supported or reference-only according to actual validation.
-- [ ] Signup is opened only after plans 002, 003, and 004 are complete.
-- [ ] Documentation and `PROGRESS.md` describe only verified behavior.
+- [ ] One image provides serve/worker/migrate/doctor/snapshot/auth commands.
+- [ ] Unsafe configuration fails before serving.
+- [ ] Compose/Railway/AWS/GCP each have a one-disk working path.
+- [ ] Setup/backup/restore/upgrade/rollback/recovery exercised per platform.
+- [ ] Two-tenant isolation + independent restore proven.
+- [ ] Snapshot guides (S3/GCS/Railway bucket) written; buckets hold backups only.
+- [ ] Serverless scaffolds deleted; no live object-store references remain.
+- [ ] Signup opens only after plans 002, 003, 004 acceptance.
+- [ ] Docs + `PROGRESS.md` describe only verified behavior.
 - [ ] `npm run check` passes.
 
 ## References
 
-- `001-TEPHRA_STAGE1_PLAN.md`, sections 28–30, 35–37, 54, and 56–57.
-- `002-AUTHENTICATION_MODES.md` for auth configuration and lifecycle.
-- `003-MULTI_TENANT_PERSISTENCE.md` for PostgreSQL/S3 and isolation requirements.
-- [Railway deployment documentation](https://docs.railway.com/cli/deploying)
-- [Railway monorepo documentation](https://docs.railway.com/deployments/monorepo)
-- [Railway CLI documentation](https://docs.railway.com/cli)
+- `001-TEPHRA_STAGE1_PLAN.md` for read-only invariants.
+- `002-AUTHENTICATION_MODES.md` for auth lifecycle.
+- `003-MULTI_TENANT_PERSISTENCE.md` for one-volume-per-tenant + quotas.
+- `005-STORAGE_ENGINES.md` for disk engine + snapshot design.
+- `006-HEADLESS_OBSIDIAN_SYNC.md` for sidecar consumers of `/data`.
+- [Railway volumes](https://docs.railway.com/reference/volumes)
+- [Railway CLI](https://docs.railway.com/cli)
+- [EFS + ECS](https://docs.aws.amazon.com/efs/latest/ug/performance.html)
+- [GCE persistent disks](https://cloud.google.com/compute/docs/disks)
+- [Filestore + Cloud Run](https://cloud.google.com/filestore/docs/mounting-run)

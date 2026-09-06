@@ -102,31 +102,35 @@ This must be sufficient for:
 - a single-instance Railway deployment with a persistent volume,
 - Docker Compose.
 
-The architecture must ALSO support more scalable adapters:
+The architecture is disk-only by doctrine (amended 2026-09-06; plans 003/004/005):
 
 ```text
 Database:
-  SQLite
-  PostgreSQL
-  Cloudflare D1
+  SQLite (only live database)
 
 Blob storage:
-  local filesystem
-  S3-compatible storage
-  Cloudflare R2
+  local filesystem (only live blob store)
 ```
 
-This allows the same application to run in environments such as:
+PostgreSQL, Cloudflare D1, S3-compatible live storage, and Cloudflare R2
+adapters were considered in early drafts and are explicitly dropped: the
+headless Obsidian Sync sidecar (plan 006) requires a POSIX checkout next to
+the server, and one-volume-per-tenant hosting replaces shared infrastructure.
+Object storage is used for periodic whole-volume snapshot backups only
+(plan 005-STORAGE_ENGINES.md).
 
-- AWS,
-- Railway,
-- Vercel,
-- Cloudflare,
-- Fly.io,
-- Render,
+This runs in environments such as:
+
+- AWS (ECS/EFS or EC2/EBS),
+- GCP (Compute Engine + Persistent Disk, or Cloud Run + Filestore),
+- Railway (service + volume),
+- Fly.io (machine + volume),
 - generic VPS infrastructure.
 
-Do not make Kubernetes, Redis, Kafka, Elasticsearch, or a managed PostgreSQL server mandatory.
+Serverless runtimes without persistent disks (Vercel Functions, Cloudflare
+Workers) are not supported targets; their scaffolds were deleted.
+
+Do not make Kubernetes, Redis, Kafka, Elasticsearch, or any managed database mandatory.
 
 ---
 
@@ -439,7 +443,7 @@ hashing interface
 
 Use browser/Web APIs where possible.
 
-This keeps the plugin mobile-compatible and allows Cloudflare deployment.
+This keeps the plugin mobile-compatible and the shared packages browser-safe.
 
 ---
 
@@ -448,11 +452,11 @@ This keeps the plugin mobile-compatible and allows Cloudflare deployment.
 Core application code must use interfaces instead of directly importing:
 
 - SQLite,
-- PostgreSQL,
-- D1,
-- local filesystem,
-- AWS S3,
-- Cloudflare R2.
+- local filesystem.
+
+(Amended 2026-09-06: PostgreSQL, D1, S3, and R2 adapters dropped; disk-only
+doctrine in plans 003/005. Snapshot upload to object storage is an external
+offline step, not a live adapter.)
 
 Required abstractions:
 
@@ -514,8 +518,6 @@ Reasons:
 - lightweight,
 - TypeScript-native,
 - works in Node,
-- works in Cloudflare Workers,
-- deployable behind Vercel serverless handlers,
 - simple middleware model.
 
 Do not build the core server around Express-specific request/response objects.
@@ -554,22 +556,18 @@ Recommended:
 Drizzle ORM
 ```
 
-Provide separate adapters for:
+Provide the SQLite adapter only (amended 2026-09-06; PostgreSQL/D1 dropped):
 
 ```text
 SQLite
-PostgreSQL
-Cloudflare D1
 ```
 
-Keep schema field types intentionally portable:
+Keep schema field types simple and explicit:
 
 - IDs: text,
 - timestamps: integer epoch milliseconds,
 - booleans: integer where needed,
-- JSON: serialized text for cross-database fields.
-
-Avoid relying on PostgreSQL-only features in core queries.
+- JSON: serialized text.
 
 ---
 
@@ -648,10 +646,8 @@ tephra-server/
 │   │   │   ├── app.ts
 │   │   │   ├── routes/
 │   │   │   ├── middleware/
-│   │   │   └── entrypoints/
-│   │   │       ├── node.ts
-│   │   │       ├── cloudflare.ts
-│   │   │       └── vercel.ts
+│   │   │       └── entrypoints/
+│   │   │           └── node.ts (only runtime; serverless entrypoints dropped 2026-09-06)
 │   │   └── package.json
 │   │
 │   └── web/
@@ -673,26 +669,20 @@ tephra-server/
 │   ├── auth/
 │   ├── database/
 │   │   ├── core/
-│   │   ├── sqlite/
-│   │   ├── postgres/
-│   │   └── d1/
+│   │   └── sqlite/
 │   ├── blob-store/
 │   │   ├── core/
-│   │   ├── filesystem/
-│   │   ├── s3/
-│   │   └── r2/
+│   │   └── filesystem/
 │   └── test-fixtures/
 │
 ├── deploy/
 │   ├── docker/
 │   ├── railway/
-│   ├── cloudflare/
-│   ├── vercel/
-│   └── aws/
+│   ├── aws/
+│   └── gcp/
 │
 ├── migrations/
-│   ├── sqlite/
-│   └── postgres/
+│   └── sqlite/
 │
 ├── Dockerfile
 ├── docker-compose.yml
@@ -1148,40 +1138,22 @@ If blob already exists, return success.
 
 ---
 
-## 9.2 S3 implementation
+## 9.2 Object storage (snapshot backups only)
 
-Support:
-
-- AWS S3,
-- Cloudflare R2 through its S3-compatible API,
-- MinIO,
-- compatible providers.
-
-Configuration:
+Dropped as a live adapter 2026-09-06 (plans 003/005). S3-compatible storage,
+GCS, R2, and Railway buckets hold periodic whole-volume snapshot tarballs
+(`tephra snapshot create/upload`) for backup only. They never serve live
+reads or writes. Bucket layout for snapshots:
 
 ```text
-TEPHRA_BLOB_DRIVER=s3
-TEPHRA_S3_ENDPOINT=
-TEPHRA_S3_REGION=
-TEPHRA_S3_BUCKET=
-TEPHRA_S3_ACCESS_KEY_ID=
-TEPHRA_S3_SECRET_ACCESS_KEY=
-TEPHRA_S3_FORCE_PATH_STYLE=false
+<snap-prefix>/tephra-snap-<tenant>-<utc-timestamp>.tar.zst
 ```
 
-Object key:
+Buckets stay private. Live object key on disk remains:
 
 ```text
 blobs/ab/cd/<sha256>
 ```
-
-Do not expose the storage bucket publicly.
-
----
-
-## 9.3 Cloudflare R2 native adapter
-
-For Cloudflare Worker deployments, also provide a binding-based R2 implementation so credentials are not required inside the Worker.
 
 ---
 
@@ -1679,19 +1651,10 @@ If it already existed:
 
 ---
 
-## 16.1 Future/direct upload optimization
+## 16.1 Upload path
 
-Define an optional capability endpoint now or later:
-
-```http
-POST /api/v1/vaults/{vaultId}/blobs/upload-ticket
-```
-
-An S3 adapter may eventually return a presigned upload URL.
-
-Do not require direct-to-S3 upload for the first runnable MVP.
-
-The proxy upload path must always work for filesystem storage.
+Uploads are proxied through the API to the filesystem blob store. Direct-to-
+object-storage upload is dropped with the S3 live adapter (2026-09-06).
 
 ---
 
@@ -1777,15 +1740,8 @@ The server must serialize commits per vault.
 
 For SQLite:
 
-- transaction locking is sufficient in the single-process deployment.
-
-For PostgreSQL:
-
-- use an advisory lock or row lock on the vault.
-
-For D1:
-
-- rely on transaction/serialization semantics appropriate to the adapter.
+- transaction locking is sufficient in the single-process deployment
+  (SQLite is the only database adapter; PostgreSQL/D1 dropped 2026-09-06).
 
 Stage 1 conflict policy between two upload devices:
 
@@ -2222,9 +2178,8 @@ Keep password hashing behind:
 interface PasswordHasher
 ```
 
-Choose a production-suitable implementation compatible with the target runtime.
-
-If the initial Node deployment uses Argon2id, provide an edge-compatible implementation or auth adapter for Cloudflare rather than importing a Node-native module into shared packages.
+Choose a production-suitable Node implementation (the server is Node-only;
+serverless/edge runtimes are not supported targets).
 
 Do not store plaintext passwords.
 
@@ -2470,19 +2425,12 @@ Same config as VPS.
 Document clearly:
 
 - single instance only when using SQLite/local blobs,
-- horizontal replicas require shared database/object storage.
-
-Scalable Railway mode:
-
-```text
-PostgreSQL
-S3-compatible blob store
-stateless Tephra replicas
-```
+- more tenants means more services, each with its own volume (never share
+  one volume across services or replicas).
 
 ---
 
-## 28.3 Profile C — AWS
+## 28.3 Profile C — AWS (disk-only)
 
 Simple:
 
@@ -2492,56 +2440,28 @@ Docker
 SQLite/local disk
 ```
 
-Production:
+Larger single-tenant:
 
 ```text
-ECS/Fargate or EC2
-RDS PostgreSQL
-S3
-CloudFront optional
+ECS/Fargate + EFS access point at /data, or EC2 + EBS
+private S3 for snapshot tarballs only (never live blobs)
 ```
 
-Do not require the production profile for self-host users.
+Do not require anything beyond one disk for self-host users. Multi-tenant
+hosting is more copies of the single-disk shape (plan 004), never a shared
+RDS/S3 backend.
 
 ---
 
-## 28.4 Profile D — Vercel
-
-Because local function storage is not a persistent application volume, Vercel deployment requires remote state.
-
-Use:
+## 28.4 Profile D — GCP (disk-only)
 
 ```text
-Web: Vercel static/Vite
-API: Vercel functions
-Database: PostgreSQL adapter
-Blob store: S3-compatible adapter
+Compute Engine VM + Persistent Disk at /data, or
+Cloud Run (min=max=1) + Filestore NFS at /data
+private GCS for snapshot tarballs only (never live blobs)
 ```
 
-Example database providers may include any PostgreSQL service supported by the user's deployment.
-
-Do not hardcode one vendor.
-
-Large upload limits imposed by the platform may require direct-to-object-storage uploads later. Document the current Stage 1 limit.
-
----
-
-## 28.5 Profile E — Cloudflare
-
-Use:
-
-```text
-API: Workers
-Web: Worker static assets or Pages
-Database: D1
-Blobs: R2
-```
-
-Cloudflare D1 uses SQLite semantics, but it is not the same deployment model as a local `.db` file; use the explicit D1 adapter.
-
-Cloudflare R2 gets a binding-based adapter.
-
-Keep the Cloudflare entrypoint separate from the Node entrypoint.
+Same single-disk rules as AWS. See `tephra-server/deploy/gcp/`.
 
 ---
 
@@ -2587,30 +2507,21 @@ from one port.
 
 Use environment variables.
 
-Minimum:
+Minimum (disk-only; amended 2026-09-06 — no DATABASE_URL/S3 variables exist):
 
 ```text
 TEPHRA_PUBLIC_URL
 TEPHRA_SESSION_SECRET
 
-TEPHRA_DATABASE_DRIVER
+TEPHRA_DATABASE_DRIVER (sqlite only)
 TEPHRA_SQLITE_PATH
-TEPHRA_DATABASE_URL
 
-TEPHRA_BLOB_DRIVER
+TEPHRA_BLOB_DRIVER (filesystem only)
 TEPHRA_BLOB_PATH
 
-TEPHRA_S3_ENDPOINT
-TEPHRA_S3_REGION
-TEPHRA_S3_BUCKET
-TEPHRA_S3_ACCESS_KEY_ID
-TEPHRA_S3_SECRET_ACCESS_KEY
-
 TEPHRA_BOOTSTRAP_TOKEN
-TEPHRA_ALLOW_SIGNUPS
 
 TEPHRA_MAX_BLOB_BYTES
-TEPHRA_LOG_LEVEL
 ```
 
 Defaults:
@@ -2622,9 +2533,7 @@ TEPHRA_SQLITE_PATH=/data/tephra.db
 TEPHRA_BLOB_DRIVER=filesystem
 TEPHRA_BLOB_PATH=/data/blobs
 
-TEPHRA_ALLOW_SIGNUPS=false
 TEPHRA_MAX_BLOB_BYTES=104857600
-TEPHRA_LOG_LEVEL=info
 ```
 
 Default max blob:
@@ -3000,12 +2909,10 @@ Although Stage 1 is open-source/self-host-first, do not make assumptions that pr
 The schema and APIs MUST support:
 
 ```text
-many users
+many users (one instance + one disk per tenant; plan 003)
 many vaults per user
 many devices
-shared application process
-external PostgreSQL
-external object storage
+offline snapshot copies to object storage (plan 005)
 ```
 
 Do not put user state into process-global singleton variables.
@@ -3366,8 +3273,8 @@ Implement/document:
 - [ ] Railway template/config
 - [ ] generic VPS guide
 - [ ] AWS guide
-- [ ] Vercel adapter documentation
-- [ ] Cloudflare Worker/D1/R2 adapter
+- [ ] GCP guide (Compute Engine + Cloud Run)
+- [ ] snapshot backup/restore guide
 - [ ] environment variable reference
 
 ### Exit criteria
@@ -3376,10 +3283,9 @@ At least these must be continuously tested:
 
 ```text
 Docker + SQLite + filesystem
-Cloudflare build + D1/R2 bindings
+Railway volume smoke
+AWS and GCP disk smokes
 ```
-
-A Vercel build should also compile, even if integration deployment tests require external credentials.
 
 ---
 
@@ -3676,7 +3582,6 @@ integration-test-sqlite
 web-e2e
 build-node
 build-web
-build-cloudflare
 build-plugin
 docker-build
 ```
@@ -3778,8 +3683,9 @@ Stage 1 is complete only when all of the following are true.
 - [ ] Docker/VPS deployment documented and tested
 - [ ] Railway volume deployment documented
 - [ ] AWS options documented
-- [ ] Vercel remote DB/blob deployment compiles/documented
-- [ ] Cloudflare D1/R2 deployment compiles/documented
+- [ ] AWS disk deployment documented
+- [ ] GCP disk deployment documented
+- [ ] snapshot backup/restore documented and drilled
 
 ---
 
@@ -3890,9 +3796,7 @@ Final Stage 1 architecture:
 │  ┌──────────────────┐    ┌────────────────────┐  │
 │  │ Database adapter │    │ BlobStore adapter  │  │
 │  │                  │    │                    │  │
-│  │ SQLite           │    │ filesystem         │  │
-│  │ PostgreSQL       │    │ S3                 │  │
-│  │ D1               │    │ R2                 │  │
+│  │ SQLite (only)    │    │ filesystem (only)  │  │
 │  └────────┬─────────┘    └──────────┬─────────┘  │
 │           │                         │             │
 │           └────────────┬────────────┘             │
@@ -3952,9 +3856,6 @@ Useful current documentation:
 - Obsidian plugin submission requirements: https://docs.obsidian.md/community-directory/submission-requirements-for-plugins
 - Obsidian community developer policies: https://docs.obsidian.md/community-directory/developer-policies
 - Obsidian manifest reference: https://docs.obsidian.md/Reference/Manifest
-- Cloudflare Workers Node compatibility: https://developers.cloudflare.com/workers/runtime-apis/nodejs/
-- Cloudflare D1 documentation: https://developers.cloudflare.com/d1/
-- Cloudflare R2 documentation: https://developers.cloudflare.com/r2/
 
 Do not copy proprietary Obsidian implementation code.
 
