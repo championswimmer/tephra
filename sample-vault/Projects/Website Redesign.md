@@ -11,7 +11,7 @@ Active project. Daily trail: [[Daily/2026-09-03|2026-09-03]] → [[Daily/2026-09
 
 ## Assets
 
-- Logo: ![[pixel.png]]
+- Logo: ![[sample.png]]
 - Spec: [spec](attachments/sample.pdf)
 
 ## People

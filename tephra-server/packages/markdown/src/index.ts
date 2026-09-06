@@ -267,21 +267,62 @@ function renderInline(value: string, options: MarkdownRenderOptions): string {
 
 type TableAlign = 'left' | 'center' | 'right' | null;
 
-/** Split a GFM table row on unescaped pipes, stripping optional outer pipes. */
+/** Split a GFM table row on unescaped pipes, stripping optional outer pipes.
+ * Pipes inside `[[wikilinks|alias]]`, `[...]` link labels, and backtick code
+ * spans do not split cells (Obsidian allows `|` aliases inside tables). */
 function splitTableRow(line: string): string[] | null {
   const cells: string[] = [];
   let current = '';
   let escaped = false;
   let hasPipe = false;
-  for (const ch of line) {
+  let inWiki = false;
+  let bracketDepth = 0;
+  let inCode = false;
+  let index = 0;
+  while (index < line.length) {
+    const ch = line[index] ?? '';
     if (escaped) {
       current += ch === '|' ? '|' : `\\${ch}`;
       escaped = false;
+      index += 1;
       continue;
     }
-    if (ch === '\\') { escaped = true; continue; }
-    if (ch === '|') { hasPipe = true; cells.push(current); current = ''; continue; }
+    if (ch === '\\') { escaped = true; index += 1; continue; }
+    if (ch === '`') {
+      let run = 1;
+      while (line[index + run] === '`') run += 1;
+      current += '`'.repeat(run);
+      index += run;
+      inCode = !inCode;
+      continue;
+    }
+    if (!inCode) {
+      if (!inWiki && ch === '[' && line[index + 1] === '[') {
+        inWiki = true;
+        current += '[[';
+        index += 2;
+        continue;
+      }
+      if (inWiki && ch === ']' && line[index + 1] === ']') {
+        inWiki = false;
+        current += ']]';
+        index += 2;
+        continue;
+      }
+      if (!inWiki) {
+        if (ch === '[') bracketDepth += 1;
+        else if (ch === ']' && bracketDepth > 0) bracketDepth -= 1;
+      }
+    }
+    if (ch === '|' && !inWiki && !inCode && bracketDepth === 0) {
+      hasPipe = true;
+      cells.push(current);
+      current = '';
+      index += 1;
+      continue;
+    }
     current += ch;
+    index += 1;
   }
   if (escaped) current += '\\';
   cells.push(current);

@@ -16,7 +16,7 @@ A tour of renderer features. Index: [[Home|Home]].
 | Feature | Example |
 | ------- | ------- |
 | Link | [[Engineering/SQLite|SQLite]] |
-| Embed | ![[pixel.png]] |
+| Embed | ![[sample.png]] |
 | Missing | [[Unresolved Page]] |
 
 ## Code
@@ -32,4 +32,4 @@ ls sample-vault/attachments/
 
 ---
 
-Logo again, sized: ![[pixel.png|64]]
+Logo again, sized: ![[sample.png|64]]

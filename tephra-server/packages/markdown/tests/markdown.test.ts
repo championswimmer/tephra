@@ -109,6 +109,15 @@ describe('renderMarkdown', () => {
     expect(rendered.html).not.toContain('<table>');
   });
 
+  it('keeps wikilink alias pipes inside a single table cell', async () => {
+    const rendered = await renderMarkdown({
+      markdown: '| Feature | Example |\n| ------- | ------- |\n| Link | [[Engineering/SQLite|SQLite]] |',
+      sourcePath: 'Home.md',
+    });
+    expect(rendered.html).toContain('<table>');
+    expect(rendered.html).toContain('<td><a href="#" class="tephra-link" data-link-path="Engineering/SQLite">SQLite</a></td>');
+  });
+
   it('renders Obsidian callouts with default titles', async () => {
     const rendered = await renderMarkdown({ markdown: '> [!note]\n> Body text.', sourcePath: 'Home.md' });
     expect(rendered.html).toContain('<div class="callout" data-callout="note">');
