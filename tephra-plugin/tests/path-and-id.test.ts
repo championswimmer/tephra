@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FILE_ID_PROPERTY, VaultScanner, shouldSyncPath } from '../src/sync/scanner';
+import {
+  FILE_ID_PROPERTY,
+  VaultScanner,
+  extractFrontmatterFileId,
+  injectFrontmatterFileId,
+  shouldSyncPath,
+} from '../src/sync/scanner';
 
 describe('vault path filtering', () => {
   it.each([
@@ -55,5 +61,115 @@ describe('stable file IDs', () => {
 
     const withoutSavedMapping = await scanner.scan({}, {});
     expect(withoutSavedMapping.attachmentIds['image.png']).toBe(first.attachmentIds['image.png']);
+  });
+
+  it('handles invalid YAML frontmatter (such as Templater tags) gracefully via raw injection fallback', async () => {
+    const invalidYaml = [
+      '---',
+      'title: My Note',
+      'tags: {{VALUE:tags}}',
+      '---',
+      'Note content',
+    ].join('\n');
+
+    let fileContent = invalidYaml;
+    const note = { path: 'Template.md', extension: 'md', stat: { mtime: 1, size: 10 } };
+    const modify = vi.fn(async (_file: unknown, updated: string) => {
+      fileContent = updated;
+    });
+    const processFrontMatter = vi.fn(async () => {
+      throw new Error(
+        'Implicit map keys need to be followed by map values at line 3, column 1:\ntags: {{VALUE:tags}} ^^^^^^^^^^^^^^^',
+      );
+    });
+
+    const app = {
+      vault: {
+        getFiles: () => [note],
+        read: async () => fileContent,
+        readBinary: async () => new TextEncoder().encode(fileContent).buffer,
+        modify,
+      },
+      metadataCache: { getFileCache: () => null }, // Obsidian cache fails to parse invalid YAML
+      fileManager: { processFrontMatter },
+    };
+
+    const scanner = new VaultScanner(app as never);
+    const scanResult = await scanner.scan({}, {});
+
+    // 1. Scan must NOT throw unhandled YAML parse error
+    expect(scanResult.files).toHaveLength(1);
+    const entry = scanResult.files[0];
+    expect(entry?.fileId).toMatch(/^file_/);
+
+    // 2. processFrontMatter was attempted and failed, triggering vault.modify fallback
+    expect(processFrontMatter).toHaveBeenCalledTimes(1);
+    expect(modify).toHaveBeenCalledTimes(1);
+
+    // 3. File content now has tephra-file-id while preserving invalid YAML lines
+    expect(fileContent).toContain(`${FILE_ID_PROPERTY}: ${entry?.fileId}`);
+    expect(fileContent).toContain('tags: {{VALUE:tags}}');
+
+    // 4. On next scan, extractFrontmatterFileId extracts the ID directly from raw content without calling processFrontMatter
+    const secondScan = await scanner.scan({}, {});
+    expect(secondScan.files[0]?.fileId).toBe(entry?.fileId);
+    expect(processFrontMatter).toHaveBeenCalledTimes(1); // Not called again!
+  });
+
+  it('falls back to path-mapped ID if writing frontmatter fails completely', async () => {
+    const note = { path: 'ReadOnly.md', extension: 'md', stat: { mtime: 1, size: 10 } };
+    const processFrontMatter = vi.fn(async () => {
+      throw new Error('YAML error');
+    });
+    const modify = vi.fn(async () => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    const app = {
+      vault: {
+        getFiles: () => [note],
+        read: async () => '# Read Only\nContent',
+        readBinary: async () => new TextEncoder().encode('# Read Only\nContent').buffer,
+        modify,
+      },
+      metadataCache: { getFileCache: () => null },
+      fileManager: { processFrontMatter },
+    };
+
+    const scanner = new VaultScanner(app as never);
+    // Should NOT throw!
+    const scanResult = await scanner.scan({}, {});
+    expect(scanResult.files).toHaveLength(1);
+    expect(scanResult.files[0]?.fileId).toMatch(/^file_attachment_/);
+    expect(scanResult.attachmentIds['ReadOnly.md']).toBe(scanResult.files[0]?.fileId);
+  });
+});
+
+describe('frontmatter extraction and injection helpers', () => {
+  it('extracts frontmatter file ID with various delimiters and formatting', () => {
+    expect(
+      extractFrontmatterFileId('---\ntephra-file-id: file_abc\n---\nbody'),
+    ).toBe('file_abc');
+    expect(
+      extractFrontmatterFileId('---\r\ntephra-file-id: "file_def"\r\n---\r\nbody'),
+    ).toBe('file_def');
+    expect(
+      extractFrontmatterFileId('---\ntitle: Note\ntephra-file-id: file_ghi # comment\n---\nbody'),
+    ).toBe('file_ghi');
+    expect(extractFrontmatterFileId('No frontmatter here')).toBeUndefined();
+  });
+
+  it('injects frontmatter file ID cleanly into existing frontmatter or creates one', () => {
+    const existing = '---\ntitle: Foo\ntags: {{VALUE:tags}}\n---\nHello';
+    const injected = injectFrontmatterFileId(existing, 'file_123');
+    expect(injected).toBe('---\ntephra-file-id: file_123\ntitle: Foo\ntags: {{VALUE:tags}}\n---\nHello');
+
+    const noFm = '# Hello\nWorld';
+    const created = injectFrontmatterFileId(noFm, 'file_456');
+    expect(created).toBe('---\ntephra-file-id: file_456\n---\n\n# Hello\nWorld');
+
+    const updateExisting = '---\ntephra-file-id: file_old\ntitle: Bar\n---';
+    const replaced = injectFrontmatterFileId(updateExisting, 'file_new');
+    expect(replaced).toBe('---\ntephra-file-id: file_new\ntitle: Bar\n---');
   });
 });

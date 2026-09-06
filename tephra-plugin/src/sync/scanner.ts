@@ -24,6 +24,40 @@ async function deterministicAttachmentId(path: string): Promise<string> {
   return `file_attachment_${await sha256Hex(new TextEncoder().encode(path))}`;
 }
 
+export function extractFrontmatterFileId(content: string): string | undefined {
+  const match = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)(?:\r?\n|$)/.exec(content);
+  if (!match) return undefined;
+  const prop = new RegExp(`^${FILE_ID_PROPERTY}:\\s*(?:["']?)([^"'\r\n#]+)(?:["']?)`, 'm').exec(
+    match[1] ?? '',
+  );
+  const id = prop?.[1]?.trim();
+  return id || undefined;
+}
+
+export function injectFrontmatterFileId(content: string, id: string): string {
+  const crlf = content.includes('\r\n');
+  const newline = crlf ? '\r\n' : '\n';
+
+  const frontmatterMatch = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)(?:\r?\n|$)/.exec(content);
+  if (frontmatterMatch) {
+    const rawFm = frontmatterMatch[1] ?? '';
+    const propRegex = new RegExp(`^${FILE_ID_PROPERTY}:.*$`, 'm');
+    if (propRegex.test(rawFm)) {
+      const updatedFm = rawFm.replace(propRegex, `${FILE_ID_PROPERTY}: ${id}`);
+      return content.replace(rawFm, updatedFm);
+    }
+  }
+
+  if (content.startsWith('---\r\n')) {
+    return `---\r\n${FILE_ID_PROPERTY}: ${id}\r\n${content.slice(5)}`;
+  }
+  if (content.startsWith('---\n')) {
+    return `---\n${FILE_ID_PROPERTY}: ${id}\n${content.slice(4)}`;
+  }
+
+  return `---${newline}${FILE_ID_PROPERTY}: ${id}${newline}---${newline}${newline}${content}`;
+}
+
 function mimeType(file: TFile): string | undefined {
   if (file.extension.toLowerCase() === 'md') return 'text/markdown';
   const known: Record<string, string> = {
@@ -65,7 +99,7 @@ export class VaultScanner {
       const markdown = file.extension.toLowerCase() === 'md';
       let fileId: string;
       if (markdown) {
-        fileId = await this.markdownFileId(file);
+        fileId = await this.markdownFileId(file, previous, attachmentIds, nextAttachmentIds);
       } else {
         fileId =
           attachmentIds[file.path] ??
@@ -108,19 +142,68 @@ export class VaultScanner {
     return { files: sortManifest(entries), attachmentIds: nextAttachmentIds };
   }
 
-  private async markdownFileId(file: TFile): Promise<string> {
-    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    const existing = frontmatter?.[FILE_ID_PROPERTY];
-    if (typeof existing === 'string' && existing.trim()) return existing.trim();
+  private async markdownFileId(
+    file: TFile,
+    previous: Readonly<Record<string, LocalFileState>>,
+    attachmentIds: Readonly<Record<string, string>>,
+    nextAttachmentIds: Record<string, string>,
+  ): Promise<string> {
+    try {
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const existing = frontmatter?.[FILE_ID_PROPERTY];
+      if (typeof existing === 'string' && existing.trim()) return existing.trim();
+    } catch {
+      // Obsidian cache lookup failed; continue to direct content read
+    }
+
+    let content: string | undefined;
+    try {
+      content = await this.app.vault.read(file);
+      const rawId = extractFrontmatterFileId(content);
+      if (rawId) return rawId;
+    } catch {
+      // Direct file read failed; continue to ID write
+    }
+
     const id = newFileId();
-    await this.writeMarkdownFileId(file, id);
-    return id;
+    const written = await this.writeMarkdownFileId(file, id, content);
+    if (written) return id;
+
+    const fallbackId =
+      attachmentIds[file.path] ??
+      previous[file.path]?.fileId ??
+      (await deterministicAttachmentId(file.path));
+    nextAttachmentIds[file.path] = fallbackId;
+    return fallbackId;
   }
 
-  private async writeMarkdownFileId(file: TFile, id: string): Promise<void> {
-    this.beforeFrontmatterWrite(file.path);
-    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-      frontmatter[FILE_ID_PROPERTY] = id;
-    });
+  private async writeMarkdownFileId(
+    file: TFile,
+    id: string,
+    existingContent?: string,
+  ): Promise<boolean> {
+    try {
+      this.beforeFrontmatterWrite(file.path);
+      await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+        frontmatter[FILE_ID_PROPERTY] = id;
+      });
+      return true;
+    } catch (error) {
+      // processFrontMatter fails when YAML syntax is invalid (e.g. Templater {{VALUE:tags}} or syntax errors).
+      // Fall back to direct content modification to avoid crashing the sync coordinator.
+      try {
+        const content = existingContent ?? (await this.app.vault.read(file));
+        const updated = injectFrontmatterFileId(content, id);
+        this.beforeFrontmatterWrite(file.path);
+        await this.app.vault.modify(file, updated);
+        return true;
+      } catch (writeError) {
+        console.warn(
+          `[tephra] Could not write frontmatter ID for ${file.path}:`,
+          writeError instanceof Error ? writeError.message : writeError,
+        );
+        return false;
+      }
+    }
   }
 }
