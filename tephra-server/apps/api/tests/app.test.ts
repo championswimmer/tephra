@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Database, Repositories, TransactionRepositories } from '@tephra/database-core';
 import type { BlobStore } from '@tephra/blob-store-core';
 import { hashManifest, sha256Hex, type SyncManifestEntry } from '@tephra/protocol';
-import type { ApiToken, BlobMetadata, CurrentVaultFile, FileVersion, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
+import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
 import { createApp } from '../src/app.js';
 
 class MemoryBlobStore implements BlobStore {
@@ -14,7 +14,7 @@ class MemoryBlobStore implements BlobStore {
   }
   async get(hash: string) {
     const value = this.values.get(hash);
-    return value ? { bytes: new Blob([value]).stream(), size: value.byteLength } : null;
+    return value ? { bytes: new Blob([Uint8Array.from(value).buffer]).stream(), size: value.byteLength } : null;
   }
   async delete(hash: string): Promise<void> { this.values.delete(hash); }
 }
@@ -22,7 +22,7 @@ class MemoryBlobStore implements BlobStore {
 class MemoryDatabase implements Database {
   readonly state = {
     users: new Map<string, User>(), sessions: new Map<string, Session>(), vaults: new Map<string, Vault>(),
-    tokens: new Map<string, ApiToken>(), blobs: new Map<string, BlobMetadata>(), files: new Map<string, CurrentVaultFile>(),
+    tokens: new Map<string, ApiToken>(), devices: new Map<string, Device>(), blobs: new Map<string, BlobMetadata>(), files: new Map<string, CurrentVaultFile>(),
     revisions: [] as VaultRevision[], versions: [] as FileVersion[],
   };
   users = {
@@ -46,7 +46,10 @@ class MemoryDatabase implements Database {
     delete: async (id: string) => { this.state.vaults.delete(id); },
   };
   devices = {
-    findById: async () => null, listByUser: async () => [], insert: async () => undefined, update: async () => undefined,
+    findById: async (id: string) => this.state.devices.get(id) ?? null,
+    listByUser: async (id: string) => [...this.state.devices.values()].filter((item) => item.userId === id),
+    insert: async (item: Device) => { this.state.devices.set(item.id, item); },
+    update: async (item: Device) => { this.state.devices.set(item.id, item); },
   };
   apiTokens = {
     findById: async (id: string) => this.state.tokens.get(id) ?? null,
@@ -142,6 +145,17 @@ describe('Tephra API', () => {
     expect(commit.status).toBe(409);
     expect(database.state.revisions).toHaveLength(0);
     expect(database.state.vaults.get(vault.id)?.latestRevision).toBe(0);
+  });
+
+  it('registers the syncing device on commit', async () => {
+    const { app, token, vault, database } = await setup();
+    const bytes = new TextEncoder().encode('# Device');
+    const hash = await sha256Hex(bytes);
+    await app.request(`/api/v1/vaults/${vault.id}/blobs/${hash}`, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength), 'content-type': 'text/markdown' }, body: bytes });
+    const files: SyncManifestEntry[] = [{ fileId: 'file-1', path: 'Note.md', hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' }];
+    const commit = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ deviceId: 'field-device', manifestHash: await hashManifest(files), files }) });
+    expect(commit.status).toBe(200);
+    expect(database.state.devices.get('field-device')).toMatchObject({ userId: vault.ownerUserId, lastSeenAt: 1_700_000_000_000 });
   });
 
   it('commits once, serves reads, and is idempotent by manifest hash', async () => {

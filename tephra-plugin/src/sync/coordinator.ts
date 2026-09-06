@@ -1,11 +1,13 @@
 import type { App, TFile } from 'obsidian';
-import { TephraClient, TephraHttpError, type TephraClientLike } from '../api/client';
+import { TephraClient, TephraHttpError } from '../api/client';
+import type { TephraClientLike } from '../api/client';
 import type { TephraPluginState, LocalFileState } from '../state/plugin-state';
 import type { VaultEvent } from './event-buffer';
 import { manifestHash } from './manifest';
 import { SerializedReconciler } from './reconciliation';
-import { VaultScanner } from './scanner';
-import { uploadMissingBlobs, type BlobSource } from './uploader';
+import type { VaultScanner } from './scanner';
+import { uploadMissingBlobs } from './uploader';
+import type { BlobSource } from './uploader';
 
 export type SyncPhase =
   | 'idle'

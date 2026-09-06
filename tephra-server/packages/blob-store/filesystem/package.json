@@ -11,9 +11,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "node -e 'require(\"node:fs\").rmSync(\"dist\",{recursive:true,force:true})' && esbuild src/index.ts --platform=node --format=esm --target=es2022 --bundle --packages=external --outfile=dist/index.js --log-level=error && tsup src/index.ts --dts-only --out-dir dist --silent",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
     "tsup": "^8.5.1"
   }
 }

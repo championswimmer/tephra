@@ -10,7 +10,7 @@ COPY tephra-server/apps/web/package.json ./tephra-server/apps/web/package.json
 COPY tephra-server/packages ./tephra-server/packages
 RUN npm ci
 
-COPY tsconfig.base.json eslint.config.js .prettierrc.json ./
+COPY tsconfig.base.json eslint.config.mjs .prettierrc.json ./
 COPY tephra-plugin ./tephra-plugin
 COPY tephra-server ./tephra-server
 RUN npm run build

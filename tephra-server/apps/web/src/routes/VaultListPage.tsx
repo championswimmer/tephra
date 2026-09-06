@@ -59,7 +59,7 @@ export function VaultListPage() {
           </button>
         </form>
       </div>
-      {error && <ErrorState error={error} retry={() => void load()} />}
+      {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
       {!vaults && !error ? (
         <Loading label="Loading vaults…" />
       ) : vaults?.length === 0 ? (

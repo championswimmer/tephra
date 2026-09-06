@@ -1,4 +1,5 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { PluginSettingTab, Setting } from 'obsidian';
+import type { App } from 'obsidian';
 import type TephraPlugin from '../main';
 
 export class TephraSettingTab extends PluginSettingTab {

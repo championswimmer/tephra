@@ -194,7 +194,6 @@ export function parseNote(markdown: string): ParsedNote {
   const lines = body.split('\n');
   const maskedLines = masked.split('\n');
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
     const safeLine = maskedLines[index] ?? '';
     const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(safeLine);
     if (heading) {
@@ -210,7 +209,10 @@ export function parseNote(markdown: string): ParsedNote {
 function safeHref(value: string): string | null {
   const decodedEntities = value.replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_match, hex: string | undefined, decimal: string | undefined) =>
     String.fromCodePoint(Number.parseInt(hex ?? decimal ?? '0', hex === undefined ? 10 : 16)));
-  const compact = decodedEntities.replace(/[\u0000-\u0020]+/g, '').toLocaleLowerCase();
+  const compact = [...decodedEntities]
+    .filter((character) => (character.codePointAt(0) ?? 0) > 0x20)
+    .join('')
+    .toLocaleLowerCase();
   if (compact.startsWith('javascript:') || compact.startsWith('data:') || compact.startsWith('vbscript:')) return null;
   return value;
 }
@@ -223,7 +225,7 @@ function resolveForRender(options: MarkdownRenderOptions, target: string): Rende
 
 function renderInline(value: string, options: MarkdownRenderOptions): string {
   const tokens: string[] = [];
-  const store = (html: string): string => `\u0000${String(tokens.push(html) - 1)}\u0000`;
+  const store = (html: string): string => `\uE000${String(tokens.push(html) - 1)}\uE001`;
   let output = value.replace(/(`+)([^`]*?)\1/g, (_raw, _ticks: string, codeValue: string) => store(`<code>${escapeHtml(codeValue)}</code>`));
   output = output.replace(/(!?)\[\[([^\]\n]+)\]\]/g, (_raw, bang: string, innerValue: string) => {
     const parts = innerValue.split('|');
@@ -254,7 +256,7 @@ function renderInline(value: string, options: MarkdownRenderOptions): string {
   output = escapeHtml(output)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  return output.replace(/\u0000(\d+)\u0000/g, (_match, index: string) => tokens[Number(index)] ?? '');
+  return output.replace(/\uE000(\d+)\uE001/g, (_match, index: string) => tokens[Number(index)] ?? '');
 }
 
 export async function renderMarkdown(options: MarkdownRenderOptions): Promise<RenderedNote> {

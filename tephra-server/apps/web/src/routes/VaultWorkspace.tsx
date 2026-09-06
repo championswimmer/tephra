@@ -101,7 +101,11 @@ export function VaultWorkspace() {
             <strong>Files</strong>
             <span>{files.length}</span>
           </div>
-          <FileTree files={files} selectedId={view.fileId} onSelect={(file) => open(file.fileId)} />
+          <FileTree
+            files={files}
+            {...(view.fileId === undefined ? {} : { selectedId: view.fileId })}
+            onSelect={(file) => open(file.fileId)}
+          />
         </aside>
         <section className="content-pane">
           {pending && <IndexPending />}

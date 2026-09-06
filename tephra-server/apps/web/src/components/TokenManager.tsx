@@ -73,7 +73,7 @@ export function TokenManager({ vaultId }: { vaultId: string }) {
           </div>
         </div>
       )}
-      {error && <ErrorState error={error} retry={() => void load()} />}
+      {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
       {!tokens && !error ? (
         <Loading label="Loading tokens…" />
       ) : tokens?.length === 0 ? (

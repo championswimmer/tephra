@@ -125,7 +125,8 @@ async function authenticate(c: AppContext, dependencies: ApiDependencies): Promi
 
 async function ownedVault(c: AppContext, dependencies: ApiDependencies, scope: ApiTokenScope): Promise<Vault> {
   const principal = c.get('principal');
-  const vault = await dependencies.database.vaults.findById(c.req.param('vaultId'));
+  const vaultId = z.string().min(1).parse(c.req.param('vaultId'));
+  const vault = await dependencies.database.vaults.findById(vaultId);
   if (vault === null) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
   if (!canAccessVault(principal, vault, scope)) fail(403, 'VAULT_ACCESS_DENIED', 'Access to this vault is denied.');
   return vault;
@@ -186,6 +187,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
             : 'INVALID_MANIFEST';
       return c.json({ error: { code, message: 'Request validation failed.' } }, 400);
     }
+    console.error('Unhandled API error:', error);
     return c.json({ error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
   });
 
@@ -287,7 +289,13 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.get('/api/v1/vaults/:vaultId/tokens', async (c) => {
     requireSession(c);
     const tokens = await dependencies.database.apiTokens.listByVault(c.req.param('vaultId'));
-    return c.json({ tokens: tokens.map(({ tokenHash: _tokenHash, ...token }) => token) });
+    return c.json({
+      tokens: tokens.map((token) => {
+        const { tokenHash, ...publicToken } = token;
+        void tokenHash;
+        return publicToken;
+      }),
+    });
   });
   app.post('/api/v1/vaults/:vaultId/tokens', async (c) => {
     const principal = requireSession(c);
@@ -340,8 +348,9 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     const existing = await dependencies.database.blobs.findByHash(hash);
     if (existing && (existing.size !== bytes.byteLength || !(await dependencies.blobStore.has(hash)))) fail(409, 'COMMIT_FAILED', 'Stored blob metadata is inconsistent.');
     if (!existing) {
-      await dependencies.blobStore.put({ hash, bytes, size: bytes.byteLength, ...(c.req.header('content-type') ? { mimeType: c.req.header('content-type') } : {}) });
-      await dependencies.database.blobs.insert({ hash, size: bytes.byteLength, mimeType: c.req.header('content-type') ?? null, createdAt: dependencies.clock.now() });
+      const mimeType = c.req.header('content-type');
+      await dependencies.blobStore.put({ hash, bytes, size: bytes.byteLength, ...(mimeType === undefined ? {} : { mimeType }) });
+      await dependencies.database.blobs.insert({ hash, size: bytes.byteLength, mimeType: mimeType ?? null, createdAt: dependencies.clock.now() });
     }
     return c.json({ hash, stored: existing === null });
   });
@@ -366,10 +375,20 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
         return { status: 'up-to-date' as const, revision: existing.revision };
       }
       await requireBlobs(repositories, dependencies.blobStore, body.files);
+      const now = dependencies.clock.now();
+      const knownDevice = await repositories.devices.findById(body.deviceId);
+      if (!knownDevice) {
+        await repositories.devices.insert({ id: body.deviceId, userId: transactionToken.userId, name: body.deviceId, createdAt: now, lastSeenAt: now });
+      } else {
+        await repositories.devices.update({ ...knownDevice, lastSeenAt: now });
+      }
       const current = await repositories.vaultFiles.listByVault(vaultId);
       const revision = vault.latestRevision + 1;
-      const now = dependencies.clock.now();
-      const incoming = body.files.map((file) => ({ ...file, blobHash: file.hash }));
+      const incoming = body.files.map(({ mimeType, ...file }) => ({
+        ...file,
+        blobHash: file.hash,
+        ...(mimeType === undefined ? {} : { mimeType }),
+      }));
       const diff = diffRevision({ vaultId, revision, createdAt: now, current, incoming, ids: dependencies.ids });
       await repositories.vaultRevisions.insert({ vaultId, revision, manifestHash: body.manifestHash, deviceId: body.deviceId, createdAt: now });
       if (diff.versions.length) await repositories.fileVersions.insertMany(diff.versions);
@@ -404,7 +423,8 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
 
   const findFile = async (c: AppContext): Promise<CurrentVaultFile> => {
-    const file = await dependencies.database.vaultFiles.findById(c.req.param('fileId'));
+    const fileId = z.string().min(1).parse(c.req.param('fileId'));
+    const file = await dependencies.database.vaultFiles.findById(fileId);
     if (!file || file.vaultId !== c.req.param('vaultId')) fail(404, 'VAULT_NOT_FOUND', 'File was not found.');
     return file;
   };

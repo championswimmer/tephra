@@ -13,7 +13,9 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/main.ts --format esm --dts --clean",
+    "dev": "node --env-file-if-exists=.env --import tsx src/main.ts",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -21,8 +23,13 @@
     "@hono/node-server": "^1.14.1",
     "@tephra/auth": "0.1.0",
     "@tephra/blob-store-core": "0.1.0",
+    "@tephra/blob-store-filesystem": "0.1.0",
     "@tephra/core": "0.1.0",
     "@tephra/database-core": "0.1.0",
+    "@tephra/database-sqlite": "0.1.0",
+    "@tephra/indexer": "0.1.0",
+    "@tephra/link-resolver": "0.1.0",
+    "@tephra/markdown": "0.1.0",
     "@tephra/protocol": "0.1.0",
     "@tephra/vault-model": "0.1.0",
     "hono": "^4.7.2",
@@ -30,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0"
   }
 }
