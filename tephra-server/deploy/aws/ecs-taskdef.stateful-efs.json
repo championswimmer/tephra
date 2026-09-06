@@ -1,0 +1,87 @@
+{
+  "$comment": "Tephra stateful single-replica ECS task definition skeleton (SQLite + filesystem blobs on EFS at /data). Replace every <PLACEHOLDER> before use. See ../README.md and https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html",
+  "family": "tephra-stateful",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "<EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<TASK_ROLE_ARN>",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "tephra",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/tephra:<TAG>",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "HOST", "value": "0.0.0.0" },
+        { "name": "PORT", "value": "8080" },
+        { "name": "TEPHRA_PUBLIC_URL", "value": "<HTTPS_PUBLIC_URL>" },
+        { "name": "TEPHRA_DATABASE_DRIVER", "value": "sqlite" },
+        { "name": "TEPHRA_SQLITE_PATH", "value": "/data/tephra.db" },
+        { "name": "TEPHRA_BLOB_DRIVER", "value": "filesystem" },
+        { "name": "TEPHRA_BLOB_PATH", "value": "/data/blobs" },
+        { "name": "TEPHRA_ALLOW_SIGNUPS", "value": "false" },
+        { "name": "TEPHRA_MAX_BLOB_BYTES", "value": "104857600" },
+        { "name": "TEPHRA_LOG_LEVEL", "value": "info" }
+      ],
+      "secrets": [
+        {
+          "name": "TEPHRA_SESSION_SECRET",
+          "valueFrom": "<SESSION_SECRET_SSM_OR_SECRETSMANAGER_ARN>"
+        },
+        {
+          "name": "TEPHRA_BOOTSTRAP_TOKEN",
+          "valueFrom": "<BOOTSTRAP_TOKEN_SSM_OR_SECRETSMANAGER_ARN>"
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "tephra-data",
+          "containerPath": "/data",
+          "readOnly": false
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "<LOG_GROUP_NAME>",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "tephra"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "tephra-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "<EFS_FILESYSTEM_ID>",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "accessPointId": "<EFS_ACCESS_POINT_ID>",
+          "iam": "ENABLED"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 import { requestUrl, type RequestUrlParam } from 'obsidian';
 import {
   blobUploadResponseSchema,
+  PLUGIN_VERSION_HEADER,
+  PROTOCOL_VERSION,
+  PROTOCOL_VERSION_HEADER,
   syncCommitResponseSchema,
   syncPlanResponseSchema,
   type SyncCommitBody,
@@ -8,6 +11,9 @@ import {
   type SyncPlanBody,
   type SyncPlanResponse,
 } from '@tephra/protocol';
+
+/** Mirrors the `version` field in the plugin `package.json`. */
+export const PLUGIN_VERSION = '0.1.0';
 
 export class TephraHttpError extends Error {
   constructor(
@@ -44,6 +50,7 @@ export class TephraClient implements TephraClientLike {
         Authorization: `Bearer ${this.token}`,
         'Content-Type': 'application/octet-stream',
         'X-Tephra-Blob-Size': String(bytes.byteLength),
+        ...this.versionHeaders(),
       },
       body: Uint8Array.from(bytes).buffer,
       throw: false,
@@ -65,12 +72,20 @@ export class TephraClient implements TephraClientLike {
     const response = await this.request({
       url: this.url(endpoint),
       method,
-      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+        ...this.versionHeaders(),
+      },
       body: JSON.stringify(body),
       throw: false,
     });
     this.assertSuccess(response.status, response.text);
     return parse(response.json);
+  }
+
+  private versionHeaders(): Record<string, string> {
+    return { [PLUGIN_VERSION_HEADER]: PLUGIN_VERSION, [PROTOCOL_VERSION_HEADER]: PROTOCOL_VERSION };
   }
 
   protected async request(options: RequestUrlParam) {

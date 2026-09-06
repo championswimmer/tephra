@@ -129,4 +129,30 @@ describe('SQLite database adapter', () => {
     expect(await db.sessions.deleteExpired(5)).toBe(1);
     expect(await db.sessions.findById('new')).not.toBeNull();
   });
+
+  it('lists only old blobs that are unreferenced by files or versions', async () => {
+    const { db } = await database();
+    await seed(db);
+    const referenced = 'b'.repeat(64);
+    const oldOrphan = 'c'.repeat(64);
+    const recentOrphan = 'd'.repeat(64);
+    const versionOnly = 'e'.repeat(64);
+    await db.blobs.insert({ hash: referenced, size: 1, mimeType: null, createdAt: 10 });
+    await db.blobs.insert({ hash: oldOrphan, size: 1, mimeType: null, createdAt: 10 });
+    await db.blobs.insert({ hash: recentOrphan, size: 1, mimeType: null, createdAt: 100 });
+    await db.blobs.insert({ hash: versionOnly, size: 1, mimeType: null, createdAt: 10 });
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: referenced, size: 1, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 11 });
+    await db.fileVersions.insertMany([{ id: 'version-1', vaultId: 'vault-1', fileId: 'file-9', revision: 1, path: 'Old.md', blobHash: versionOnly, size: 1, mtime: 1, changeType: 'create', createdAt: 11 }]);
+
+    // Cutoff 50: 'a' (seeded orphan, created_at 4) and the old orphan qualify;
+    // current-file, version-only, and recent blobs are excluded.
+    expect((await db.blobs.findUnreferencedOlderThan(50, 10)).map((item) => item.hash)).toEqual([
+      'a'.repeat(64),
+      oldOrphan,
+    ]);
+    expect((await db.blobs.findUnreferencedOlderThan(50, 1)).map((item) => item.hash)).toEqual(['a'.repeat(64)]);
+    expect(await db.blobs.findUnreferencedOlderThan(50, 0)).toEqual([]);
+    expect(await db.blobs.findUnreferencedOlderThan(4, 10)).toEqual([]);
+  });
 });

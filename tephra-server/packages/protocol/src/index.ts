@@ -40,6 +40,28 @@ export const sha256Schema = z
 const identifierSchema = z.string().min(1);
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe();
 
+export const PROTOCOL_VERSION = '1';
+export const MINIMUM_PLUGIN_VERSION = '0.1.0';
+export const PROTOCOL_VERSION_HEADER = 'X-Tephra-Protocol-Version';
+export const PLUGIN_VERSION_HEADER = 'X-Tephra-Plugin-Version';
+
+function parseVersionTuple(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+export function isSupportedPluginVersion(version: string | null | undefined): boolean {
+  if (version === null || version === undefined || version.trim() === '') return true;
+  const actual = parseVersionTuple(version);
+  const minimum = parseVersionTuple(MINIMUM_PLUGIN_VERSION);
+  if (actual === null || minimum === null) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actual[index] !== minimum[index]) return (actual[index] ?? 0) > (minimum[index] ?? 0);
+  }
+  return true;
+}
+
 export const syncManifestEntrySchema = z.strictObject({
   fileId: identifierSchema,
   path: canonicalVaultPathSchema,
@@ -121,12 +143,16 @@ export const syncPlanResponseSchema = z.strictObject({
   status: z.enum(['upload-required', 'up-to-date']),
   latestRevision: nonNegativeIntegerSchema,
   missingBlobs: z.array(missingBlobSchema),
+  protocolVersion: z.string().min(1).optional(),
+  minimumPluginVersion: z.string().min(1).optional(),
 });
 export type SyncPlanResponse = z.infer<typeof syncPlanResponseSchema>;
 
 export const syncCommitResponseSchema = z.strictObject({
   status: z.enum(['committed', 'up-to-date']),
   revision: nonNegativeIntegerSchema,
+  protocolVersion: z.string().min(1).optional(),
+  minimumPluginVersion: z.string().min(1).optional(),
 });
 export type SyncCommitResponse = z.infer<typeof syncCommitResponseSchema>;
 

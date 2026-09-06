@@ -149,6 +149,38 @@ snapshot with a copy of the blob directory; copying a live `.db` file directly i
 consistent procedure. Back up before upgrades and retain the previous image until the
 post-upgrade smoke test succeeds.
 
+## Blob garbage collection
+
+Failed or superseded uploads can leave blobs in the blob directory that no current
+vault file and no retained file version references. Tephra's `collectUnreferencedBlobs`
+routine (in `@tephra/api`) deletes such orphan blobs from both the blob store and the
+`blobs` table. A blob only becomes eligible 7 days after its `created_at` timestamp, so
+blobs belonging to in-flight uploads — always much newer than the cutoff — are never
+collected, and blobs referenced by current files or retained history are never
+candidates. Run collection as a periodic maintenance job, not on the sync hot path.
+
+## Migration policy
+
+SQLite migrations live in `tephra-server/migrations/sqlite/` (for example
+`001_initial.sql`). They auto-run on Node.js server startup via `openSqliteDatabase`
+(`tephra-server/packages/database/sqlite`): a fresh database executes the migration
+transactionally and records the schema version with `PRAGMA user_version`; an
+up-to-date database is left untouched and a newer-than-supported database fails fast
+instead of starting. Never edit a released migration. Schema changes ship as a new
+numbered migration file plus code that understands the previous version.
+
+## Compatibility matrix
+
+| Client / platform              | Status                                             |
+| ------------------------------ | -------------------------------------------------- |
+| Desktop Obsidian plugin        | Tested (Stage 1 sync and read-only web mirror)     |
+| Evergreen desktop browsers     | Tested (current Chrome, Firefox, Safari, Edge)     |
+| Mobile browsers (Web Crypto)   | Supported via the mobile-path Web Crypto code path |
+| Physical mobile device testing | Pending — manual test on a real phone not yet done |
+
+Only evergreen browsers are supported. If the mobile-path Web Crypto flow fails on a
+device, report the device, OS, and browser version.
+
 ## Deployment targets
 
 - [Railway](deploy/railway/README.md): Docker plus a volume mounted at `/data`.

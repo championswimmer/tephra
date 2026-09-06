@@ -55,6 +55,14 @@ export interface ApiTokenRepository {
 export interface BlobRepository {
   findByHash(hash: string): Promise<BlobMetadata | null>;
   findByHashes(hashes: readonly string[]): Promise<BlobMetadata[]>;
+  /**
+   * Lists blobs that are not referenced by any current vault file or any
+   * retained file version and were created strictly before `cutoff`,
+   * oldest first. Used by blob garbage collection; callers must pass a
+   * cutoff that leaves a grace period (for example 7 days) so blobs from
+   * in-flight uploads are never returned.
+   */
+  findUnreferencedOlderThan(cutoff: number, limit: number): Promise<BlobMetadata[]>;
   insert(blob: BlobMetadata): Promise<void>;
   delete(hash: string): Promise<void>;
 }

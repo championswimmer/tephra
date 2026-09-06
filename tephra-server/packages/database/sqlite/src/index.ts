@@ -173,6 +173,10 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
     blobs: {
       async findByHash(hash) { const row = first(db, 'SELECT * FROM blobs WHERE hash=?', hash); return row && blob(row); },
       async findByHashes(hashes) { if (hashes.length === 0) return []; const placeholders = hashes.map(() => '?').join(','); return all(db, `SELECT * FROM blobs WHERE hash IN (${placeholders}) ORDER BY hash`, ...hashes).map(blob); },
+      async findUnreferencedOlderThan(cutoff, limit) {
+        if (!Number.isSafeInteger(limit) || limit <= 0) return [];
+        return all(db, `SELECT * FROM blobs WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM vault_files WHERE vault_files.blob_hash = blobs.hash) AND NOT EXISTS (SELECT 1 FROM file_versions WHERE file_versions.blob_hash = blobs.hash) ORDER BY created_at ASC LIMIT ?`, cutoff, limit).map(blob);
+      },
       async insert(v) { db.prepare('INSERT INTO blobs VALUES (?, ?, ?, ?)').run(v.hash, v.size, v.mimeType, v.createdAt); },
       async delete(hash) { db.prepare('DELETE FROM blobs WHERE hash=?').run(hash); },
     },

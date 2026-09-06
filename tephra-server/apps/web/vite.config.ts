@@ -10,5 +10,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './tests/setup.ts',
     css: false,
+    // Playwright end-to-end specs live in ./e2e and must not run under vitest
+    // (Playwright's test() collides with vitest's runner).
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
   },
 });

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Database, Repositories, TransactionRepositories } from '@tephra/database-core';
 import type { BlobStore } from '@tephra/blob-store-core';
-import { hashManifest, sha256Hex, type SyncManifestEntry } from '@tephra/protocol';
+import {
+  hashManifest,
+  MINIMUM_PLUGIN_VERSION,
+  PROTOCOL_VERSION,
+  sha256Hex,
+  type SyncManifestEntry,
+} from '@tephra/protocol';
 import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
 import { createApp } from '../src/app.js';
 
@@ -62,6 +68,16 @@ class MemoryDatabase implements Database {
   blobs = {
     findByHash: async (hash: string) => this.state.blobs.get(hash) ?? null,
     findByHashes: async (hashes: readonly string[]) => hashes.flatMap((hash) => { const item = this.state.blobs.get(hash); return item ? [item] : []; }),
+    findUnreferencedOlderThan: async (cutoff: number, limit: number) => {
+      if (!Number.isSafeInteger(limit) || limit <= 0) return [];
+      const referenced = new Set<string>();
+      for (const file of this.state.files.values()) referenced.add(file.blobHash);
+      for (const version of this.state.versions) if (version.blobHash !== null) referenced.add(version.blobHash);
+      return [...this.state.blobs.values()]
+        .filter((item) => item.createdAt < cutoff && !referenced.has(item.hash))
+        .sort((left, right) => left.createdAt - right.createdAt)
+        .slice(0, limit);
+    },
     insert: async (item: BlobMetadata) => { this.state.blobs.set(item.hash, item); },
     delete: async (hash: string) => { this.state.blobs.delete(hash); },
   };
@@ -167,13 +183,44 @@ describe('Tephra API', () => {
     const files: SyncManifestEntry[] = [{ fileId: 'file-1', path: 'Note.md', hash, size: bytes.byteLength, mtime: 1, kind: 'markdown', mimeType: 'text/markdown' }];
     const body = JSON.stringify({ deviceId: 'device-1', manifestHash: await hashManifest(files), files });
     const first = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body });
-    expect(await first.json()).toEqual({ status: 'committed', revision: 1 });
+    expect(await first.json()).toEqual({ status: 'committed', revision: 1, protocolVersion: PROTOCOL_VERSION, minimumPluginVersion: MINIMUM_PLUGIN_VERSION });
     const second = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body });
-    expect(await second.json()).toEqual({ status: 'up-to-date', revision: 1 });
+    expect(await second.json()).toEqual({ status: 'up-to-date', revision: 1, protocolVersion: PROTOCOL_VERSION, minimumPluginVersion: MINIMUM_PLUGIN_VERSION });
     expect(database.state.revisions).toHaveLength(1);
     const listing = await app.request(`/api/v1/vaults/${vault.id}/files`, { headers: { authorization: `Bearer ${token}` } });
     expect((await listing.json() as { revision: number }).revision).toBe(1);
     const raw = await app.request(`/api/v1/vaults/${vault.id}/files/file-1/raw`, { headers: { authorization: `Bearer ${token}` } });
     expect(await raw.text()).toBe('# Hello');
+  });
+
+  it('advertises protocol versions and tolerates client version headers', async () => {
+    const { app, token, vault } = await setup();
+    const bytes = new TextEncoder().encode('# Versioned');
+    const hash = await sha256Hex(bytes);
+    const files: SyncManifestEntry[] = [{ fileId: 'file-1', path: 'Note.md', hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' }];
+    const body = JSON.stringify({ deviceId: 'device-1', manifestHash: await hashManifest(files), files });
+    const versionHeaders = {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      'x-tephra-plugin-version': '0.1.0',
+      'x-tephra-protocol-version': '1',
+    };
+    const plan = await app.request(`/api/v1/vaults/${vault.id}/sync/plan`, { method: 'POST', headers: versionHeaders, body });
+    expect(plan.status).toBe(200);
+    expect(await plan.json()).toEqual({
+      status: 'upload-required',
+      latestRevision: 0,
+      missingBlobs: [{ hash, size: bytes.byteLength }],
+      protocolVersion: PROTOCOL_VERSION,
+      minimumPluginVersion: MINIMUM_PLUGIN_VERSION,
+    });
+    await app.request(`/api/v1/vaults/${vault.id}/blobs/${hash}`, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength), 'content-type': 'text/markdown' }, body: bytes });
+    const commit = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, { method: 'POST', headers: versionHeaders, body });
+    expect(await commit.json()).toEqual({
+      status: 'committed',
+      revision: 1,
+      protocolVersion: PROTOCOL_VERSION,
+      minimumPluginVersion: MINIMUM_PLUGIN_VERSION,
+    });
   });
 });

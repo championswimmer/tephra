@@ -1,0 +1,26 @@
+{
+  "$comment": "Tephra stateful single-replica ECS service skeleton (ALB target type ip, readiness on /readyz). desiredCount MUST stay 1 while using SQLite/filesystem blobs. See ../README.md.",
+  "cluster": "<CLUSTER_NAME_OR_ARN>",
+  "serviceName": "tephra-stateful",
+  "taskDefinition": "<TASK_DEFINITION_FAMILY_OR_ARN>",
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "deploymentController": { "type": "ECS" },
+  "healthCheckGracePeriodSeconds": 60,
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": ["<SUBNET_ID_1>", "<SUBNET_ID_2>"],
+      "securityGroups": ["<SECURITY_GROUP_ID>"],
+      "assignPublicIp": "DISABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "<TARGET_GROUP_ARN>",
+      "containerName": "tephra",
+      "containerPort": 8080
+    }
+  ],
+  "placementConstraints": [],
+  "schedulingStrategy": "REPLICA"
+}
