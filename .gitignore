@@ -1,6 +1,11 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Never commit compiler output accidentally emitted next to sources.
+tephra-server/packages/*/src/*.js
+tephra-server/packages/*/src/*.d.ts
+tephra-server/packages/*/*/src/*.js
+tephra-server/packages/*/*/src/*.d.ts
 coverage/
 .playwright/
 test-results/
