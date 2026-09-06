@@ -1,0 +1,58 @@
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <div class="brand">
+      <img src="/logo-main.svg" alt="" width="30" height="30" />
+      <span>Tephra</span>
+    </div>
+    <p class="note">
+      Self-hostable, AGPL-3.0-or-later. Not affiliated with or endorsed by Obsidian.
+    </p>
+    <nav class="foot-links">
+      <a href="https://github.com/championswimmer/tephra">GitHub</a>
+      <a href="https://github.com/championswimmer/tephra/blob/main/docs/GETTING_STARTED.md">Docs</a>
+      <a href="https://github.com/championswimmer/tephra/blob/main/SECURITY.md">Security</a>
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .foot {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+  }
+
+  .foot-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+    text-align: center;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+  }
+
+  .note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .foot-links {
+    display: flex;
+    gap: 20px;
+    font-size: 0.9rem;
+  }
+
+  @media (min-width: 720px) {
+    .foot-inner {
+      flex-direction: row;
+      justify-content: space-between;
+      text-align: start;
+    }
+  }
+</style>

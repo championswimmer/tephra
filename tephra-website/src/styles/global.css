@@ -1,0 +1,203 @@
+/* Palette lifted from the Crystal Bloom logo (docs/logos/crystal-bloom/logo.svg). */
+:root {
+  --ash-050: #f4f2f8;
+  --ash-100: #ebe5f7;
+  --crystal-200: #cdb0fa;
+  --crystal-300: #c49bfa;
+  --crystal-400: #aa75ed;
+  --crystal-500: #955ce4;
+  --crystal-600: #8254c8;
+  --crystal-700: #7448b9;
+  --crystal-800: #713cbb;
+  --obsidian-900: #5d359c;
+  --obsidian-950: #2a1b45;
+  --ink: #1b1226;
+
+  --bg: var(--ash-050);
+  --bg-raised: #ffffff;
+  --text: var(--ink);
+  --text-muted: #5b5070;
+  --border: #e0d7ef;
+  --accent: var(--crystal-700);
+  --accent-soft: #f0e9fd;
+
+  --radius: 14px;
+  --radius-lg: 22px;
+  --maxw: 1080px;
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #140d21;
+    --bg-raised: #1d1430;
+    --text: #f1ecfa;
+    --text-muted: #b6a8d1;
+    --border: #33244f;
+    --accent: var(--crystal-300);
+    --accent-soft: #241839;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  margin: 0 0 0.5em;
+  font-weight: 700;
+}
+
+h1 {
+  font-size: clamp(2.4rem, 6vw, 3.9rem);
+}
+h2 {
+  font-size: clamp(1.7rem, 3.6vw, 2.4rem);
+}
+h3 {
+  font-size: 1.15rem;
+}
+
+p {
+  margin: 0 0 1.1em;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+section {
+  padding: clamp(56px, 9vw, 104px) 0;
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin-bottom: 20px;
+}
+
+.lede {
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.98rem;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--crystal-500), var(--obsidian-900));
+  color: #fff;
+  box-shadow: 0 10px 24px -12px var(--crystal-700);
+}
+
+.btn-ghost {
+  border-color: var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 26px;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 560px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 720px) {
+  .grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1000px) {
+  .grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

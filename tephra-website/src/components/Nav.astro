@@ -1,0 +1,82 @@
+---
+const links = [
+  { href: '#what', label: 'Why Tephra' },
+  { href: '#not', label: 'vs Sync & Publish' },
+  { href: '#features', label: 'Features' },
+  { href: '#name', label: 'The name' },
+];
+---
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/">
+      <img src="/logo-main.svg" alt="" width="34" height="34" />
+      <span>Tephra</span>
+    </a>
+    <nav class="links">
+      {links.map((l) => <a href={l.href}>{l.label}</a>)}
+    </nav>
+    <a class="btn btn-ghost nav-cta" href="https://github.com/championswimmer/tephra">GitHub</a>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 66px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .links {
+    display: none;
+    gap: 26px;
+    margin-inline-start: auto;
+  }
+
+  .links a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.94rem;
+    font-weight: 500;
+  }
+
+  .links a:hover {
+    color: var(--accent);
+  }
+
+  .nav-cta {
+    margin-inline-start: auto;
+    padding: 9px 18px;
+    font-size: 0.9rem;
+  }
+
+  @media (min-width: 860px) {
+    .links {
+      display: flex;
+    }
+    .nav-cta {
+      margin-inline-start: 0;
+    }
+  }
+</style>
