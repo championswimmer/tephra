@@ -74,7 +74,12 @@ export class ApiClient {
   bootstrap = (input: { email: string; password: string; bootstrapToken: string }) =>
     this.request<{ user: User }>('/auth/bootstrap', {
       method: 'POST',
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        email: input.email,
+        password: input.password,
+        token: input.bootstrapToken,
+        bootstrapToken: input.bootstrapToken,
+      }),
     });
   login = (input: { email: string; password: string }) =>
     this.request<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });

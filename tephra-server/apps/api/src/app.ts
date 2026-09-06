@@ -100,7 +100,20 @@ const credentialsSchema = z.strictObject({
   email: z.email().max(320),
   password: z.string().min(10).max(1024),
 });
-const bootstrapSchema = credentialsSchema.extend({ token: z.string().min(1).max(1024) });
+const bootstrapSchema = credentialsSchema
+  .extend({
+    token: z.string().min(1).max(1024).optional(),
+    bootstrapToken: z.string().min(1).max(1024).optional(),
+  })
+  .transform((data) => ({
+    email: data.email,
+    password: data.password,
+    token: (data.token ?? data.bootstrapToken ?? "").trim(),
+  }))
+  .refine((data) => data.token.length > 0, {
+    message: "Bootstrap token is required.",
+    path: ["token"],
+  });
 const vaultSchema = z.strictObject({ name: z.string().trim().min(1).max(200) });
 const deleteVaultSchema = z.strictObject({ confirmation: z.string().max(200) });
 const scopesSchema = z
