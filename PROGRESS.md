@@ -31,3 +31,13 @@ commit, idempotent recommit, files, rendered note, links, graph).
 - [ ] Build and smoke-test the Docker image where a daemon is available
 - [ ] Add concurrent-commit and larger-vault indexing performance coverage
 - [ ] Re-run `npm audit` periodically; currently 0 vulnerabilities
+
+## Sample vault and e2e sync
+
+- [x] `sample-vault/` demo vault (16 notes, daily notes, MOCs, duplicate
+  basenames, unresolved/encoded/heading/block links, attachments)
+- [x] `e2e/sync-vault.mjs` (`npm run sync:vault`) pushes any vault directory
+  via plan/upload/commit and verifies every note renders
+- [x] Sample vault synced to a local server and visually verified (file
+  tree, rendered Home note with resolved links, graph with 16 nodes and
+  76 edges)
