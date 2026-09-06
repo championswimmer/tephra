@@ -183,7 +183,9 @@ device, report the device, OS, and browser version.
 
 ## Deployment targets
 
-- [Railway](deploy/railway/README.md): Docker plus a volume mounted at `/data`.
+- [Railway](deploy/railway/README.md): same Docker image, declared via
+  `.railway/railway.ts` (service + `/data` volume, one replica) — deploy with
+  `railway config apply` or a published template.
 - [AWS](deploy/aws/README.md): single-host Docker guidance and the scalable adapter
   contract.
 - [Vercel](deploy/vercel/README.md): stateless function/remote-storage adapter contract;
