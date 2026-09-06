@@ -2,7 +2,28 @@
 
 Tephra Sync creates a one-way, read-only web mirror of your Obsidian vault on a Tephra Server. It supports desktop and mobile Obsidian and never downloads or applies server content to your vault.
 
-## Install from source
+## Installation
+
+### Via BRAT (Beta Reviewer's Auto-update Tool)
+
+To install beta releases directly within Obsidian, you can use the [Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat) community plugin:
+
+1. **Install BRAT**:
+   - In Obsidian, go to **Settings → Community plugins**.
+   - Turn off **Restricted mode** if it is enabled.
+   - Click **Browse**, search for **Obsidian42 - BRAT**, click **Install**, and then **Enable**.
+2. **Add Tephra Sync to BRAT**:
+   - Open **Settings → BRAT** (or run the command `BRAT: Plugins: Add a beta plugin for testing` from the Command Palette `Ctrl/Cmd + P`).
+   - Under **Beta Plugin List**, click **Add Beta plugin**.
+   - Enter the repository URL: `https://github.com/championswimmer/tephra` (or shorthand `championswimmer/tephra`).
+   - Click **Add Plugin**. BRAT will download the latest release files into your vault's plugin directory.
+3. **Enable Tephra Sync**:
+   - Go to **Settings → Community plugins**.
+   - Under **Installed plugins**, find **Tephra Sync** and toggle it **on**.
+
+BRAT will automatically check for updates and keep the plugin up to date when new releases are published.
+
+### Install from source
 
 From the repository root, install workspace dependencies and run:
 
