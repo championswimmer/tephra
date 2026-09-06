@@ -1,0 +1,40 @@
+services:
+  tephra:
+    build:
+      context: ../../..
+      dockerfile: tephra-server/deploy/docker/Dockerfile
+    image: tephra:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - '${TEPHRA_PORT:-8080}:8080'
+    environment:
+      PORT: '8080'
+      HOST: '0.0.0.0'
+      TEPHRA_PUBLIC_URL: '${TEPHRA_PUBLIC_URL:-http://localhost:8080}'
+      TEPHRA_SESSION_SECRET: '${TEPHRA_SESSION_SECRET:?set TEPHRA_SESSION_SECRET}'
+      TEPHRA_BOOTSTRAP_TOKEN: '${TEPHRA_BOOTSTRAP_TOKEN:?set TEPHRA_BOOTSTRAP_TOKEN}'
+      TEPHRA_DATABASE_DRIVER: 'sqlite'
+      TEPHRA_SQLITE_PATH: '/data/tephra.db'
+      TEPHRA_BLOB_DRIVER: 'filesystem'
+      TEPHRA_BLOB_PATH: '/data/blobs'
+      TEPHRA_ALLOW_SIGNUPS: '${TEPHRA_ALLOW_SIGNUPS:-false}'
+      TEPHRA_MAX_BLOB_BYTES: '${TEPHRA_MAX_BLOB_BYTES:-104857600}'
+      TEPHRA_LOG_LEVEL: '${TEPHRA_LOG_LEVEL:-info}'
+    volumes:
+      - tephra-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  tephra-data:

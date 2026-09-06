@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+.DS_Store
+PROGRESS.md
