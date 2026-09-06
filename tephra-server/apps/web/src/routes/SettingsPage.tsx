@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
+import { ThemeSelector } from '../components/ThemeSelector';
 export function SettingsPage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -26,6 +27,14 @@ export function SettingsPage() {
         >
           {busy ? 'Signing out…' : 'Sign out'}
         </button>
+      </section>
+      <section className="settings-card">
+        <h2>Appearance</h2>
+        <p>
+          Tephra uses Obsidian&apos;s default theme. The base color scheme is saved on this
+          device.
+        </p>
+        <ThemeSelector />
       </section>
       <section className="settings-card">
         <h2>Read-only mirror</h2>

@@ -58,6 +58,21 @@ describe('renderMarkdown', () => {
     expect(rendered.html).toContain('<img src="/files/pic"');
   });
 
+  it('emits file ids for resolved links and unresolved markers for missing notes', async () => {
+    const rendered = await renderMarkdown({
+      markdown: '[[Note#Part|read]] [other](Other.md) [[Missing]] [gone](Gone.md)',
+      sourcePath: 'Home.md',
+      vaultIndex: createVaultPathIndex([
+        { fileId: 'note-id', path: 'Note.md', kind: 'markdown' },
+        { fileId: 'other-id', path: 'Other.md', kind: 'markdown' },
+      ]),
+    });
+    expect(rendered.html).toContain('data-file-id="note-id"');
+    expect(rendered.html).toContain('data-file-id="other-id"');
+    expect(rendered.html).toContain('data-unresolved-target="Missing"');
+    expect(rendered.html).toContain('data-unresolved-target="Gone.md"');
+  });
+
   it('does not turn code examples into routed links', async () => {
     const rendered = await renderMarkdown({ markdown: '`[[not a link]]`', sourcePath: 'Home.md' });
     expect(rendered.html).toContain('<code>[[not a link]]</code>');

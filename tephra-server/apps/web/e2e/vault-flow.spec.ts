@@ -27,10 +27,6 @@ const VAULT_NAME = 'e2e-vault';
  * - The web client sends `X-CSRF-Token` while the API enforces
  *   `x-tephra-csrf`, so vault creation happens via the API and the browser
  *   flow opens the vault from the list.
- * - Rendered wikilink anchors carry `data-link-path` without a file id, which
- *   NoteViewer's click handler does not resolve, so wikilink *navigation* is
- *   exercised through the Links panel entry for the same [[wikilink]] (the
- *   spec still asserts the in-note anchor renders).
  * - Graph node clicks use the graph's accessible node list (the same onOpen
  *   handler as canvas clicks, without canvas-coordinate flakiness).
  */
@@ -115,12 +111,11 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
   await expect(page).toHaveURL(/\/file\//);
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
 
-  // 7. The [[wikilink]] renders in the note; follow it via the Links panel
-  //    entry for that same link and verify the destination note.
+  // 7. The [[wikilink]] renders in the note; click the in-note anchor and
+  //    verify it navigates to the destination note.
   const renderedLink = page.locator('.rendered-note a.tephra-link', { hasText: 'Target Note' });
   await expect(renderedLink).toBeVisible();
-  const relationships = page.getByRole('complementary', { name: 'Note relationships' });
-  await relationships.getByRole('button', { name: 'Target Note' }).first().click();
+  await renderedLink.click();
   await expect(page.getByRole('heading', { name: 'Target Note' })).toBeVisible();
   await expect(page).toHaveURL(/\/file\//);
 

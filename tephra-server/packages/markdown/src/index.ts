@@ -239,7 +239,9 @@ function renderInline(value: string, options: MarkdownRenderOptions): string {
     }
     const state = resolved?.ambiguous ? 'tephra-ambiguous' : resolved?.unresolved ? 'tephra-unresolved' : 'tephra-link';
     const embed = bang === '!' ? ' data-embed="true"' : '';
-    return store(`<a href="#" class="${state}" ${attrs}${embed}>${escapeHtml(display)}</a>`);
+    const fileAttr = resolved?.targetFileId ? ` data-file-id="${escapeHtml(resolved.targetFileId)}"` : '';
+    const missingAttr = resolved && !resolved.targetFileId && resolved.unresolved ? ` data-unresolved-target="${escapeHtml(target.linkPath)}"` : '';
+    return store(`<a href="#" class="${state}" ${attrs}${fileAttr}${missingAttr}${embed}>${escapeHtml(display)}</a>`);
   });
   output = output.replace(/(!?)\[([^\]\n]*)\]\(([^)\n]+)\)/g, (_raw, bang: string, label: string, destinationValue: string) => {
     const destination = destinationValue.trim().replace(/^<|>$/g, '');
@@ -248,7 +250,11 @@ function renderInline(value: string, options: MarkdownRenderOptions): string {
     const external = /^[a-z][a-z\d+.-]*:/i.test(destination) || destination.startsWith('//');
     if (!external) {
       const target = splitTarget(destination);
-      return store(`<a href="#" class="tephra-link" data-link-path="${escapeHtml(target.linkPath)}"${target.subpath ? ` data-subpath="${escapeHtml(target.subpath)}"` : ''}>${escapeHtml(label)}</a>`);
+      const resolved = resolveForRender(options, destination);
+      const state = resolved?.ambiguous ? 'tephra-ambiguous' : resolved?.unresolved ? 'tephra-unresolved' : 'tephra-link';
+      const fileAttr = resolved?.targetFileId ? ` data-file-id="${escapeHtml(resolved.targetFileId)}"` : '';
+      const missingAttr = resolved && !resolved.targetFileId && resolved.unresolved ? ` data-unresolved-target="${escapeHtml(target.linkPath)}"` : '';
+      return store(`<a href="#" class="${state}" data-link-path="${escapeHtml(target.linkPath)}"${target.subpath ? ` data-subpath="${escapeHtml(target.subpath)}"` : ''}${fileAttr}${missingAttr}>${escapeHtml(label)}</a>`);
     }
     if (bang === '!') return store(`<img src="${escapeHtml(href)}" alt="${escapeHtml(label)}">`);
     return store(`<a href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(label)}</a>`);

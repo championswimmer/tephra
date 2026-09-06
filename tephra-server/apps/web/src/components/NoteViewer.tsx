@@ -92,7 +92,12 @@ export function NoteViewer({
           onClick={(event) => {
             const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
             if (!link) return;
-            const unresolvedTarget = link.dataset.unresolvedTarget ?? link.dataset.tephraUnresolved;
+            const unresolvedTarget =
+              link.dataset.unresolvedTarget ??
+              link.dataset.tephraUnresolved ??
+              (link.classList.contains('tephra-unresolved')
+                ? (link.dataset.linkPath ?? 'unknown note')
+                : undefined);
             if (unresolvedTarget) {
               event.preventDefault();
               setUnresolved(unresolvedTarget);
@@ -106,6 +111,10 @@ export function NoteViewer({
             } else if (pathTarget) {
               event.preventDefault();
               onOpen(decodeURIComponent(pathTarget));
+            } else if (link.getAttribute('href') === '#') {
+              // Internal vault link the renderer could not resolve to a file
+              // (e.g. ambiguous). Swallow the jump-to-top instead of navigating.
+              event.preventDefault();
             }
           }}
           dangerouslySetInnerHTML={{ __html: containedHtml }}

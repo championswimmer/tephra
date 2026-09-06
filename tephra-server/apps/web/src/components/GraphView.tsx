@@ -3,6 +3,7 @@ import ForceGraph2D from 'react-force-graph-2d';
 import type { ForceGraphMethods } from 'react-force-graph-2d';
 import { api } from '../api/client';
 import type { GraphResponse } from '../api/types';
+import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
 
 export interface GraphNodeDatum {
@@ -38,8 +39,17 @@ export function mapGraphToForceData(graph: GraphResponse): ForceGraphDatum {
   };
 }
 
-const ACCENT_NODE = '#bd4b31';
-const DIM_NODE = '#96a29a';
+/** Expand `#rgb` / `#rrggbb` to an `rgba()` string for dimmed graph states. */
+export function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace(/^#/, '');
+  const full =
+    clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const value = Number.parseInt(full.slice(0, 6).padEnd(6, '0'), 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
 
 export function GraphView({
   vaultId,
@@ -58,6 +68,17 @@ export function GraphView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
   const fittedRef = useRef(false);
+  // Obsidian-palette colors for the active base scheme. The provider
+  // re-renders this view on theme switch, so the canvas follows light/dark.
+  const { theme } = useTheme();
+  const palette = {
+    background: theme.variables['--background-primary'] ?? '#ffffff',
+    node: theme.variables['--graph-node'] ?? '#000000',
+    line: theme.variables['--graph-line'] ?? '#d1d1d1',
+    accent: theme.variables['--interactive-accent'] ?? '#7b6cd9',
+    text: theme.variables['--text-normal'] ?? '#2e3338',
+    muted: theme.variables['--text-muted'] ?? '#71747b',
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +131,11 @@ export function GraphView({
     () => (graph ? mapGraphToForceData(graph) : { nodes: [], links: [] }),
     [graph],
   );
+  const labels = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const node of data.nodes) map.set(node.id, node.label);
+    return map;
+  }, [data]);
 
   // The currently-open note (when provided) and the hovered node stay
   // highlighted along with their neighbours; everything else is dimmed,
@@ -144,6 +170,26 @@ export function GraphView({
     ? graph.nodes.find((node) => node.id === activeId)
     : undefined;
 
+  // Obsidian graph language: uniform small dots in the graph-node color,
+  // faint graph-line edges with directional arrows, and the hovered/selected
+  // node plus its neighbourhood picked out in the accent color. When
+  // something is active, unrelated nodes and edges fade back.
+  const dimNode = hexToRgba(palette.node, 0.22);
+  const dimLine = hexToRgba(palette.line, 0.45);
+  const activeLine = hexToRgba(palette.accent, 0.65);
+  const paintNodeColor = (id: string): string => {
+    if (activeId === null) return palette.node;
+    return isActive(id) ? palette.accent : dimNode;
+  };
+  const paintLinkColor = (sourceId: string, targetId: string): string => {
+    if (activeId === null) return palette.line;
+    return sourceId === activeId || targetId === activeId ? activeLine : dimLine;
+  };
+  const linkEndpointId = (endpoint: unknown): string =>
+    typeof endpoint === 'object' && endpoint !== null
+      ? String((endpoint as { id?: unknown }).id)
+      : String(endpoint);
+
   return (
     <section className="graph-view" aria-label="Vault graph">
       <div className="section-heading">
@@ -171,25 +217,37 @@ export function GraphView({
           nodeLabel="label"
           linkSource="source"
           linkTarget="target"
-          backgroundColor="#f8f8f4"
+          backgroundColor={palette.background}
           enableZoomInteraction
           enablePanInteraction
           enableNodeDrag
           cooldownTicks={100}
           warmupTicks={25}
           nodeRelSize={4}
-          nodeVal={(node) => (activeId !== null && isActive(String(node.id)) ? 2 : 1)}
-          nodeColor={(node) => (isActive(String(node.id)) ? ACCENT_NODE : DIM_NODE)}
+          nodeColor={(node) => paintNodeColor(String(node.id))}
           linkColor={(link) =>
-            activeId === null ||
-            link.source === activeId ||
-            (typeof link.source === 'object' && link.source?.id === activeId) ||
-            link.target === activeId ||
-            (typeof link.target === 'object' && link.target?.id === activeId)
-              ? 'rgba(189, 75, 49, 0.55)'
-              : 'rgba(150, 162, 154, 0.3)'
+            paintLinkColor(linkEndpointId(link.source), linkEndpointId(link.target))
           }
           linkWidth={(link) => (Number(link.count) > 1 ? 2 : 1)}
+          linkDirectionalArrowLength={3.5}
+          linkDirectionalArrowRelPos={1}
+          linkDirectionalArrowColor={(link) =>
+            paintLinkColor(linkEndpointId(link.source), linkEndpointId(link.target))
+          }
+          nodeCanvasObjectMode={() => 'after'}
+          nodeCanvasObject={(node, ctx, globalScale) => {
+            const id = String(node.id);
+            const label = labels.get(id) ?? id;
+            const fontSize = 12 / globalScale;
+            ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle =
+              activeId === null || isActive(id) ? palette.text : palette.muted;
+            ctx.globalAlpha = activeId !== null && !isActive(id) ? 0.45 : 1;
+            ctx.fillText(label, (node.x ?? 0) + 6, (node.y ?? 0));
+            ctx.globalAlpha = 1;
+          }}
           onNodeClick={(node) => {
             onOpen(String(node.id));
           }}
