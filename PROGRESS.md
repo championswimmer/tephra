@@ -1,6 +1,6 @@
 # Tephra Stage 1 Progress
 
-Source of truth: `.agents/plans/TEPHRA_STAGE1_PLAN.md`.
+Source of truth: `.agents/plans/001-TEPHRA_STAGE1_PLAN.md`.
 
 ## Phase 0 — Repository scaffolding
 

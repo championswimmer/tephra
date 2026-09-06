@@ -1,6 +1,6 @@
 # Contributing to Tephra
 
-Read [`AGENTS.md`](AGENTS.md) and the active plan under [`.agents/plans/`](.agents/plans/) before changing code. Large features and refactors require a written plan in that directory first.
+Read [`AGENTS.md`](AGENTS.md) and the active numbered plan under [`.agents/plans/`](.agents/plans/) before changing code. Large features and refactors require a numbered written plan (`NNN-SLUG.md`) in that directory first.
 
 ## Setup
 

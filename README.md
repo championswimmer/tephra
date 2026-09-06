@@ -8,7 +8,7 @@ Tephra is a self-hostable, read-only web mirror for Obsidian vaults. The local v
 
 - [`tephra-server/`](tephra-server/) — API, web application, shared domain packages, and deployment assets.
 - [`tephra-plugin/`](tephra-plugin/) — mobile-compatible Obsidian synchronization plugin.
-- [Stage 1 implementation plan](.agents/plans/TEPHRA_STAGE1_PLAN.md)
+- [Stage 1 implementation plan](.agents/plans/001-TEPHRA_STAGE1_PLAN.md)
 
 ## Development
 

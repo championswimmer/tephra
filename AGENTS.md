@@ -2,13 +2,13 @@
 
 ## Source of truth
 
-- Implement Stage 1 according to `.agents/plans/TEPHRA_STAGE1_PLAN.md`.
+- Implement Stage 1 according to `.agents/plans/001-TEPHRA_STAGE1_PLAN.md`.
 - Stage 1 is a read-only web mirror. Never add web-to-vault writes, merging, or third-party Obsidian plugin execution.
 - Keep original file bytes canonical, blobs immutable and SHA-256 verified, and successful vault commits revisioned.
 
 ## Planning requirement
 
-**Large features and refactors must be planned before implementation.** Use the project `planning` skill. Store every implementation plan under `.agents/plans/`; do not put plans in ad-hoc root files or external scratch locations.
+**Large features and refactors must be planned before implementation.** Use the project `planning` skill. Store every implementation plan under `.agents/plans/` as a numbered file (`NNN-SLUG.md`); do not put plans in ad-hoc root files or external scratch locations.
 
 A plan must state scope, non-goals, affected packages, migration/API consequences, verification, and rollout risks. Existing approved plans may be reused when they cover the requested work.
 
