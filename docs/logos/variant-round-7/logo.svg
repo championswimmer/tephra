@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Tephra — Volcanic Glass Bloom</title>
+<desc id="desc">A broad two-tone purple ash cloud above a narrow volcanic rock. Irregular shoulders, a summit crater, and long gradient glass facets combine a volcanic mountain with a chipped obsidian-like stone.</desc>
+
+<g transform="translate(15.36 -5) scale(.88)">
+<path fill="#955CE4" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1 25-7 48 8 51 30 19 1 32 14 32 30 0 19-15 31-36 31h-39l-16 34-17 12-18-14-17-32Z"/>
+<path fill="#B88BF0" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1-28-3-47 14-47 36-26-5-46 15-42 55Z"/>
+</g>
+<defs>
+<linearGradient id="left" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#CFACFF"/><stop offset="1" stop-color="#9160D6"/></linearGradient>
+<linearGradient id="front" x1=".25" y1="0" x2=".65" y2="1"><stop stop-color="#B487F3"/><stop offset=".55" stop-color="#9360DC"/><stop offset="1" stop-color="#7949C3"/></linearGradient>
+<linearGradient id="right" x1=".15" y1="0" x2=".8" y2="1"><stop stop-color="#9863DE"/><stop offset="1" stop-color="#583096"/></linearGradient>
+<linearGradient id="edge" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#B58AEF"/><stop offset="1" stop-color="#8352C3"/></linearGradient>
+</defs>
+<path fill="url(#front)" d="m68 210 17-30 8-23 16-20 17 11 20-14 19 24 4 21 18 31-18 21-46 9-34-8Z"/>
+<path fill="url(#left)" d="m68 210 17-30 8-23 16-20-5 48Z"/>
+<path fill="#D2AFFA" d="m109 137 17 11-22 37Z"/>
+<path fill="url(#edge)" d="m68 210 36-25 19 55-34-8Z"/>
+<path fill="url(#front)" d="m104 185 22-37 17 28c-3 21 1 40 11 58l-31 6Z"/>
+<path fill="#B88AF0" d="m126 148 20-14 19 24-22 18Z"/>
+<path fill="url(#right)" d="m143 176 22-18 4 21 18 31-18 21-15 3c-10-18-14-37-11-58Z"/>
+</svg>

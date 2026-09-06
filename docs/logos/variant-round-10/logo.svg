@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Tephra — Glass Bloom</title>
+<desc id="desc">A playful three-tone purple cloud and a compact volcanic rock form a T-like silhouette. Slightly broader lower ash shoulders and a narrower seven-facet mountain give the vertical stem more consistent proportions.</desc>
+
+
+
+
+<g transform="translate(15.36 -5) scale(.88)">
+<path fill="#AF6BE6" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1 25-7 48 8 51 30 19 1 32 14 32 30 0 19-15 31-36 31h-39l-12 34-21 12-22-14-13-32Z"/>
+<path fill="#CCA8FA" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1-28-3-47 14-47 36-26-5-46 15-42 55Z"/>
+<path fill="#7856D2" d="M103 56c-10 25 1 51 29 55h26l-12 34-21 12-22-14-13-32H61c-4-40 16-60 42-55Z"/></g>
+<g transform="translate(10.24 0) scale(.92 1)"><defs>
+<linearGradient id="left" gradientUnits="userSpaceOnUse" x1="91" y1="145" x2="94" y2="211"><stop stop-color="#D9B4FD"/><stop offset=".48" stop-color="#B181EA"/><stop offset="1" stop-color="#9160D2"/></linearGradient>
+<linearGradient id="crater-left" gradientUnits="userSpaceOnUse" x1="115" y1="143" x2="112" y2="186"><stop stop-color="#E4C8FF"/><stop offset=".48" stop-color="#CDA6FA"/><stop offset="1" stop-color="#AA78E1"/></linearGradient>
+<linearGradient id="lower-left" gradientUnits="userSpaceOnUse" x1="85" y1="193" x2="113" y2="238"><stop stop-color="#B688E9"/><stop offset=".48" stop-color="#9B68D9"/><stop offset="1" stop-color="#7F4FC0"/></linearGradient>
+<linearGradient id="front" gradientUnits="userSpaceOnUse" x1="116" y1="161" x2="149" y2="237"><stop stop-color="#CCA6FC"/><stop offset=".48" stop-color="#AE7BEF"/><stop offset="1" stop-color="#8550CD"/></linearGradient>
+<linearGradient id="crater-right" gradientUnits="userSpaceOnUse" x1="137" y1="139" x2="145" y2="176"><stop stop-color="#DCC0FE"/><stop offset=".48" stop-color="#C397F7"/><stop offset="1" stop-color="#A875E5"/></linearGradient>
+<linearGradient id="upper-right" gradientUnits="userSpaceOnUse" x1="148" y1="141" x2="158" y2="175"><stop stop-color="#BC93EE"/><stop offset=".48" stop-color="#A06CDE"/><stop offset="1" stop-color="#8956CA"/></linearGradient>
+<linearGradient id="right" gradientUnits="userSpaceOnUse" x1="154" y1="177" x2="181" y2="225"><stop stop-color="#A06EDB"/><stop offset=".48" stop-color="#8050C5"/><stop offset="1" stop-color="#60369F"/></linearGradient>
+</defs>
+<path fill="#9661DC" d="m68 210 17-30 8-23 16-20 17 11 20-14 19 24 4 21 18 31-18 21-46 9-34-8Z"/>
+<path fill="url(#left)" d="M68 210 85 180 93 157 109 137C113 155 112 173 104 185Z"/>
+<path fill="url(#crater-left)" d="M109 137 126 148Q124 169 104 185C112 173 113 155 109 137Z"/>
+<path fill="url(#lower-left)" d="M68 210 104 185C117 201 124 222 123 240L89 232Z"/>
+<path fill="url(#front)" d="M104 185Q124 169 126 148L143 176C159 195 163 214 154 234L123 240C124 222 117 201 104 185Z"/>
+<path fill="url(#crater-right)" d="M126 148 146 134Q152 146 147 153L143 176Z"/>
+<path fill="url(#upper-right)" d="M146 134 165 158 143 176 147 153Q152 146 146 134Z"/>
+<path fill="url(#right)" d="M143 176 165 158 169 179 187 210 169 231 154 234C163 214 159 195 143 176Z"/>
+</g></svg>
