@@ -14,7 +14,7 @@ A plan must state scope, non-goals, affected packages, migration/API consequence
 
 ## Repository rules
 
-- Package manager: npm workspaces. The Stage 1 plan's pnpm recommendation is intentionally overridden by repository policy.
+- Package manager: npm workspaces.
 - Language: strict TypeScript.
 - Run `npm run check` before reporting implementation complete.
 - Add tests with behavior changes; security invariants require regression tests.

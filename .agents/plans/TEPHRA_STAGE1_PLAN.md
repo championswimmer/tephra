@@ -487,17 +487,17 @@ Use strict TypeScript mode everywhere.
 Use:
 
 ```text
-pnpm workspaces
+npm workspaces
 ```
 
 Recommended:
 
 ```text
-pnpm
+npm
 Turborepo
 ```
 
-Turborepo is optional; pnpm workspaces are required.
+Turborepo is optional; npm workspaces are required.
 
 ---
 
@@ -696,7 +696,7 @@ tephra-server/
 │
 ├── Dockerfile
 ├── docker-compose.yml
-├── pnpm-workspace.yaml
+├── package-lock.json
 ├── package.json
 ├── LICENSE
 ├── CONTRIBUTING.md
@@ -3154,7 +3154,7 @@ A coding agent should implement in this order.
 ### Deliverables
 
 - [ ] create `tephra-server`
-- [ ] configure pnpm workspace
+- [x] configure npm workspace
 - [ ] configure TypeScript strict mode
 - [ ] configure ESLint
 - [ ] configure Prettier
@@ -3168,10 +3168,10 @@ A coding agent should implement in this order.
 ### Exit criteria
 
 ```bash
-pnpm install
-pnpm lint
-pnpm test
-pnpm build
+npm ci
+npm run lint
+npm run test
+npm run build
 ```
 
 all succeed from a clean checkout.
