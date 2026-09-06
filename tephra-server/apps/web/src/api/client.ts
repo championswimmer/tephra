@@ -71,6 +71,7 @@ export class ApiClient {
   }
 
   me = () => this.request<{ user: User }>('/auth/me');
+  bootstrapStatus = () => this.request<{ required: boolean }>('/auth/bootstrap/status');
   bootstrap = (input: { email: string; password: string; bootstrapToken: string }) =>
     this.request<{ user: User }>('/auth/bootstrap', {
       method: 'POST',

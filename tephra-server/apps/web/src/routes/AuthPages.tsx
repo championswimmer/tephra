@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../app/AuthContext';
 
@@ -79,6 +79,9 @@ export function LoginPage() {
         <button className="primary" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+        <p style={{ marginTop: "1rem", textAlign: "center", fontSize: "0.875rem" }}>
+          Setting up for the first time? <Link to="/setup">Set up Tephra</Link>
+        </p>
       </form>
     </AuthFrame>
   );

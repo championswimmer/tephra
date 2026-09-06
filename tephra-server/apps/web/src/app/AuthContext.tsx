@@ -30,6 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState('authenticated');
     } catch (error) {
       setUser(null);
+      try {
+        const status = await api.bootstrapStatus();
+        if (status.required) {
+          setState('setup-required');
+          return;
+        }
+      } catch {
+        // ignore status check error
+      }
       if (
         error instanceof ApiError &&
         (error.code === 'BOOTSTRAP_REQUIRED' || error.status === 503)
