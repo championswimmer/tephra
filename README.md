@@ -1,8 +1,26 @@
 # Tephra
 
-Tephra is a self-hostable, read-only web mirror for Obsidian vaults. The local vault remains the source of truth: the Tephra Sync plugin uploads complete, revisioned manifests and content-addressed blobs; the Tephra Server provides secure browser access to files, rendered notes, links, attachments, and a knowledge graph.
+Tephra is a stripped-down, web-based Obsidian client that you host yourself. It keeps your local Obsidian vault as the source of truth, syncs it to a Tephra server, and lets you open that vault from any browser as if a lightweight copy of Obsidian were running on your own infrastructure.
+
+Today, that means a private Stage 1 web mirror for your notes, links, attachments, and graph. In the future, Tephra aims to grow into a fuller cloud-hosted Obsidian companion with browser editing, two-way sync, a safe subset of community plugin support, and optional publishing controls.
+
+Tephra is built for portable single-user deployments: run your vault on your own domain in one container or VM, whether that is an EC2 instance, a Railway deployment, or a similar box you control.
 
 > Stage 1 is under active development. It intentionally provides no web editing or server-to-vault writeback.
+
+## What Tephra does
+
+- Mirrors your whole Obsidian vault into a private web app you can reach from anywhere.
+- Preserves Obsidian-style reading features like rendered Markdown, wikilinks, backlinks, attachments, and graph navigation.
+- Lets the Obsidian plugin on desktop or mobile keep the hosted view current.
+- Stays self-hosted and private: your domain, your login, your storage.
+
+## Where Tephra is headed
+
+- Browser-based note editing for quick fixes away from your main machine.
+- Two-way sync so web edits can flow safely back to your vault.
+- A browser-safe subset of community plugin support.
+- Optional publishing flows for chosen parts of a vault.
 
 ## Repository
 
