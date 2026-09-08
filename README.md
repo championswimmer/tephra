@@ -14,6 +14,17 @@ Tephra is built for portable single-user deployments: run your vault on your own
 - Preserves Obsidian-style reading features like rendered Markdown, wikilinks, backlinks, attachments, and graph navigation.
 - Lets the Obsidian plugin on desktop or mobile keep the hosted view current.
 - Stays self-hosted and private: your domain, your login, your storage.
+- Addresses every note by vault-relative path (`/#/path/to/note.md`): shareable links that survive identity changes and resolve identically across macOS, Linux, and Windows (NFC-canonicalized, case-sensitive with a unique-match fallback, rename-aware with a "moved from" hint).
+
+## Note identity
+
+The Obsidian plugin offers three identity modes (Settings → Note identity, default: sidecar file):
+
+- **Frontmatter property** — writes a `tephra-file-id` into every note. Most portable, but modifies notes and shows up in Properties and git diffs.
+- **Sidecar file (recommended)** — caches identities in `.tephra/data.json` (gitignorable cache, never synced) without touching notes; repairs from the server when needed.
+- **Path only** — stores nothing; a rename looks like delete plus create, so history restarts and old links stop working.
+
+Every mode switch starts with a dry-run preview and requires explicit confirmation when identities change. **Remove Tephra IDs from notes** (after switching to the sidecar, so identity is harvested first) deletes the property vault-wide.
 
 ## Where Tephra is headed
 

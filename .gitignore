@@ -19,3 +19,5 @@ test-results/
 *.db-shm
 *.db-wal
 tephra-plugin/main.js
+# Tephra sidecar identity cache (per-vault, device-local; repaired from server)
+.tephra/

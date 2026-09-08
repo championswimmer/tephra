@@ -251,8 +251,6 @@ describe('SyncCoordinator', () => {
     expect(state.pendingRenames).toEqual([['old.png', 'new.png']]);
     expect(offline.saveState).toHaveBeenCalled();
     // Simulated restart: a fresh coordinator over the same persisted state.
-    const { coordinator } = setup([renamed], { state });
-    expect(state.pendingRenames).toEqual([['old.png', 'new.png']]);
     const restarted = setup([renamed], { state });
     expect(restarted.state.pendingRenames).toEqual([['old.png', 'new.png']]);
     await restarted.coordinator.requestSync();

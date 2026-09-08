@@ -47,7 +47,7 @@ describe('stripFrontmatterFileId', () => {
   });
 
   it('handles quoted values and trailing comments', () => {
-    expect(stripFrontmatterFileId(`---\n${FILE_ID_PROPERTY}: \"file_1\"\n---\n\nBody\n`)).toBe(
+    expect(stripFrontmatterFileId(`---\n${FILE_ID_PROPERTY}: 'file_1'\n---\n\nBody\n`)).toBe(
       'Body\n',
     );
     expect(
@@ -76,7 +76,7 @@ function makeApp(
     if (content === undefined) throw new Error(`ENOENT: ${file.path}`);
     return content;
   });
-  const beforeWrite = vi.fn((_path: string) => undefined);
+  const beforeWrite = vi.fn((): void => undefined);
   const app = {
     vault: {
       getMarkdownFiles: () => files,
@@ -157,7 +157,7 @@ describe('removeFileIds sweep', () => {
     expect(contents.get('A.md')).not.toContain(FILE_ID_PROPERTY);
     expect(contents.get('B.md')).toBe('Second\n');
     expect(progress).toHaveBeenCalledWith(2, 2);
-    const writtenPaths = beforeWrite.mock.calls.map((call) => call[0] as string);
+    const writtenPaths = beforeWrite.mock.calls.map((call) => (call as unknown as [string])[0]);
     for (const entry of preview) expect(writtenPaths).toContain(entry.path);
   });
 

@@ -61,3 +61,40 @@ commit, idempotent recommit, files, rendered note, links, graph).
 - [x] Graph view rebuilt on `react-force-graph-2d` 1.29.1 (MIT, force
       layout, zoom/pan/drag, click-to-open, keyboard fallback list); canvas
       sized to its card via ResizeObserver with a jsdom-safe guard
+
+## Note identity modes and path-addressed URLs (plan 010)
+
+Implemented and verified by `npm run check` (lint + typecheck + build +
+workspace tests, all green) plus new unit/integration coverage and a
+passing Playwright rename-redirect flow.
+
+- [x] Composite `(vault_id, file_id)` primary key for `vault_files`
+      (vault-scoped `findById`/`delete`); cross-vault id steal fixed with
+      regression tests
+- [x] `path_fold` lookup column + `file_versions(vault_id, path,
+      revision)` index, edited into `001_initial.sql` in place (no
+      migration; pre-launch posture)
+- [x] `GET /api/v1/vaults/:vaultId/resolve?path=…` with
+      exact → normalized → case (unique match, else 409) → historic →
+      404/410 precedence; note paths travel in the query string only and
+      never enter the access log
+- [x] Web app hash-routed path URLs (`/#/path/to/note.md`), canonical
+      rewriting, and a "moved from" hint; single resolve per navigation,
+      then existing `fileId` endpoints
+- [x] NFC enforced at the protocol edge (`400 INVALID_PATH`), normalized
+      in the plugin scanner, with a link-resolver regression test
+- [x] Identity core: path-seeded `mintFileId` (+ random fallback),
+      pure matcher (hints → path → frontmatter → hash → mint), sidecar
+      store at `.tephra/data.json` (atomic write, `.bak` recovery,
+      deterministic serialization)
+- [x] Mode-driven scanner (frontmatter / sidecar / path); modes B and C
+      provably never write to a note
+- [x] Repair triggers (missing/corrupt/foreign sidecar, revision drift,
+      `DUPLICATE_*` self-heal, manual repair), churn guard
+      (`max(25, 2% of files)` + allow-once), durable `pendingRenames`,
+      `EventBuffer` rename-chain fix, offline cold-start rule
+- [x] Three-mode settings section with per-mode help, dry-run migration
+      modal both directions, repair button, and destructive
+      Remove-Tephra-IDs sweep with preview and confirmation
+- [x] Id-churn safety: blob GC, revision diff, and concurrent-commit
+      convergence coverage
