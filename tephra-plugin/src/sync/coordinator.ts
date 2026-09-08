@@ -97,6 +97,12 @@ export class SyncCoordinator {
   public allowIdentityChurnOnce = false;
   /** Set by "Repair identities from server"; consumed by the next reconcile. */
   private repairRequested = false;
+  /**
+   * Last churn-guard block, surfaced to the settings tab as an inline
+   * warning with an allow-once action (plan 010, §11.1). Cleared when the
+   * user allows once or a later guard check passes.
+   */
+  private lastChurnBlock: { count: number; at: number } | undefined;
 
   constructor(private readonly options: CoordinatorOptions) {
     this.queue = new SerializedReconciler(() => this.reconcile());
@@ -110,6 +116,17 @@ export class SyncCoordinator {
   async repairIdentitiesFromServer(): Promise<void> {
     this.repairRequested = true;
     await this.requestSync();
+  }
+
+  /** Pending churn-guard block size for the settings warning; 0 when clear. */
+  get pendingChurnCount(): number {
+    return this.lastChurnBlock?.count ?? 0;
+  }
+
+  /** Settings "Allow once" action: let one over-threshold batch through. */
+  allowChurnOnce(): void {
+    this.allowIdentityChurnOnce = true;
+    this.lastChurnBlock = undefined;
   }
 
   async handleEvents(events: readonly VaultEvent[]): Promise<void> {
@@ -294,6 +311,7 @@ export class SyncCoordinator {
   private churnGuard(files: readonly SyncManifestEntry[], identityChanged: readonly string[]): void {
     const threshold = Math.max(25, Math.ceil(files.length * 0.02));
     if (identityChanged.length > threshold && !this.allowIdentityChurnOnce) {
+      this.lastChurnBlock = { count: identityChanged.length, at: Date.now() };
       this.status(
         'error',
         `Blocked: ${String(identityChanged.length)} notes would change identity. Review before continuing.`,
@@ -304,6 +322,7 @@ export class SyncCoordinator {
       );
     }
     this.allowIdentityChurnOnce = false;
+    this.lastChurnBlock = undefined;
   }
 
   /** Persist the resolved id map, but only when it differs — steady-state syncs never touch the sidecar. */

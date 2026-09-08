@@ -1,5 +1,5 @@
 import { Notice, Plugin, TFile } from 'obsidian';
-import { parseState, type TephraPluginState } from './state/plugin-state';
+import { parseState, type IdentityMode, type TephraPluginState } from './state/plugin-state';
 import {
   loadIdentityStore,
   saveIdentityStore,
@@ -7,7 +7,15 @@ import {
 } from './state/identity-store';
 import { EventBuffer, type VaultEvent } from './sync/event-buffer';
 import { SyncCoordinator, type SyncStatus } from './sync/coordinator';
-import { VaultScanner, shouldSyncPath } from './sync/scanner';
+import { FILE_ID_PROPERTY, VaultScanner, shouldSyncPath } from './sync/scanner';
+import { mintFileId, randomFileId } from './sync/identity/id-mint';
+import {
+  dryRunIdentityMigration,
+  harvestFrontmatterIds,
+  writeSidecarIdsToFrontmatter,
+  type MigrationDryRun,
+  type MigrationEntry,
+} from './sync/identity/migrations';
 import { removeFileIds, scanForFileIds } from './sync/id-cleanup';
 import { StatusDisplay } from './ui/status';
 import { RemoveFileIdsConfirmModal } from './ui/confirm-modal';
@@ -35,6 +43,11 @@ export default class TephraPlugin extends Plugin {
     this.addSettingTab(new TephraSettingTab(this.app, this));
     this.addCommand({ id: 'sync-now', name: 'Sync now', callback: () => void this.syncNow(true) });
     this.addCommand({
+      id: 'repair-identities',
+      name: 'Repair note identities from server',
+      callback: () => void this.repairIdentitiesFromServer(),
+    });
+    this.addCommand({
       id: 'remove-file-ids',
       name: 'Remove file IDs from all notes',
       callback: () => void this.removeFileIdsFromAllNotes(),
@@ -56,6 +69,16 @@ export default class TephraPlugin extends Plugin {
   async repairIdentitiesFromServer(): Promise<void> {
     if (!this.coordinator) return;
     await this.coordinator.repairIdentitiesFromServer();
+  }
+
+  /** Pending churn-guard block size for the settings warning; 0 when clear. */
+  get pendingChurnCount(): number {
+    return this.coordinator?.pendingChurnCount ?? 0;
+  }
+
+  /** Settings "Allow once" action: let one over-threshold batch through. */
+  allowIdentityChurnOnce(): void {
+    this.coordinator?.allowChurnOnce();
   }
 
   async settingsChanged(sync = true): Promise<void> {
@@ -92,7 +115,7 @@ export default class TephraPlugin extends Plugin {
    * note carrying a `tephra-file-id`, confirm explicitly, then remove them
    * all and report a summary. Also callable from the settings tab.
    */
-  async removeFileIdsFromAllNotes(): Promise<void> {
+  async removeFileIdsFromAllNotes(opts: { harvested?: boolean } = {}): Promise<void> {
     const preview = await scanForFileIds(this.app);
     if (preview.length === 0) {
       new Notice('Tephra: no file IDs found — nothing to remove.');
@@ -101,10 +124,9 @@ export default class TephraPlugin extends Plugin {
     const confirmed = await new Promise<boolean>((resolve) => {
       const modal = new RemoveFileIdsConfirmModal(this.app, {
         count: preview.length,
-        harvested: false,
-        // No identityMode setting yet (phase 9); frontmatter is currently the
-        // only mode, so sync-on alone means IDs would be re-added on rescan.
-        syncOnAndFrontmatter: this.state.settings.enableSync,
+        harvested: opts.harvested ?? false,
+        syncOnAndFrontmatter:
+          this.state.settings.enableSync && this.state.settings.identityMode === 'frontmatter',
         onConfirm: () => resolve(true),
         onCancel: () => resolve(false),
         onDisableSync: () => {
@@ -128,6 +150,111 @@ export default class TephraPlugin extends Plugin {
       `Tephra: removed file IDs from ${String(result.removed)} notes ` +
         `(${String(result.skipped)} skipped, ${String(result.failed.length)} failed).`,
     );
+  }
+
+  /**
+   * Dry-run a mode switch for the settings preview (plan 010, §12): one
+   * entry per syncable file — sidecar id as the server-known approximation,
+   * metadataCache frontmatter as the harvestable identity, stat size for the
+   * re-upload estimate.
+   */
+  async previewIdentityMigration(to: IdentityMode): Promise<MigrationDryRun> {
+    const entries: MigrationEntry[] = [];
+    for (const file of this.app.vault.getFiles()) {
+      const path = file.path.normalize('NFC');
+      if (!shouldSyncPath(path)) continue;
+      const kind = file.extension.toLowerCase() === 'md' ? 'markdown' : 'attachment';
+      let frontmatterId: string | undefined;
+      if (kind === 'markdown') {
+        try {
+          const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+          const cached = frontmatter?.[FILE_ID_PROPERTY];
+          if (typeof cached === 'string' && cached.trim()) frontmatterId = cached.trim();
+        } catch {
+          // Cache lookup failed; the entry simply carries no frontmatter id.
+        }
+      }
+      entries.push({
+        path,
+        kind,
+        size: file.stat.size,
+        currentId: this.identityIds.get(path),
+        frontmatterId,
+      });
+    }
+    return dryRunIdentityMigration(this.state.settings.identityMode, to, entries, {
+      vaultId: this.state.settings.vaultId,
+    });
+  }
+
+  /**
+   * Execute a confirmed mode switch (plan 010, §12). Any switch clears
+   * pendingRenames and forces a repair fetch on the next sync, so the
+   * server's view is authoritative before anything is committed.
+   */
+  async executeIdentityMigration(
+    to: IdentityMode,
+    opts: { removeAfterHarvest?: boolean } = {},
+  ): Promise<void> {
+    const from = this.state.settings.identityMode;
+    if (from === to) return;
+    const adapter = this.app.vault.adapter as unknown as IdentityStoreAdapter;
+    const suppress = (path: string): void => {
+      this.suppressedModify.add(path);
+      window.setTimeout(() => this.suppressedModify.delete(path), 5_000);
+    };
+    if (to === 'sidecar') {
+      // A→B harvest / C→B adopt: fill sidecar gaps from frontmatter, zero
+      // churn. Set-if-absent: stale frontmatter leftovers must never clobber
+      // a live sidecar binding.
+      const harvested = await harvestFrontmatterIds(this.app);
+      for (const [rawPath, id] of harvested) {
+        const path = rawPath.normalize('NFC');
+        if (!this.identityIds.has(path)) this.identityIds.set(path, id);
+      }
+    } else if (to === 'frontmatter') {
+      // B→A: write each sidecar id into the file's frontmatter. Failures
+      // keep their sidecar id and are listed; the sidecar is retained.
+      const targets = new Map<string, string>();
+      for (const file of this.app.vault.getMarkdownFiles()) {
+        const id = this.identityIds.get(file.path.normalize('NFC'));
+        if (id) targets.set(file.path, id);
+      }
+      const result = await writeSidecarIdsToFrontmatter(this.app, targets, {
+        beforeWrite: suppress,
+      });
+      if (result.failed.length > 0) {
+        console.warn('[tephra] B→A migration: failed to write frontmatter IDs for:', result.failed);
+        new Notice(
+          `Tephra: wrote IDs to ${String(result.written.length)} notes, ` +
+            `${String(result.failed.length)} failed (sidecar IDs kept).`,
+        );
+      }
+    } else {
+      // anything→C: every file mints fresh. Sets allowIdentityChurnOnce on
+      // confirm so the next repair fetch lets the new ids through once.
+      const claimed = new Set<string>();
+      for (const file of this.app.vault.getFiles()) {
+        const path = file.path.normalize('NFC');
+        if (!shouldSyncPath(path)) continue;
+        const kind = file.extension.toLowerCase() === 'md' ? 'markdown' : 'attachment';
+        let id = await mintFileId(this.state.settings.vaultId, path, kind);
+        while (claimed.has(id)) id = randomFileId();
+        claimed.add(id);
+        this.identityIds.set(path, id);
+      }
+      this.coordinator?.allowChurnOnce();
+    }
+    this.state.settings.identityMode = to;
+    // Cleared in place: the scanner holds this array by reference.
+    this.state.pendingRenames.length = 0;
+    this.state.identityRepairNeeded = true;
+    await this.persistState();
+    await saveIdentityStore(adapter, this.state.settings.vaultId, this.identityIds);
+    if (opts.removeAfterHarvest && to === 'sidecar') {
+      // "Harvest then remove" sequence (§10.4): removal runs after harvest.
+      await this.removeFileIdsFromAllNotes({ harvested: true });
+    }
   }
 
   /** Load the sidecar cache through the vault adapter, in place so the scanner's reference stays live. */
