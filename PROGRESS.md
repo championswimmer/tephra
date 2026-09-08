@@ -72,7 +72,7 @@ passing Playwright rename-redirect flow.
       (vault-scoped `findById`/`delete`); cross-vault id steal fixed with
       regression tests
 - [x] `path_fold` lookup column + `file_versions(vault_id, path,
-      revision)` index, edited into `001_initial.sql` in place (no
+    revision)` index, edited into `001_initial.sql` in place (no
       migration; pre-launch posture)
 - [x] `GET /api/v1/vaults/:vaultId/resolve?path=…` with
       exact → normalized → case (unique match, else 409) → historic →
