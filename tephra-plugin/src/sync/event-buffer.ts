@@ -14,12 +14,34 @@ export class EventBuffer {
   ) {}
 
   add(event: VaultEvent): void {
+    if (event.type === 'rename' && this.chainRename(event)) {
+      this.reschedule();
+      return;
+    }
     if (event.type === 'rename') this.events.delete(event.oldPath);
     const previous = this.events.get(event.path);
     const preservePrevious =
       (previous?.type === 'create' && event.type === 'modify') ||
       (previous?.type === 'rename' && event.type === 'modify');
     if (!preservePrevious) this.events.set(event.path, event);
+    this.reschedule();
+  }
+
+  /**
+   * Rename-chain collapsing (plan 010, §8, Stage 0 dependency): when an
+   * incoming rename's `oldPath` matches a buffered rename's `path`, rewrite
+   * that entry's `path` instead of deleting it, so a chain `A→B→C` inside one
+   * debounce window yields a single `A→C` hint. Returns whether it chained.
+   */
+  private chainRename(event: Extract<VaultEvent, { type: 'rename' }>): boolean {
+    const chained = this.events.get(event.oldPath);
+    if (chained?.type !== 'rename') return false;
+    this.events.delete(event.oldPath);
+    this.events.set(event.path, { type: 'rename', path: event.path, oldPath: chained.oldPath });
+    return true;
+  }
+
+  private reschedule(): void {
     if (this.debounceTimer !== undefined) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => this.flush(), this.debounceMs);
     this.maximumTimer ??= setTimeout(() => this.flush(), this.maximumMs);

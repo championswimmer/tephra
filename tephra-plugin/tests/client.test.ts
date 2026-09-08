@@ -123,6 +123,55 @@ describe('TephraClient auth and vault management', () => {
     expect(client.captured[0]?.headers?.Authorization).toBe('Bearer tps_session');
   });
 
+  it('lists files for server-side identity repair', async () => {
+    const client = new CapturingClient('https://example.test', 'vault-1', 'token-1');
+    client.fakeJson = {
+      revision: 9,
+      files: [
+        {
+          fileId: 'file_abc',
+          path: 'Note.md',
+          blobHash: 'c'.repeat(64),
+          size: 12,
+          mtime: 34,
+          kind: 'markdown',
+        },
+      ],
+    };
+    const res = await client.listFiles();
+    expect(res.revision).toBe(9);
+    expect(res.files).toHaveLength(1);
+    expect(res.files[0]?.fileId).toBe('file_abc');
+    expect(client.captured[0]?.url).toBe('https://example.test/api/v1/vaults/vault-1/files');
+    expect(client.captured[0]?.method).toBe('GET');
+  });
+
+  it('resolves a path through the query-parameter resolver', async () => {
+    const client = new CapturingClient('https://example.test', 'vault-1', 'token-1');
+    client.fakeJson = {
+      match: 'historic',
+      requestedPath: 'Old/Note.md',
+      canonicalPath: 'New/Note.md',
+      file: {
+        fileId: 'file_abc',
+        path: 'New/Note.md',
+        blobHash: 'c'.repeat(64),
+        size: 12,
+        mtime: 34,
+        kind: 'markdown',
+      },
+      movedFromPath: 'Old/Note.md',
+      movedAtRevision: 3,
+    };
+    const res = await client.resolve('Old/Note.md');
+    expect(res.match).toBe('historic');
+    expect(res.canonicalPath).toBe('New/Note.md');
+    expect(res.file.fileId).toBe('file_abc');
+    expect(client.captured[0]?.url).toBe(
+      'https://example.test/api/v1/vaults/vault-1/resolve?path=Old%2FNote.md',
+    );
+  });
+
   it('logs out using session token', async () => {
     const client = new CapturingClient('https://example.test');
     client.fakeJson = { ok: true };

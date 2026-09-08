@@ -5,13 +5,27 @@ import {
   extractFrontmatterFileId,
   injectFrontmatterFileId,
   shouldSyncPath,
+  type ScannerIdentity,
 } from '../src/sync/scanner';
+
+function makeScanner(app: unknown, overrides?: Partial<ScannerIdentity>): VaultScanner {
+  return new VaultScanner(app as never, {
+    identityMode: 'frontmatter',
+    vaultId: 'vault-1',
+    sidecar: new Map(),
+    scanCache: {},
+    pendingRenames: [],
+    ...overrides,
+  });
+}
 
 describe('vault path filtering', () => {
   it.each([
     '.obsidian/plugins/x.js',
     '.hidden/note.md',
     'folder/.hidden.md',
+    '.tephra/data.json',
+    '.tephra/data.json.bak',
     'draft.md~',
     'scratch.tmp',
     'swap.swp',
@@ -26,7 +40,7 @@ describe('vault path filtering', () => {
 });
 
 describe('stable file IDs', () => {
-  it('stores IDs in Markdown frontmatter and path mappings only for attachments', async () => {
+  it('stores IDs in Markdown frontmatter and resolves attachments through the sidecar', async () => {
     const note = { path: 'Note.md', extension: 'md', stat: { mtime: 1, size: 5 } };
     const image = { path: 'image.png', extension: 'png', stat: { mtime: 1, size: 3 } };
     const caches = new Map<unknown, { frontmatter: Record<string, unknown> }>();
@@ -46,21 +60,30 @@ describe('stable file IDs', () => {
       metadataCache: { getFileCache: (file: unknown) => caches.get(file) ?? null },
       fileManager: { processFrontMatter },
     };
-    const scanner = new VaultScanner(app as never);
-    const first = await scanner.scan({}, {});
+    const scanCache = {};
+    const scanner = makeScanner(app, { scanCache });
+    const first = await scanner.scan();
     const noteEntry = first.files.find((file) => file.path === 'Note.md');
     expect(processFrontMatter).toHaveBeenCalledTimes(1);
     expect(caches.get(note)?.frontmatter[FILE_ID_PROPERTY]).toBe(noteEntry?.fileId);
-    expect(first.attachmentIds['Note.md']).toBeUndefined();
-    expect(first.attachmentIds['image.png']).toBeTruthy();
+    expect(first.sidecarUpdates.get('Note.md')).toBe(noteEntry?.fileId);
+    const imageEntry = first.files.find((file) => file.path === 'image.png');
+    expect(imageEntry?.fileId).toMatch(/^file_attachment_/);
+    expect(first.sidecarUpdates.get('image.png')).toBe(imageEntry?.fileId);
 
-    const second = await scanner.scan({}, first.attachmentIds);
+    // Second scan resolves both ids from the sidecar without rewriting frontmatter.
+    const secondScanner = makeScanner(app, { scanCache, sidecar: first.sidecarUpdates });
+    const second = await secondScanner.scan();
     expect(second.files.find((file) => file.path === 'Note.md')?.fileId).toBe(noteEntry?.fileId);
-    expect(second.attachmentIds['image.png']).toBe(first.attachmentIds['image.png']);
+    expect(second.files.find((file) => file.path === 'image.png')?.fileId).toBe(
+      imageEntry?.fileId,
+    );
     expect(processFrontMatter).toHaveBeenCalledTimes(1);
 
-    const withoutSavedMapping = await scanner.scan({}, {});
-    expect(withoutSavedMapping.attachmentIds['image.png']).toBe(first.attachmentIds['image.png']);
+    // Attachments re-mint deterministically from (vaultId, path) even with no sidecar.
+    const coldScanner = makeScanner(app, { scanCache: {} });
+    const cold = await coldScanner.scan();
+    expect(cold.files.find((file) => file.path === 'image.png')?.fileId).toBe(imageEntry?.fileId);
   });
 
   it('handles invalid YAML frontmatter (such as Templater tags) gracefully via raw injection fallback', async () => {
@@ -94,8 +117,9 @@ describe('stable file IDs', () => {
       fileManager: { processFrontMatter },
     };
 
-    const scanner = new VaultScanner(app as never);
-    const scanResult = await scanner.scan({}, {});
+    const scanCache = {};
+    const scanner = makeScanner(app, { scanCache });
+    const scanResult = await scanner.scan();
 
     // 1. Scan must NOT throw unhandled YAML parse error
     expect(scanResult.files).toHaveLength(1);
@@ -111,12 +135,13 @@ describe('stable file IDs', () => {
     expect(fileContent).toContain('tags: {{VALUE:tags}}');
 
     // 4. On next scan, extractFrontmatterFileId extracts the ID directly from raw content without calling processFrontMatter
-    const secondScan = await scanner.scan({}, {});
+    const secondScanner = makeScanner(app, { scanCache, sidecar: scanResult.sidecarUpdates });
+    const secondScan = await secondScanner.scan();
     expect(secondScan.files[0]?.fileId).toBe(entry?.fileId);
     expect(processFrontMatter).toHaveBeenCalledTimes(1); // Not called again!
   });
 
-  it('falls back to path-mapped ID if writing frontmatter fails completely', async () => {
+  it('adopts the minted ID for this scan if writing frontmatter fails completely', async () => {
     const note = { path: 'ReadOnly.md', extension: 'md', stat: { mtime: 1, size: 10 } };
     const processFrontMatter = vi.fn(async () => {
       throw new Error('YAML error');
@@ -136,12 +161,52 @@ describe('stable file IDs', () => {
       fileManager: { processFrontMatter },
     };
 
-    const scanner = new VaultScanner(app as never);
-    // Should NOT throw!
-    const scanResult = await scanner.scan({}, {});
+    const scanner = makeScanner(app);
+    // Should NOT throw; the minted id keeps the manifest valid and is retried next scan.
+    const scanResult = await scanner.scan();
     expect(scanResult.files).toHaveLength(1);
-    expect(scanResult.files[0]?.fileId).toMatch(/^file_attachment_/);
-    expect(scanResult.attachmentIds['ReadOnly.md']).toBe(scanResult.files[0]?.fileId);
+    expect(scanResult.files[0]?.fileId).toMatch(/^file_/);
+    expect(scanResult.sidecarUpdates.get('ReadOnly.md')).toBe(scanResult.files[0]?.fileId);
+
+    // Stable across scans: path-seeded minting derives the same id, so the
+    // failed write does not churn identity.
+    const retry = await makeScanner(app, { sidecar: scanResult.sidecarUpdates }).scan();
+    expect(retry.files[0]?.fileId).toBe(scanResult.files[0]?.fileId);
+  });
+
+  it('never surfaces the sidecar cache as a syncable file', async () => {
+    const sidecar = { path: '.tephra/data.json', extension: 'json', stat: { mtime: 1, size: 10 } };
+    const note = { path: 'Note.md', extension: 'md', stat: { mtime: 1, size: 5 } };
+    const app = {
+      vault: {
+        getFiles: () => [sidecar, note],
+        read: async () => 'hello',
+        readBinary: async () => new Uint8Array([1]).buffer,
+      },
+      metadataCache: { getFileCache: () => ({ frontmatter: { [FILE_ID_PROPERTY]: 'file_x' } }) },
+      fileManager: { processFrontMatter: vi.fn() },
+    };
+    const result = await makeScanner(app).scan();
+    expect(result.files.map((file) => file.path)).toEqual(['Note.md']);
+  });
+
+  it('normalizes an NFD filename to an NFC manifest path', async () => {
+    const nfd = 'Café.md'.normalize('NFD');
+    expect(nfd).not.toBe(nfd.normalize('NFC')); // guard: the fixture really is decomposed
+    const note = { path: nfd, extension: 'md', stat: { mtime: 1, size: 5 } };
+    const app = {
+      vault: {
+        getFiles: () => [note],
+        read: async () => 'hello',
+        readBinary: async () => new Uint8Array([1]).buffer,
+      },
+      metadataCache: { getFileCache: () => null },
+      fileManager: { processFrontMatter: vi.fn() },
+    };
+    const result = await makeScanner(app, { identityMode: 'sidecar' }).scan();
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0]?.path).toBe(nfd.normalize('NFC'));
+    expect([...result.sidecarUpdates.keys()]).toEqual([nfd.normalize('NFC')]);
   });
 });
 

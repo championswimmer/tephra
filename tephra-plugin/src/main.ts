@@ -1,5 +1,10 @@
 import { Notice, Plugin, TFile } from 'obsidian';
 import { parseState, type TephraPluginState } from './state/plugin-state';
+import {
+  loadIdentityStore,
+  saveIdentityStore,
+  type IdentityStoreAdapter,
+} from './state/identity-store';
 import { EventBuffer, type VaultEvent } from './sync/event-buffer';
 import { SyncCoordinator, type SyncStatus } from './sync/coordinator';
 import { VaultScanner, shouldSyncPath } from './sync/scanner';
@@ -14,6 +19,9 @@ export default class TephraPlugin extends Plugin {
   state!: TephraPluginState;
   status!: StatusDisplay;
   private coordinator!: SyncCoordinator;
+  private scanner!: VaultScanner;
+  /** In-memory sidecar id map, held by reference by the scanner and coordinator. */
+  private readonly identityIds = new Map<string, string>();
   private eventBuffer: EventBuffer | undefined;
   private readonly suppressedModify = new Set<string>();
 
@@ -32,7 +40,7 @@ export default class TephraPlugin extends Plugin {
       callback: () => void this.removeFileIdsFromAllNotes(),
     });
 
-    this.app.workspace.onLayoutReady(() => this.startAfterLayoutReady());
+    this.app.workspace.onLayoutReady(() => void this.startAfterLayoutReady());
   }
 
   onunload(): void {
@@ -44,8 +52,15 @@ export default class TephraPlugin extends Plugin {
     await this.saveData(this.state);
   }
 
+  /** Manual repair entry point for settings (plan 010, §9.3, trigger 4). */
+  async repairIdentitiesFromServer(): Promise<void> {
+    if (!this.coordinator) return;
+    await this.coordinator.repairIdentitiesFromServer();
+  }
+
   async settingsChanged(sync = true): Promise<void> {
     await this.persistState();
+    await this.refreshIdentityStore();
     if (!this.state.settings.enableSync) {
       this.eventBuffer?.dispose();
       this.eventBuffer = undefined;
@@ -115,17 +130,48 @@ export default class TephraPlugin extends Plugin {
     );
   }
 
-  private startAfterLayoutReady(): void {
-    const scanner = new VaultScanner(this.app, (path) => {
-      this.suppressedModify.add(path);
-      window.setTimeout(() => this.suppressedModify.delete(path), 5_000);
-    });
+  /** Load the sidecar cache through the vault adapter, in place so the scanner's reference stays live. */
+  private async refreshIdentityStore(): Promise<void> {
+    const adapter = this.app.vault.adapter as unknown as IdentityStoreAdapter;
+    const vaultId = this.state.settings.vaultId;
+    if (!vaultId) {
+      this.identityIds.clear();
+      this.state.identityRepairNeeded = true;
+      return;
+    }
+    const loaded = await loadIdentityStore(adapter, vaultId);
+    this.identityIds.clear();
+    for (const [path, id] of loaded.ids) this.identityIds.set(path, id);
+    this.state.identityRepairNeeded = loaded.repairNeeded;
+  }
+
+  private async startAfterLayoutReady(): Promise<void> {
+    await this.refreshIdentityStore();
+    const adapter = this.app.vault.adapter as unknown as IdentityStoreAdapter;
+    this.scanner = new VaultScanner(
+      this.app,
+      {
+        identityMode: this.state.settings.identityMode,
+        vaultId: this.state.settings.vaultId,
+        sidecar: this.identityIds,
+        scanCache: this.state.scanCache,
+        pendingRenames: this.state.pendingRenames,
+      },
+      (path) => {
+        this.suppressedModify.add(path);
+        window.setTimeout(() => this.suppressedModify.delete(path), 5_000);
+      },
+    );
     this.coordinator = new SyncCoordinator({
       app: this.app,
       state: this.state,
-      scanner,
+      scanner: this.scanner,
       saveState: () => this.persistState(),
       setStatus: (status) => this.updateStatus(status),
+      identityStore: {
+        ids: this.identityIds,
+        save: (ids) => saveIdentityStore(adapter, this.state.settings.vaultId, ids),
+      },
     });
 
     if (this.state.settings.enableSync) {

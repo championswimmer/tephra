@@ -30,6 +30,17 @@ describe('EventBuffer', () => {
     expect(flush).toHaveBeenCalledWith([{ type: 'rename', oldPath: 'Old.md', path: 'New.md' }]);
   });
 
+  it('collapses a rename chain A→B→C into a single A→C hint', () => {
+    vi.useFakeTimers();
+    const flush = vi.fn();
+    const buffer = new EventBuffer(flush, 100, 1_000);
+    buffer.add({ type: 'rename', oldPath: 'A.md', path: 'B.md' });
+    buffer.add({ type: 'rename', oldPath: 'B.md', path: 'C.md' });
+    vi.advanceTimersByTime(100);
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(flush).toHaveBeenCalledWith([{ type: 'rename', oldPath: 'A.md', path: 'C.md' }]);
+  });
+
   it('does not postpone a busy stream past the maximum delay', () => {
     vi.useFakeTimers();
     const flush = vi.fn();

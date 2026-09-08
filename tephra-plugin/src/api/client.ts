@@ -1,11 +1,15 @@
 import { requestUrl, type RequestUrlParam } from 'obsidian';
 import {
   blobUploadResponseSchema,
+  filesResponseSchema,
   PLUGIN_VERSION_HEADER,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
+  resolveResponseSchema,
   syncCommitResponseSchema,
   syncPlanResponseSchema,
+  type FilesResponse,
+  type ResolveResponse,
   type SyncCommitBody,
   type SyncCommitResponse,
   type SyncPlanBody,
@@ -60,6 +64,9 @@ export interface TephraClientLike {
   plan(body: SyncPlanBody): Promise<SyncPlanResponse>;
   uploadBlob(hash: string, bytes: Uint8Array): Promise<void>;
   commit(body: SyncCommitBody): Promise<SyncCommitResponse>;
+  /** Server identity authority for repair (plan 010, §9.2): one GET, no protocol change. */
+  listFiles(): Promise<FilesResponse>;
+  resolve(path: string): Promise<ResolveResponse>;
 }
 
 export class TephraClient implements TephraClientLike {
@@ -183,6 +190,21 @@ export class TephraClient implements TephraClientLike {
     return this.jsonRequest(this.vaultUrl('/sync/commit'), 'POST', body, syncCommitResponseSchema.parse);
   }
 
+  listFiles(): Promise<FilesResponse> {
+    return this.jsonRequest(this.vaultUrl('/files'), 'GET', undefined, filesResponseSchema.parse);
+  }
+
+  resolve(path: string): Promise<ResolveResponse> {
+    // Query parameter, not a wildcard route: request paths stay out of the
+    // access log, which records `req.path` but not the query string (§13.3).
+    return this.jsonRequest(
+      `${this.vaultUrl('/resolve')}?path=${encodeURIComponent(path)}`,
+      'GET',
+      undefined,
+      resolveResponseSchema.parse,
+    );
+  }
+
   private async jsonRequest<T>(
     url: string,
     method: string,
@@ -238,8 +260,11 @@ export class TephraClient implements TephraClientLike {
     if (status >= 200 && status < 300) return;
     let message = `Tephra request failed (${String(status)})`;
     try {
-      const parsed = JSON.parse(text) as { error?: { message?: string } };
+      const parsed = JSON.parse(text) as { error?: { code?: string; message?: string } };
       if (parsed.error?.message) message = parsed.error.message;
+      // Keep the machine-readable code: the coordinator self-heals
+      // DUPLICATE_FILE_ID / DUPLICATE_PATH commits by repairing and retrying.
+      if (parsed.error?.code) message += ` (${parsed.error.code})`;
     } catch {
       /* Preserve the non-sensitive generic message. */
     }
