@@ -63,9 +63,10 @@ describe('mapGraphToForceData', () => {
   });
 
   it('handles an empty graph and a single node', () => {
-    expect(
-      mapGraphToForceData({ revision: 1, nodes: [], edges: [] }),
-    ).toEqual({ nodes: [], links: [] });
+    expect(mapGraphToForceData({ revision: 1, nodes: [], edges: [] })).toEqual({
+      nodes: [],
+      links: [],
+    });
     const single = mapGraphToForceData({
       revision: 1,
       nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo' }],
@@ -117,11 +118,7 @@ describe('GraphView', () => {
       onNodeHover: (node: { id: string } | null) => void;
       nodeColor: (node: { id: string }) => string;
     };
-    expect(props.graphData.nodes.map((node) => node.label)).toEqual([
-      'Alpha',
-      'b.md',
-      'Gamma',
-    ]);
+    expect(props.graphData.nodes.map((node) => node.label)).toEqual(['Alpha', 'b.md', 'Gamma']);
     expect(props.nodeLabel).toBe('label');
     expect(props.enableZoomInteraction).toBe(true);
     expect(props.enablePanInteraction).toBe(true);
@@ -129,22 +126,22 @@ describe('GraphView', () => {
     expect(typeof props.onNodeHover).toBe('function');
   });
 
-  it('navigates to the note route on node click', async () => {
+  it('navigates by path on node click', async () => {
     const user = userEvent.setup();
     mockGraph(graphFixture);
     const onOpen = vi.fn();
     renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
     await screen.findByTestId('force-graph');
     const props = captured.current as unknown as {
-      onNodeClick: (node: { id: string }) => void;
+      onNodeClick: (node: { id: string; path?: string }) => void;
     };
-    props.onNodeClick({ id: 'b' });
-    expect(onOpen).toHaveBeenCalledWith('b');
+    props.onNodeClick({ id: 'b', path: 'b.md' });
+    expect(onOpen).toHaveBeenCalledWith('b.md');
     // The keyboard-focusable fallback list offers the same navigation.
     const fallback = screen.getByRole('list', { name: 'Notes in graph' });
     expect(fallback).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'b.md' }));
-    expect(onOpen).toHaveBeenCalledWith('b');
+    expect(onOpen).toHaveBeenCalledWith('b.md');
   });
 
   it('shows the hovered note title with an Open note action', async () => {
@@ -162,7 +159,7 @@ describe('GraphView', () => {
     );
     expect(screen.getAllByText('Alpha')).toHaveLength(2);
     await user.click(screen.getByRole('button', { name: 'Open note' }));
-    expect(onOpen).toHaveBeenCalledWith('a');
+    expect(onOpen).toHaveBeenCalledWith('a.md');
   });
 
   it('highlights the currently-open note when selectedId is provided', async () => {
@@ -181,9 +178,7 @@ describe('GraphView', () => {
     expect(neighbor).toBe('#7b6cd9');
     expect(distant).not.toBe('#7b6cd9');
     expect(props.backgroundColor).toBe('#ffffff');
-    expect(
-      screen.getByRole('button', { name: 'Gamma' }).getAttribute('aria-current'),
-    ).toBe('true');
+    expect(screen.getByRole('button', { name: 'Gamma' }).getAttribute('aria-current')).toBe('true');
   });
 
   it('paints uniform graph-node dots when nothing is active', async () => {
@@ -219,17 +214,9 @@ describe('GraphView', () => {
     expect(props.nodeCanvasObjectMode({ id: 'c' })).toBe('after');
     expect(props.nodeCanvasObjectMode({ id: 'a' })).toBeUndefined();
     const ctx = { font: '', textAlign: '', textBaseline: '', fillStyle: '', fillText: vi.fn() };
-    props.nodeCanvasObject(
-      { id: 'a', x: 0, y: 0 },
-      ctx as unknown as CanvasRenderingContext2D,
-      1,
-    );
+    props.nodeCanvasObject({ id: 'a', x: 0, y: 0 }, ctx as unknown as CanvasRenderingContext2D, 1);
     expect(ctx.fillText).not.toHaveBeenCalled();
-    props.nodeCanvasObject(
-      { id: 'c', x: 4, y: 8 },
-      ctx as unknown as CanvasRenderingContext2D,
-      1,
-    );
+    props.nodeCanvasObject({ id: 'c', x: 4, y: 8 }, ctx as unknown as CanvasRenderingContext2D, 1);
     expect(ctx.fillText).toHaveBeenCalledWith('Gamma', 10, 8);
   });
 

@@ -22,7 +22,26 @@ describe('NoteViewer', () => {
     );
   });
 
-  it('navigates to the target note when a resolved in-note link is clicked', async () => {
+  it('navigates by path when a resolved in-note link is clicked', async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    vi.spyOn(api, 'rendered').mockResolvedValue({
+      title: 'Home',
+      html: '<p><a href="#" class="tephra-link" data-link-path="Target" data-file-id="file-2">Target Note</a></p>',
+    });
+    render(
+      <NoteViewer
+        vaultId="vault-1"
+        fileId="file-1"
+        onOpen={onOpen}
+        getPathForFileId={(fileId) => (fileId === 'file-2' ? 'Notes/Target.md' : undefined)}
+      />,
+    );
+    await user.click(await screen.findByRole('link', { name: 'Target Note' }));
+    expect(onOpen).toHaveBeenCalledWith('Notes/Target.md');
+  });
+
+  it('shows a notice when the link target path is unknown', async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
     vi.spyOn(api, 'rendered').mockResolvedValue({
@@ -31,7 +50,8 @@ describe('NoteViewer', () => {
     });
     render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={onOpen} />);
     await user.click(await screen.findByRole('link', { name: 'Target Note' }));
-    expect(onOpen).toHaveBeenCalledWith('file-2');
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(await screen.findByRole('status')).toHaveTextContent('Note not found: file-2');
   });
 
   it('shows a notice instead of navigating for unresolved in-note links', async () => {

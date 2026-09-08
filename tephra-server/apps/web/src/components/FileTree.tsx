@@ -4,13 +4,13 @@ import { buildTree, filterTree, type TreeNode } from '../vault/tree';
 
 function Branch({
   nodes,
-  selectedId,
+  selectedPath,
   onSelect,
   forceOpen,
 }: {
   nodes: readonly TreeNode[];
-  selectedId: string | undefined;
-  onSelect: (file: VaultFile) => void;
+  selectedPath: string | undefined;
+  onSelect: (path: string) => void;
   forceOpen: boolean;
 }) {
   return (
@@ -20,7 +20,7 @@ function Branch({
           <Folder
             key={node.path}
             node={node}
-            selectedId={selectedId}
+            selectedPath={selectedPath}
             onSelect={onSelect}
             forceOpen={forceOpen}
           />
@@ -28,9 +28,9 @@ function Branch({
           <li key={node.file.fileId}>
             <button
               type="button"
-              className={`tree-file ${selectedId === node.file.fileId ? 'selected' : ''}`}
-              aria-current={selectedId === node.file.fileId ? 'page' : undefined}
-              onClick={() => onSelect(node.file)}
+              className={`tree-file ${selectedPath === node.file.path ? 'selected' : ''}`}
+              aria-current={selectedPath === node.file.path ? 'page' : undefined}
+              onClick={() => onSelect(node.file.path)}
             >
               <span aria-hidden="true">{node.file.kind === 'markdown' ? '▧' : '◫'}</span>
               <span>{node.name}</span>
@@ -43,13 +43,13 @@ function Branch({
 }
 function Folder({
   node,
-  selectedId,
+  selectedPath,
   onSelect,
   forceOpen,
 }: {
   node: Extract<TreeNode, { type: 'folder' }>;
-  selectedId: string | undefined;
-  onSelect: (file: VaultFile) => void;
+  selectedPath: string | undefined;
+  onSelect: (path: string) => void;
   forceOpen: boolean;
 }) {
   const [open, setOpen] = useState(true);
@@ -68,7 +68,7 @@ function Folder({
       {expanded && (
         <Branch
           nodes={node.children}
-          selectedId={selectedId}
+          selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={forceOpen}
         />
@@ -78,12 +78,12 @@ function Folder({
 }
 export function FileTree({
   files,
-  selectedId,
+  selectedPath,
   onSelect,
 }: {
   files: readonly VaultFile[];
-  selectedId?: string;
-  onSelect: (file: VaultFile) => void;
+  selectedPath?: string;
+  onSelect: (path: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const nodes = useMemo(
@@ -109,7 +109,7 @@ export function FileTree({
       {nodes.length ? (
         <Branch
           nodes={nodes}
-          selectedId={selectedId}
+          selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={query.trim().length > 0}
         />

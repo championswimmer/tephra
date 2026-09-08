@@ -392,6 +392,18 @@ export class TephraSettingTab extends PluginSettingTab {
         text: 'Direct sync is paused. Your vault can still be synchronized via the headless Obsidian Sync sidecar or external tools while this plugin manages your Tephra instance.',
       });
     }
+
+    new Setting(containerEl)
+      .setName('Remove Tephra IDs from notes')
+      .setDesc(
+        'Delete the tephra-file-id property from every note in the vault. This rewrites files and cannot be undone by Tephra — back up first.',
+      )
+      .addButton((button) =>
+        button
+          .setButtonText('Remove file IDs…')
+          .setWarning()
+          .onClick(() => void this.plugin.removeFileIdsFromAllNotes()),
+      );
   }
 
   private renderAdvancedSection(containerEl: HTMLElement): void {

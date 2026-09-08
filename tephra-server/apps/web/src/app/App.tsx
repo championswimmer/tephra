@@ -18,7 +18,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/vaults" element={<VaultListPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/v/:vaultId/*" element={<VaultWorkspace />} />
+          <Route path="/v/:vaultSlug/*" element={<VaultWorkspace />} />
         </Route>
       </Route>
       <Route path="/" element={<Navigate to="/vaults" replace />} />

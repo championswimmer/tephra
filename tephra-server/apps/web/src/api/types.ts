@@ -46,6 +46,17 @@ export interface GraphResponse {
   edges: { source: string; target: string; count: number }[];
   indexPending?: boolean;
 }
+export type ResolveMatch = 'exact' | 'case' | 'normalized' | 'historic';
+
+export interface ResolveResponse {
+  match: ResolveMatch;
+  requestedPath: string;
+  canonicalPath: string;
+  file: VaultFile;
+  movedFromPath?: string;
+  movedAtRevision?: number;
+}
+
 export interface ApiToken {
   id: string;
   name: string;

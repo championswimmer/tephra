@@ -43,7 +43,12 @@ export function mapGraphToForceData(graph: GraphResponse): ForceGraphDatum {
 export function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace(/^#/, '');
   const full =
-    clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean;
   const value = Number.parseInt(full.slice(0, 6).padEnd(6, '0'), 16);
   const red = (value >> 16) & 0xff;
   const green = (value >> 8) & 0xff;
@@ -57,7 +62,8 @@ export function GraphView({
   selectedId,
 }: {
   vaultId: string;
-  onOpen: (id: string) => void;
+  /** Navigate by vault-relative path (graph nodes carry both id and path). */
+  onOpen: (path: string) => void;
   selectedId?: string;
 }) {
   const [graph, setGraph] = useState<GraphResponse | null>(null);
@@ -144,19 +150,13 @@ export function GraphView({
     if (!graph || !activeId) return new Set<string>();
     return new Set(
       graph.edges.flatMap((edge) =>
-        edge.source === activeId
-          ? [edge.target]
-          : edge.target === activeId
-            ? [edge.source]
-            : [],
+        edge.source === activeId ? [edge.target] : edge.target === activeId ? [edge.source] : [],
       ),
     );
   }, [graph, activeId]);
-  const isActive = (id: string) =>
-    activeId === null || id === activeId || neighbors.has(id);
+  const isActive = (id: string) => activeId === null || id === activeId || neighbors.has(id);
 
-  if (error)
-    return <ErrorState error={error} retry={() => setReloadToken((token) => token + 1)} />;
+  if (error) return <ErrorState error={error} retry={() => setReloadToken((token) => token + 1)} />;
   if (!graph) return <Loading label="Loading graph…" />;
   if (!graph.nodes.length)
     return (
@@ -165,9 +165,7 @@ export function GraphView({
       </EmptyState>
     );
 
-  const activeNode = activeId
-    ? graph.nodes.find((node) => node.id === activeId)
-    : undefined;
+  const activeNode = activeId ? graph.nodes.find((node) => node.id === activeId) : undefined;
 
   // Obsidian graph language: uniform small dots in the graph-node color,
   // faint graph-line edges with directional arrows, and the hovered/selected
@@ -236,9 +234,7 @@ export function GraphView({
           // Labels are painted only for the hovered (or currently-open) node.
           // Drawing text for every node costs a `fillText` per node per frame,
           // which dominates the render loop on larger vaults.
-          nodeCanvasObjectMode={(node) =>
-            String(node.id) === activeId ? 'after' : undefined
-          }
+          nodeCanvasObjectMode={(node) => (String(node.id) === activeId ? 'after' : undefined)}
           nodeCanvasObject={(node, ctx, globalScale) => {
             const id = String(node.id);
             if (id !== activeId) return;
@@ -248,10 +244,11 @@ export function GraphView({
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = palette.text;
-            ctx.fillText(label, (node.x ?? 0) + 6, (node.y ?? 0));
+            ctx.fillText(label, (node.x ?? 0) + 6, node.y ?? 0);
           }}
           onNodeClick={(node) => {
-            onOpen(String(node.id));
+            const datum = node as { id?: unknown; path?: unknown };
+            onOpen(typeof datum.path === 'string' ? datum.path : String(node.id));
           }}
           onNodeHover={(node) => {
             // After d3 resolves links, source/target become node objects.
@@ -271,7 +268,7 @@ export function GraphView({
       {activeNode && (
         <div className="graph-selection">
           <span>{activeNode.title ?? activeNode.path}</span>
-          <button type="button" onClick={() => onOpen(activeNode.id)}>
+          <button type="button" onClick={() => onOpen(activeNode.path)}>
             Open note
           </button>
         </div>
@@ -281,7 +278,7 @@ export function GraphView({
           <li key={node.id}>
             <button
               type="button"
-              onClick={() => onOpen(node.id)}
+              onClick={() => onOpen(node.path)}
               aria-current={node.id === selectedId ? 'true' : undefined}
             >
               {node.title ?? node.path}

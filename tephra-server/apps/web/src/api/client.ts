@@ -5,6 +5,7 @@ import type {
   GraphResponse,
   LinksResponse,
   RenderedNote,
+  ResolveResponse,
   User,
   Vault,
 } from './types';
@@ -95,6 +96,10 @@ export class ApiClient {
     this.request<{ vault: Vault }>('/vaults', { method: 'POST', body: JSON.stringify({ name }) });
   files = (vaultId: string) =>
     this.request<FilesResponse>(`/vaults/${encodeURIComponent(vaultId)}/files`);
+  resolve = (vaultId: string, path: string) =>
+    this.request<ResolveResponse>(
+      `/vaults/${encodeURIComponent(vaultId)}/resolve?path=${encodeURIComponent(path)}`,
+    );
   rendered = (vaultId: string, fileId: string) =>
     this.request<RenderedNote>(
       `/vaults/${encodeURIComponent(vaultId)}/files/${encodeURIComponent(fileId)}/rendered`,

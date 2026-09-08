@@ -25,10 +25,13 @@ export function NoteViewer({
   vaultId,
   fileId,
   onOpen,
+  getPathForFileId,
 }: {
   vaultId: string;
   fileId: string;
-  onOpen: (id: string) => void;
+  /** Navigate by vault-relative path (see `vault/path-url`). */
+  onOpen: (path: string) => void;
+  getPathForFileId?: (fileId: string) => string | undefined;
 }) {
   const [note, setNote] = useState<RenderedNote | null>(null);
   const [source, setSource] = useState<string | null>(null);
@@ -105,12 +108,14 @@ export function NoteViewer({
             }
             const target = link.dataset.fileId ?? link.dataset.tephraFileId;
             const pathTarget = link.getAttribute('href')?.match(/\/file\/([^/?#]+)/)?.[1];
-            if (target) {
+            const targetId = target ?? (pathTarget ? decodeURIComponent(pathTarget) : undefined);
+            if (targetId) {
               event.preventDefault();
-              onOpen(target);
-            } else if (pathTarget) {
-              event.preventDefault();
-              onOpen(decodeURIComponent(pathTarget));
+              // Server-rendered anchors carry file ids; navigation is by
+              // path, so translate through the workspace's file list.
+              const targetPath = getPathForFileId?.(targetId);
+              if (targetPath !== undefined) onOpen(targetPath);
+              else setUnresolved(targetId);
             } else if (link.getAttribute('href') === '#') {
               // Internal vault link the renderer could not resolve to a file
               // (e.g. ambiguous). Swallow the jump-to-top instead of navigating.
