@@ -30,7 +30,11 @@ function decode(value: string): string {
 }
 
 function normalize(value: string): string | null {
-  const decoded = decode(value).replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  // NFC first: stored paths and typed links may arrive in different Unicode
+  // normalization forms (NFD filenames from macOS vs NFC wikilinks). This is
+  // the single choke point every compared string flows through, so one
+  // normalization here covers targets, sources, and index entries alike.
+  const decoded = decode(value).normalize('NFC').replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '');
   const output: string[] = [];
   for (const segment of decoded.split('/')) {
     if (segment === '' || segment === '.') continue;

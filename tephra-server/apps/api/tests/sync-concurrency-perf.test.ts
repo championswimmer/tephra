@@ -213,6 +213,58 @@ describe('concurrent commits against one vault (real SQLite + filesystem blobs)'
       expect(versions.some((version) => version.changeType === 'create')).toBe(true);
     }
   });
+
+  it('converges two devices committing the same id set concurrently onto one revision', async () => {
+    // Two devices with no shared state mint the same path-seeded ids for an
+    // unchanged vault, then commit at once. The second commit must be an
+    // idempotent no-op and the vault must hold exactly that one id set.
+    const { app, database, vault, token } = await realFixture();
+    const alphaBytes = new TextEncoder().encode('# Alpha\n\nShared content.\n');
+    const betaBytes = new TextEncoder().encode('# Beta\n\nShared content.\n');
+    const alphaHash = await sha256Hex(alphaBytes);
+    const betaHash = await sha256Hex(betaBytes);
+    await putBlob(app, vault.id, token, alphaBytes, alphaHash);
+    await putBlob(app, vault.id, token, betaBytes, betaHash);
+    const files = [
+      entry('file-alpha', 'Notes/Alpha.md', alphaHash, alphaBytes.byteLength),
+      entry('file-beta', 'Notes/Beta.md', betaHash, betaBytes.byteLength),
+    ];
+    const manifestHash = await hashManifest(files);
+    const commitAs = (deviceId: string) =>
+      app.request(`/api/v1/vaults/${vault.id}/sync/commit`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ deviceId, manifestHash, files }),
+      });
+
+    const [first, second] = await Promise.all([commitAs('device-a'), commitAs('device-b')]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const firstBody = (await first.json()) as { status: string; revision: number };
+    const secondBody = (await second.json()) as { status: string; revision: number };
+    // Exactly one commit lands; the other recognizes the identical manifest.
+    expect([firstBody, secondBody].map((body) => body.status).sort()).toEqual([
+      'committed',
+      'up-to-date',
+    ]);
+    expect(firstBody.revision).toBe(1);
+    expect(secondBody.revision).toBe(1);
+
+    const listing = await app.request(`/api/v1/vaults/${vault.id}/files`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(listing.status).toBe(200);
+    const { revision, files: stored } = (await listing.json()) as {
+      revision: number;
+      files: { fileId: string; path: string }[];
+    };
+    expect(revision).toBe(1);
+    expect(stored.map((file) => [file.path, file.fileId]).sort()).toEqual([
+      ['Notes/Alpha.md', 'file-alpha'],
+      ['Notes/Beta.md', 'file-beta'],
+    ]);
+    expect(await database.vaultRevisions.list(vault.id)).toHaveLength(1);
+  });
 });
 
 describe('larger-vault indexing performance (real SQLite + filesystem blobs)', () => {

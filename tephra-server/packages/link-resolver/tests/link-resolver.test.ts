@@ -36,4 +36,27 @@ describe('resolveLink', () => {
     const attachment = resolveLink('One/Source.md', 'Assets/my%20image.png', index);
     expect(isAttachmentEmbed({ isEmbed: true, resolution: attachment })).toBe(true);
   });
+
+  it('resolves across Unicode normalization forms (NFD-stored path, NFC wikilink)', () => {
+    // macOS hands out NFD filenames while wikilinks are typically typed in
+    // NFC. Ingest canonicalizes to NFC, but resolution must also tolerate a
+    // non-canonical stored path so one drifted entry cannot break the graph.
+    const nfdStored = 'Cafe\u0301.md'; // NFD "Café.md"
+    const nfcLink = 'Caf\u00e9'; // NFC "Café"
+    const drifted = createVaultPathIndex([
+      { fileId: 'cafe', path: nfdStored, kind: 'markdown' },
+    ]);
+    expect(resolveLink('Source.md', nfcLink, drifted)).toMatchObject({
+      status: 'resolved',
+      targetFileId: 'cafe',
+    });
+    // And symmetrically: an NFC-stored path resolves an NFD-typed link.
+    const nfcStored = createVaultPathIndex([
+      { fileId: 'cafe', path: 'Caf\u00e9.md', kind: 'markdown' },
+    ]);
+    expect(resolveLink('Source.md', 'Cafe\u0301', nfcStored)).toMatchObject({
+      status: 'resolved',
+      targetFileId: 'cafe',
+    });
+  });
 });

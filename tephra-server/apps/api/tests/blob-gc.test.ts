@@ -183,4 +183,99 @@ describe('blob garbage collection', () => {
   it('uses a 7-day default grace period and honors explicit options', () => {
     expect(DEFAULT_BLOB_GC_AGE_MS).toBe(7 * DAY_MS);
   });
+
+  it('does not collect blobs surviving only through pre-churn file versions', async () => {
+    // An identity churn (mode switch / sidecar loss) re-mints the file id
+    // while path and content stay identical. The blob is still referenced
+    // by file_versions rows under the old id, so GC must keep it even once
+    // it is older than the grace period.
+    const directory = await mkdtemp(join(tmpdir(), 'tephra-gc-churn-'));
+    directories.push(directory);
+    const database = openSqliteDatabase(join(directory, 'tephra.db'));
+    databases.push(database);
+    const blobStore = new MemoryBlobStore();
+    let nextId = 0;
+    const app = createApp({
+      database,
+      blobStore,
+      clock: { now: () => NOW },
+      ids: { generate: () => `id-${++nextId}` },
+      passwordHasher: { hash: async (value) => value, verify: async () => true },
+      secureCookies: false,
+    });
+
+    await database.users.insert({
+      id: 'user-1',
+      email: 'owner@example.com',
+      passwordHash: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await database.vaults.insert({
+      id: 'vault-1',
+      ownerUserId: 'user-1',
+      name: 'Vault',
+      latestRevision: 0,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await database.devices.insert({
+      id: 'device-1',
+      userId: 'user-1',
+      name: 'Device',
+      createdAt: NOW,
+      lastSeenAt: NOW,
+    });
+    const rawToken = 'gc-churn-device-token';
+    await database.apiTokens.insert({
+      id: 'token-1',
+      userId: 'user-1',
+      vaultId: 'vault-1',
+      deviceId: 'device-1',
+      tokenHash: await hashOpaqueToken(rawToken),
+      name: 'Sync',
+      scopes: ['vault:upload', 'vault:read-metadata'],
+      createdAt: NOW,
+      lastUsedAt: null,
+      expiresAt: null,
+      revokedAt: null,
+    });
+    const auth = { authorization: `Bearer ${rawToken}` };
+
+    const bytes = new TextEncoder().encode('# Churned note');
+    const hash = await sha256Hex(bytes);
+    await blobStore.put({ hash, bytes, size: bytes.byteLength });
+    // Aged past the grace period so only the version reference protects it.
+    await database.blobs.insert({
+      hash,
+      size: bytes.byteLength,
+      mimeType: 'text/markdown',
+      createdAt: NOW - 8 * DAY_MS,
+    });
+
+    const commitManifest = async (fileId: string): Promise<void> => {
+      const files: SyncManifestEntry[] = [
+        { fileId, path: 'Note.md', hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' },
+      ];
+      const response = await app.request('/api/v1/vaults/vault-1/sync/commit', {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: 'device-1',
+          manifestHash: await hashManifest(files),
+          files,
+        }),
+      });
+      expect(response.status).toBe(200);
+    };
+
+    await commitManifest('file-before-churn');
+    // Same path, same bytes, new id: the churn revision is delete+create.
+    await commitManifest('file-after-churn');
+
+    const result = await collectUnreferencedBlobs({ database, blobStore, now: NOW });
+    expect(result).toEqual({ deleted: [] });
+    expect(await database.blobs.findByHash(hash)).not.toBeNull();
+    expect(await blobStore.has(hash)).toBe(true);
+  });
 });

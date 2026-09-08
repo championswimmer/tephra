@@ -82,4 +82,55 @@ describe('revision diff', () => {
     expect(diff([current], [incoming]).isNoOp).toBe(true);
     expect(diff([current], [{ ...incoming, mtime: 11 }]).isNoOp).toBe(true);
   });
+
+  it('treats a wholesale id change as delete+create and references no new blobs', () => {
+    // A mode switch or sidecar loss re-mints every id while paths and
+    // content stay identical: identity churn, not content churn.
+    const before: CurrentVaultFile[] = [
+      { ...current, fileId: 'file_1', path: 'A.md', blobHash: 'hash-a' },
+      {
+        fileId: 'file_2',
+        vaultId: 'vault_1',
+        path: 'B.md',
+        blobHash: 'hash-b',
+        size: 5,
+        mtime: 10,
+        kind: 'markdown',
+        updatedRevision: 1,
+      },
+    ];
+    const after: IncomingVaultFile[] = [
+      { ...incoming, fileId: 'file_new_1', path: 'A.md', blobHash: 'hash-a' },
+      {
+        fileId: 'file_new_2',
+        path: 'B.md',
+        blobHash: 'hash-b',
+        size: 5,
+        mtime: 10,
+        kind: 'markdown',
+      },
+    ];
+    const result = diff(before, after);
+    expect(result.isNoOp).toBe(false);
+    expect(result.deletedFileIds.sort()).toEqual(['file_1', 'file_2']);
+    expect(result.createdFileIds.sort()).toEqual(['file_new_1', 'file_new_2']);
+    expect(result.modifiedFileIds).toEqual([]);
+    expect(result.renamedFileIds).toEqual([]);
+    expect(result.versions.map((version) => version.changeType).sort()).toEqual([
+      'create',
+      'create',
+      'delete',
+      'delete',
+    ]);
+    // Every surviving version points at a blob the vault already held — an
+    // identity change must never look like new content (no re-upload).
+    const knownBlobs = new Set(before.map((file) => file.blobHash));
+    for (const version of result.versions) {
+      if (version.changeType === 'delete') {
+        expect(version.blobHash).toBeNull();
+      } else {
+        expect(knownBlobs.has(version.blobHash ?? '')).toBe(true);
+      }
+    }
+  });
 });
