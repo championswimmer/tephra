@@ -181,11 +181,12 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
       async delete(hash) { db.prepare('DELETE FROM blobs WHERE hash=?').run(hash); },
     },
     vaultFiles: {
-      async findById(id) { const row = first(db, 'SELECT * FROM vault_files WHERE file_id=?', id); return row && vaultFile(row); },
+      async findById(vaultId, fileId) { const row = first(db, 'SELECT * FROM vault_files WHERE vault_id=? AND file_id=?', vaultId, fileId); return row && vaultFile(row); },
       async findByPath(vaultId, path) { const row = first(db, 'SELECT * FROM vault_files WHERE vault_id=? AND path=?', vaultId, path); return row && vaultFile(row); },
+      async findByPathFold(vaultId, pathFold) { return all(db, 'SELECT * FROM vault_files WHERE vault_id=? AND path_fold=? ORDER BY path', vaultId, pathFold).map(vaultFile); },
       async listByVault(id) { return all(db, 'SELECT * FROM vault_files WHERE vault_id=? ORDER BY path', id).map(vaultFile); },
-      async upsert(v) { db.prepare(`INSERT INTO vault_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_id) DO UPDATE SET vault_id=excluded.vault_id,path=excluded.path,blob_hash=excluded.blob_hash,size=excluded.size,mtime=excluded.mtime,mime_type=excluded.mime_type,kind=excluded.kind,updated_revision=excluded.updated_revision`).run(v.fileId, v.vaultId, v.path, v.blobHash, v.size, v.mtime, v.mimeType ?? null, v.kind, v.updatedRevision); },
-      async delete(id) { db.prepare('DELETE FROM vault_files WHERE file_id=?').run(id); },
+      async upsert(v) { const pathFold = v.path.normalize('NFC').toLowerCase(); db.prepare(`INSERT INTO vault_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(vault_id, file_id) DO UPDATE SET path=excluded.path,path_fold=excluded.path_fold,blob_hash=excluded.blob_hash,size=excluded.size,mtime=excluded.mtime,mime_type=excluded.mime_type,kind=excluded.kind,updated_revision=excluded.updated_revision`).run(v.fileId, v.vaultId, v.path, pathFold, v.blobHash, v.size, v.mtime, v.mimeType ?? null, v.kind, v.updatedRevision); },
+      async delete(vaultId, fileId) { db.prepare('DELETE FROM vault_files WHERE vault_id=? AND file_id=?').run(vaultId, fileId); },
     },
     vaultRevisions: {
       async find(vaultId, rev) { const row = first(db, 'SELECT * FROM vault_revisions WHERE vault_id=? AND revision=?', vaultId, rev); return row && revision(row); },
@@ -197,6 +198,7 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
     fileVersions: {
       async listByRevision(vaultId, rev) { return all(db, 'SELECT * FROM file_versions WHERE vault_id=? AND revision=? ORDER BY id', vaultId, rev).map(fileVersion); },
       async listByFile(vaultId, fileId) { return all(db, 'SELECT * FROM file_versions WHERE vault_id=? AND file_id=? ORDER BY revision, id', vaultId, fileId).map(fileVersion); },
+      async findLatestByPath(vaultId, path) { const row = first(db, 'SELECT * FROM file_versions WHERE vault_id=? AND path=? ORDER BY revision DESC LIMIT 1', vaultId, path); return row && fileVersion(row); },
       async insertMany(values) { const statement = db.prepare('INSERT INTO file_versions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'); for (const v of values) statement.run(v.id, v.vaultId, v.fileId, v.revision, v.path, v.blobHash, v.size, v.mtime, v.changeType, v.createdAt); },
     },
     noteIndex: {

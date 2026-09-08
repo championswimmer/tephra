@@ -155,4 +155,39 @@ describe('SQLite database adapter', () => {
     expect(await db.blobs.findUnreferencedOlderThan(50, 0)).toEqual([]);
     expect(await db.blobs.findUnreferencedOlderThan(4, 10)).toEqual([]);
   });
+
+  it('isolates the same file_id across vaults under the composite key', async () => {
+    const { db } = await database();
+    await seed(db);
+    await db.vaults.insert({ id: 'vault-2', ownerUserId: 'user-1', name: 'Second', latestRevision: 0, createdAt: 3, updatedAt: 3 });
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-2', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({ vaultId: 'vault-1', path: 'Note.md' });
+    expect(await db.vaultFiles.findById('vault-2', 'file-1')).toMatchObject({ vaultId: 'vault-2', path: 'Note.md' });
+    // Updating one vault's row leaves the other untouched.
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Renamed.md', blobHash: 'a'.repeat(64), size: 5, mtime: 2, kind: 'markdown', updatedRevision: 2 });
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({ path: 'Renamed.md' });
+    expect(await db.vaultFiles.findById('vault-2', 'file-1')).toMatchObject({ path: 'Note.md' });
+    // Scoped delete only removes the requested vault's row.
+    await db.vaultFiles.delete('vault-1', 'file-1');
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toBeNull();
+    expect(await db.vaultFiles.findById('vault-2', 'file-1')).not.toBeNull();
+  });
+
+  it('finds files by case-folded path and versions by latest path', async () => {
+    const { db } = await database();
+    await seed(db);
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Notes/Hello.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    await db.vaultFiles.upsert({ fileId: 'file-2', vaultId: 'vault-1', path: 'NOTES/HELLO.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    expect((await db.vaultFiles.findByPathFold('vault-1', 'notes/hello.md')).map((file) => file.fileId).sort()).toEqual(['file-1', 'file-2']);
+    expect(await db.vaultFiles.findByPathFold('vault-1', 'notes/missing.md')).toEqual([]);
+    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 5 });
+    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 2, manifestHash: 'manifest-2', deviceId: 'device-1', createdAt: 6 });
+    await db.fileVersions.insertMany([
+      { id: 'version-1', vaultId: 'vault-1', fileId: 'file-1', revision: 1, path: 'Old.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, changeType: 'create', createdAt: 5 },
+      { id: 'version-2', vaultId: 'vault-1', fileId: 'file-1', revision: 2, path: 'Old.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, changeType: 'rename', createdAt: 6 },
+    ]);
+    expect(await db.fileVersions.findLatestByPath('vault-1', 'Old.md')).toMatchObject({ id: 'version-2', revision: 2 });
+    expect(await db.fileVersions.findLatestByPath('vault-1', 'Missing.md')).toBeNull();
+  });
 });

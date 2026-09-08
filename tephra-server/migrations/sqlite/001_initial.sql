@@ -59,21 +59,23 @@ CREATE TABLE blobs (
 );
 
 CREATE TABLE vault_files (
-  file_id TEXT PRIMARY KEY,
+  file_id TEXT NOT NULL,
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
   path TEXT NOT NULL,
+  path_fold TEXT NOT NULL,
   blob_hash TEXT NOT NULL REFERENCES blobs(hash),
   size INTEGER NOT NULL CHECK(size >= 0),
   mtime INTEGER NOT NULL,
   mime_type TEXT,
   kind TEXT NOT NULL CHECK(kind IN ('markdown', 'attachment')),
   updated_revision INTEGER NOT NULL,
-  UNIQUE(vault_id, path),
-  UNIQUE(vault_id, file_id)
+  PRIMARY KEY(vault_id, file_id),
+  UNIQUE(vault_id, path)
 );
 CREATE INDEX vault_files_vault_idx ON vault_files(vault_id);
 CREATE INDEX vault_files_kind_idx ON vault_files(vault_id, kind);
 CREATE INDEX vault_files_blob_idx ON vault_files(vault_id, blob_hash);
+CREATE INDEX vault_files_path_fold_idx ON vault_files(vault_id, path_fold);
 
 CREATE TABLE vault_revisions (
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
@@ -101,9 +103,10 @@ CREATE TABLE file_versions (
 );
 CREATE INDEX file_versions_revision_idx ON file_versions(vault_id, revision);
 CREATE INDEX file_versions_file_idx ON file_versions(vault_id, file_id, revision);
+CREATE INDEX file_versions_path_idx ON file_versions(vault_id, path, revision);
 
 CREATE TABLE note_metadata (
-  file_id TEXT PRIMARY KEY REFERENCES vault_files(file_id) ON DELETE CASCADE,
+  file_id TEXT PRIMARY KEY,
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
   indexed_blob_hash TEXT NOT NULL,
   title TEXT,
@@ -111,21 +114,24 @@ CREATE TABLE note_metadata (
   headings_json TEXT NOT NULL,
   tags_json TEXT NOT NULL,
   blocks_json TEXT NOT NULL,
-  indexed_at INTEGER NOT NULL
+  indexed_at INTEGER NOT NULL,
+  FOREIGN KEY(vault_id, file_id) REFERENCES vault_files(vault_id, file_id) ON DELETE CASCADE
 );
 CREATE INDEX note_metadata_vault_idx ON note_metadata(vault_id);
 
 CREATE TABLE note_links (
   id TEXT PRIMARY KEY,
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
-  source_file_id TEXT NOT NULL REFERENCES vault_files(file_id) ON DELETE CASCADE,
+  source_file_id TEXT NOT NULL,
   raw_text TEXT NOT NULL,
   link_path TEXT NOT NULL,
   subpath TEXT,
   display_text TEXT,
   is_embed INTEGER NOT NULL CHECK(is_embed IN (0, 1)),
-  target_file_id TEXT REFERENCES vault_files(file_id) ON DELETE SET NULL,
-  created_at INTEGER NOT NULL
+  target_file_id TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY(vault_id, source_file_id) REFERENCES vault_files(vault_id, file_id) ON DELETE CASCADE,
+  FOREIGN KEY(vault_id, target_file_id) REFERENCES vault_files(vault_id, file_id) ON DELETE SET NULL
 );
 CREATE INDEX note_links_source_idx ON note_links(vault_id, source_file_id);
 CREATE INDEX note_links_target_idx ON note_links(vault_id, target_file_id);

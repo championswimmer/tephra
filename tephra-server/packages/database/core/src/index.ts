@@ -68,11 +68,12 @@ export interface BlobRepository {
 }
 
 export interface VaultFileRepository {
-  findById(fileId: string): Promise<CurrentVaultFile | null>;
+  findById(vaultId: string, fileId: string): Promise<CurrentVaultFile | null>;
   findByPath(vaultId: string, path: string): Promise<CurrentVaultFile | null>;
+  findByPathFold(vaultId: string, pathFold: string): Promise<CurrentVaultFile[]>;
   listByVault(vaultId: string): Promise<CurrentVaultFile[]>;
   upsert(file: CurrentVaultFile): Promise<void>;
-  delete(fileId: string): Promise<void>;
+  delete(vaultId: string, fileId: string): Promise<void>;
 }
 
 export interface VaultRevisionRepository {
@@ -86,6 +87,7 @@ export interface VaultRevisionRepository {
 export interface FileVersionRepository {
   listByRevision(vaultId: string, revision: number): Promise<FileVersion[]>;
   listByFile(vaultId: string, fileId: string): Promise<FileVersion[]>;
+  findLatestByPath(vaultId: string, path: string): Promise<FileVersion | null>;
   insertMany(versions: readonly FileVersion[]): Promise<void>;
 }
 

@@ -82,11 +82,12 @@ class MemoryDatabase implements Database {
     delete: async (hash: string) => { this.state.blobs.delete(hash); },
   };
   vaultFiles = {
-    findById: async (id: string) => this.state.files.get(id) ?? null,
+    findById: async (vaultId: string, fileId: string) => [...this.state.files.values()].find((item) => item.vaultId === vaultId && item.fileId === fileId) ?? null,
     findByPath: async (vaultId: string, path: string) => [...this.state.files.values()].find((item) => item.vaultId === vaultId && item.path === path) ?? null,
+    findByPathFold: async (vaultId: string, pathFold: string) => [...this.state.files.values()].filter((item) => item.vaultId === vaultId && item.path.normalize('NFC').toLowerCase() === pathFold),
     listByVault: async (id: string) => [...this.state.files.values()].filter((item) => item.vaultId === id),
-    upsert: async (item: CurrentVaultFile) => { this.state.files.set(item.fileId, item); },
-    delete: async (id: string) => { this.state.files.delete(id); },
+    upsert: async (item: CurrentVaultFile) => { this.state.files.set(`${item.vaultId}\0${item.fileId}`, item); },
+    delete: async (vaultId: string, fileId: string) => { this.state.files.delete(`${vaultId}\0${fileId}`); },
   };
   vaultRevisions = {
     find: async (id: string, revision: number) => this.state.revisions.find((item) => item.vaultId === id && item.revision === revision) ?? null,
@@ -98,6 +99,7 @@ class MemoryDatabase implements Database {
   fileVersions = {
     listByRevision: async (id: string, revision: number) => this.state.versions.filter((item) => item.vaultId === id && item.revision === revision),
     listByFile: async (id: string, fileId: string) => this.state.versions.filter((item) => item.vaultId === id && item.fileId === fileId),
+    findLatestByPath: async (id: string, path: string) => this.state.versions.filter((item) => item.vaultId === id && item.path === path).sort((a, b) => b.revision - a.revision)[0] ?? null,
     insertMany: async (items: readonly FileVersion[]) => { this.state.versions.push(...items); },
   };
   noteIndex = {
@@ -401,5 +403,201 @@ describe('Tephra API', () => {
     expect(crossUserRes.status).toBe(403);
     const crossUserBody = (await crossUserRes.json()) as { error: { message: string } };
     expect(crossUserBody.error.message).toBe("Device belongs to another user.");
+  });
+});
+
+async function commitEntries(
+  app: { request: (input: string, init?: any) => any },
+  token: string,
+  vaultId: string,
+  entries: Array<{ fileId: string; path: string; content: string }>,
+) {
+  const files: SyncManifestEntry[] = [];
+  for (const entry of entries) {
+    const bytes = new TextEncoder().encode(entry.content);
+    const hash = await sha256Hex(bytes);
+    await app.request(`/api/v1/vaults/${vaultId}/blobs/${hash}`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength), 'content-type': 'text/markdown' },
+      body: bytes,
+    });
+    files.push({ fileId: entry.fileId, path: entry.path, hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' });
+  }
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const manifestHash = await hashManifest(files);
+  return app.request(`/api/v1/vaults/${vaultId}/sync/commit`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId: 'device-1', manifestHash, files }),
+  });
+}
+
+describe('composite vault_file identity', () => {
+  it('keeps identical paths in two vaults independent', async () => {
+    const { app, token, vault, browserHeaders, database } = await setup();
+    const otherVaultResponse = await app.request('/api/v1/vaults', { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'Second Vault' }) });
+    const { vault: vaultB } = await otherVaultResponse.json() as { vault: Vault };
+    const tokenResponse = await app.request(`/api/v1/vaults/${vaultB.id}/tokens`, { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'Plugin B' }) });
+    const { value: tokenB } = await tokenResponse.json() as { value: string };
+    const commitA = await commitEntries(app, token, vault.id, [{ fileId: 'shared-id', path: 'Note.md', content: 'vault a' }]);
+    expect(commitA.status).toBe(200);
+    const commitB = await commitEntries(app, tokenB, vaultB.id, [{ fileId: 'shared-id', path: 'Note.md', content: 'vault b' }]);
+    expect(commitB.status).toBe(200);
+    const filesA = await database.vaultFiles.listByVault(vault.id);
+    const filesB = await database.vaultFiles.listByVault(vaultB.id);
+    expect(filesA).toHaveLength(1);
+    expect(filesB).toHaveLength(1);
+    expect(filesA[0]).toMatchObject({ vaultId: vault.id, fileId: 'shared-id' });
+    expect(filesB[0]).toMatchObject({ vaultId: vaultB.id, fileId: 'shared-id' });
+    // Vault-scoped reads never cross vaults.
+    expect(await database.vaultFiles.findById(vault.id, 'shared-id')).toMatchObject({ vaultId: vault.id });
+    expect(await database.vaultFiles.findById(vaultB.id, 'shared-id')).toMatchObject({ vaultId: vaultB.id });
+    const readA = await app.request(`/api/v1/vaults/${vault.id}/files/shared-id`, { headers: { authorization: `Bearer ${token}` } });
+    expect(readA.status).toBe(200);
+    expect(((await readA.json()) as { file: { vaultId?: string; path: string } }).file.path).toBe('Note.md');
+    // Committing again in vault A does not steal vault B's row.
+    const recommit = await commitEntries(app, token, vault.id, [{ fileId: 'shared-id', path: 'Renamed.md', content: 'vault a' }]);
+    expect(recommit.status).toBe(200);
+    expect(await database.vaultFiles.findById(vaultB.id, 'shared-id')).toMatchObject({ path: 'Note.md' });
+  });
+
+  it('rejects a non-NFC path at commit with 400 INVALID_PATH', async () => {
+    const { app, token, vault } = await setup();
+    const nfd = 'Cafe\u0301.md';
+    expect(nfd.normalize('NFC') !== nfd).toBe(true);
+    const bytes = new TextEncoder().encode('# nfd');
+    const hash = await sha256Hex(bytes);
+    await app.request(`/api/v1/vaults/${vault.id}/blobs/${hash}`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength), 'content-type': 'text/markdown' },
+      body: bytes,
+    });
+    const files: SyncManifestEntry[] = [{ fileId: 'file-nfd', path: nfd, hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' }];
+    // Bypass hashManifest (it would throw on validation) with a bogus hash; path validation must still fire first.
+    const commit = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'device-1', manifestHash: '0'.repeat(64), files }),
+    });
+    expect(commit.status).toBe(400);
+    expect(((await commit.json()) as { error: { code: string } }).error.code).toBe('INVALID_PATH');
+  });
+});
+
+describe('path resolver', () => {
+  it('resolves exact paths', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Notes/Hello.md', content: 'hi' }]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('Notes/Hello.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { match: string; requestedPath: string; canonicalPath: string; file: { fileId: string } };
+    expect(body.match).toBe('exact');
+    expect(body.canonicalPath).toBe('Notes/Hello.md');
+    expect(body.file.fileId).toBe('file-1');
+  });
+
+  it('resolves NFD requests to NFC rows as normalized', async () => {
+    const { app, token, vault } = await setup();
+    const nfc = 'Caf\u00e9.md';
+    const nfd = nfc.normalize('NFD');
+    expect(nfd).not.toBe(nfc);
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: nfc, content: 'cafe' }]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent(nfd)}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { match: string; canonicalPath: string };
+    expect(body.match).toBe('normalized');
+    expect(body.canonicalPath).toBe(nfc);
+  });
+
+  it('resolves case-only misses as case, not exact', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Note.md', content: 'hi' }]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('note.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { match: string; canonicalPath: string };
+    expect(body.match).toBe('case');
+    expect(body.canonicalPath).toBe('Note.md');
+  });
+
+  it('returns 409 AMBIGUOUS_PATH when the fold matches several files', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [
+      { fileId: 'file-1', path: 'Note.md', content: 'one' },
+      { fileId: 'file-2', path: 'NOTE.md', content: 'two' },
+    ]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('note.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(409);
+    const body = await response.json() as { error: { code: string }; candidates: Array<{ fileId: string }> };
+    expect(body.error.code).toBe('AMBIGUOUS_PATH');
+    expect(body.candidates.map((candidate) => candidate.fileId).sort()).toEqual(['file-1', 'file-2']);
+  });
+
+  it('resolves renamed files through history and reports the move', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Old.md', content: 'hi' }]);
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'New.md', content: 'hi' }]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('Old.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { match: string; canonicalPath: string; movedFromPath?: string; movedAtRevision?: number };
+    expect(body.match).toBe('historic');
+    expect(body.canonicalPath).toBe('New.md');
+    expect(body.movedFromPath).toBe('Old.md');
+    expect(typeof body.movedAtRevision).toBe('number');
+  });
+
+  it('prefers a live occupant over history', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Old.md', content: 'first' }]);
+    await commitEntries(app, token, vault.id, [
+      { fileId: 'file-1', path: 'New.md', content: 'first' },
+      { fileId: 'file-2', path: 'Old.md', content: 'second' },
+    ]);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('Old.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { match: string; file: { fileId: string } };
+    expect(body.match).toBe('exact');
+    expect(body.file.fileId).toBe('file-2');
+  });
+
+  it('returns 410 FILE_DELETED for paths whose file is gone', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Gone.md', content: 'bye' }]);
+    await commitEntries(app, token, vault.id, []);
+    const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('Gone.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(410);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('FILE_DELETED');
+  });
+
+  it('returns 404 for unknown paths and 400 for invalid paths', async () => {
+    const { app, token, vault } = await setup();
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: 'Note.md', content: 'hi' }]);
+    const missing = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('Missing.md')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(missing.status).toBe(404);
+    const invalid = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent('../secret')}`, { headers: { authorization: `Bearer ${token}` } });
+    expect(invalid.status).toBe(400);
+    expect(((await invalid.json()) as { error: { code: string } }).error.code).toBe('INVALID_PATH');
+  });
+
+  it('never writes the path to the access log', async () => {
+    const { app, token, vault } = await setup();
+    const secret = 'Personal/Therapy/2026-09-02.md';
+    await commitEntries(app, token, vault.id, [{ fileId: 'file-1', path: secret, content: 'private' }]);
+    const chunks: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    (process.stdout as unknown as { write: (chunk: string) => boolean }).write = ((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      const response = await app.request(`/api/v1/vaults/${vault.id}/resolve?path=${encodeURIComponent(secret)}`, { headers: { authorization: `Bearer ${token}` } });
+      expect(response.status).toBe(200);
+    } finally {
+      process.stdout.write = original;
+    }
+    const text = chunks.join('');
+    expect(text).not.toContain(secret);
+    expect(text).not.toContain(encodeURIComponent(secret));
+    const line = JSON.parse(text.trim().split('\n').at(-1)!) as Record<string, unknown>;
+    expect(line).toMatchObject({ path_resolved: true, resolve_match: 'exact' });
   });
 });

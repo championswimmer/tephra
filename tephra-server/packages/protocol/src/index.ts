@@ -22,6 +22,7 @@ export function isCanonicalVaultPath(path: string): boolean {
     path.startsWith('/') ||
     path.includes('\\') ||
     path.includes('\0') ||
+    path.normalize('NFC') !== path ||
     !hasOnlyUnicodeScalarValues(path)
   ) {
     return false;
@@ -173,6 +174,8 @@ export const apiErrorCodeSchema = z.enum([
   'BLOB_MISSING',
   'COMMIT_FAILED',
   'INDEX_PENDING',
+  'FILE_DELETED',
+  'AMBIGUOUS_PATH',
   'INTERNAL_ERROR',
 ]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
@@ -196,6 +199,16 @@ export const filesResponseSchema = z.strictObject({
 });
 export type VaultFileDto = z.infer<typeof vaultFileSchema>;
 export type FilesResponse = z.infer<typeof filesResponseSchema>;
+
+export const resolveResponseSchema = z.strictObject({
+  match: z.enum(['exact', 'case', 'normalized', 'historic']),
+  requestedPath: z.string().min(1),
+  canonicalPath: canonicalVaultPathSchema,
+  file: vaultFileSchema,
+  movedFromPath: canonicalVaultPathSchema.optional(),
+  movedAtRevision: z.number().int().positive().safe().optional(),
+});
+export type ResolveResponse = z.infer<typeof resolveResponseSchema>;
 
 export const graphResponseSchema = z.strictObject({
   revision: nonNegativeIntegerSchema,
