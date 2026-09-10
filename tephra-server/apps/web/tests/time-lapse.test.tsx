@@ -32,17 +32,16 @@ const hoisted = vi.hoisted(() => {
   return {
     rendererStub,
     hostStub,
-    createGraphRenderer: vi.fn(async (_host: unknown, _callbacks: unknown) => rendererStub),
-    createSimulationHost: vi.fn((_events: unknown) => hostStub),
+    createGraphRenderer: vi.fn(async () => rendererStub),
+    createSimulationHost: vi.fn(() => hostStub),
   };
 });
 
 vi.mock('../src/graph/renderer/renderer', () => ({
-  createGraphRenderer: (host: unknown, callbacks: unknown) =>
-    hoisted.createGraphRenderer(host, callbacks),
+  createGraphRenderer: hoisted.createGraphRenderer,
 }));
 vi.mock('../src/graph/worker/host', () => ({
-  createSimulationHost: (events: unknown) => hoisted.createSimulationHost(events),
+  createSimulationHost: hoisted.createSimulationHost,
 }));
 
 // b and c share a creation timestamp; tag:x is hidden by default.

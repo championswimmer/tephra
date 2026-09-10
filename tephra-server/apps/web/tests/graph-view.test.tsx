@@ -33,20 +33,26 @@ const hoisted = vi.hoisted(() => {
   return {
     rendererStub,
     hostStub,
-    createGraphRenderer: vi.fn(async (_host: unknown, _callbacks: unknown) => rendererStub),
-    createSimulationHost: vi.fn((_events: unknown) => hostStub),
-    callbacks: {} as Record<string, (...args: never[]) => void>,
+    createGraphRenderer: vi.fn(async () => rendererStub),
+    createSimulationHost: vi.fn(() => hostStub),
   };
 });
 
+type RendererCallbacks = {
+  onNodeClick: (id: string) => void;
+  onNodeHover: (id: string | null) => void;
+};
+
+function rendererCallbacks(): RendererCallbacks {
+  const calls = hoisted.createGraphRenderer.mock.calls as unknown[][];
+  return calls[calls.length - 1]![1] as RendererCallbacks;
+}
+
 vi.mock('../src/graph/renderer/renderer', () => ({
-  createGraphRenderer: (host: unknown, callbacks: unknown) => {
-    hoisted.callbacks = (callbacks ?? {}) as Record<string, (...args: never[]) => void>;
-    return hoisted.createGraphRenderer(host, callbacks);
-  },
+  createGraphRenderer: hoisted.createGraphRenderer,
 }));
 vi.mock('../src/graph/worker/host', () => ({
-  createSimulationHost: (events: unknown) => hoisted.createSimulationHost(events),
+  createSimulationHost: hoisted.createSimulationHost,
 }));
 
 const graphFixture: GraphResponse = {
@@ -112,9 +118,9 @@ describe('GraphView shell', () => {
     const onOpen = vi.fn();
     renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
     await ready();
-    (hoisted.callbacks.onNodeClick as (id: string) => void)('unresolved:Missing');
+    rendererCallbacks().onNodeClick('unresolved:Missing');
     expect(onOpen).not.toHaveBeenCalled();
-    (hoisted.callbacks.onNodeClick as (id: string) => void)('a');
+    rendererCallbacks().onNodeClick('a');
     expect(onOpen).toHaveBeenCalledWith('a.md');
   });
 
@@ -122,7 +128,7 @@ describe('GraphView shell', () => {
     mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
-    (hoisted.callbacks.onNodeHover as (id: string | null) => void)('a');
+    rendererCallbacks().onNodeHover('a');
     expect(await screen.findByText('Alpha')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open note' })).toBeInTheDocument();
   });

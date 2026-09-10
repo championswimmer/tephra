@@ -38,7 +38,10 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
   const bootstrap = await request.post('/api/v1/auth/bootstrap', {
     data: { token: BOOTSTRAP_TOKEN, email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
-  expect(bootstrap.status(), 'bootstrap creates the admin (or 409 on reuse)').toBe(201);
+  expect(
+    [201, 409],
+    'bootstrap creates the admin (or 409 when another spec got there first)',
+  ).toContain(bootstrap.status());
 
   // 2. Create the vault via the API (returns the vault record for later use).
   const apiLogin = await request.post('/api/v1/auth/login', {

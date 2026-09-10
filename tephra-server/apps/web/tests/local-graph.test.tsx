@@ -34,17 +34,16 @@ const hoisted = vi.hoisted(() => {
   return {
     rendererStub,
     hostStub,
-    createGraphRenderer: vi.fn(async (_host: unknown, _callbacks: unknown) => rendererStub),
-    createSimulationHost: vi.fn((_events: unknown) => hostStub),
+    createGraphRenderer: vi.fn(async () => rendererStub),
+    createSimulationHost: vi.fn(() => hostStub),
   };
 });
 
 vi.mock('../src/graph/renderer/renderer', () => ({
-  createGraphRenderer: (host: unknown, callbacks: unknown) =>
-    hoisted.createGraphRenderer(host, callbacks),
+  createGraphRenderer: hoisted.createGraphRenderer,
 }));
 vi.mock('../src/graph/worker/host', () => ({
-  createSimulationHost: (events: unknown) => hoisted.createSimulationHost(events),
+  createSimulationHost: hoisted.createSimulationHost,
 }));
 
 // Chain a—b—c—d plus isolated e.
@@ -146,7 +145,7 @@ describe('LocalGraph', () => {
     const colors = calls[calls.length - 1]![1] as Array<string | null>;
     expect(colors).toContain('#ff0000');
 
-    const rendererCalls = hoisted.createGraphRenderer.mock.calls;
+    const rendererCalls = hoisted.createGraphRenderer.mock.calls as unknown[][];
     const callbacks = rendererCalls[rendererCalls.length - 1]![1] as {
       onNodeClick: (id: string) => void;
     };

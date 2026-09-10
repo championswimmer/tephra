@@ -98,3 +98,24 @@ passing Playwright rename-redirect flow.
       Remove-Tephra-IDs sweep with preview and confirmation
 - [x] Id-churn safety: blob GC, revision diff, and concurrent-commit
       convergence coverage
+
+## Obsidian graph view (plan 011)
+
+Implemented and verified by `npm run check` (lint + typecheck + build +
+workspace tests, all green) plus a passing Playwright graph pass.
+
+- [x] Graph payload v2: tag/attachment/unresolved nodes, index-based edges
+      with embed counts, `truncated` flag, ETag + 304
+- [x] Pure web core: model/query/filter/depth/settings with Obsidian
+      defaults and the documented search subset (`docs/graph-search.md`)
+- [x] d3-force in a module worker behind a transferable-positions
+      protocol, with main-thread fallback and a 5k-node budget test
+- [x] PixiJS renderer (batched sprites/links/arrows, pooled labels,
+      quadtree hover, d3-zoom camera, drag-to-pin), lazy chunk
+- [x] Settings chrome (Filters/Groups/Display/Forces), persisted per
+      vault per scope, debounced search, restore defaults
+- [x] Local graph beside the note with depth slider and neighbourless
+      empty state; global + local coexist without cross-talk
+- [x] Time-lapse transport (play/pause/scrub/reset, no snap-back)
+- [x] Hardening: WebGL-failure fallback list, Playwright graph pass
+      (local neighbourhood, debug-hook counts, live search filter)

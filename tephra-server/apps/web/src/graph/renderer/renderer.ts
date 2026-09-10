@@ -109,7 +109,7 @@ export async function createGraphRenderer(
     line: '#d1d1d1',
     label: '#2e3338',
   };
-  let sprites: PIXI.Sprite[] = [];
+  const sprites: PIXI.Sprite[] = [];
   let activeId: string | null = null;
   let hovered: number | null = null;
   let hoverSet = new Set<number>();
@@ -363,8 +363,7 @@ export async function createGraphRenderer(
     const hit = hitTest(point.x, point.y);
     setHovered(hit >= 0 ? hit : null);
   };
-  const onPointerUp = (event: PointerEvent) => {
-    const point = canvasPoint(event);
+  const onPointerUp = () => {
     if (dragIndex !== null) {
       const finished = dragIndex;
       const wasClick = !moved;

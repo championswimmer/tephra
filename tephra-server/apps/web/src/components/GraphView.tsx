@@ -8,7 +8,7 @@ import { resolveGroupColors } from '../graph/renderer/groups';
 import { readGraphPalette } from '../graph/renderer/palette';
 // The Pixi renderer (~450 KB) stays out of the initial bundle: only its
 // type is imported statically, the module itself loads dynamically below.
-import type { GraphRenderer } from '../graph/renderer/renderer';
+import type { GraphRenderer, RendererCallbacks } from '../graph/renderer/renderer';
 import { createSimulationHost, type SimulationHost } from '../graph/worker/host';
 import {
   loadGraphSettings,
@@ -32,7 +32,9 @@ export const TIME_LAPSE_DURATION_MS = 8000;
 // this shared promise, so concurrently mounting GraphView instances
 // (global + local) trigger exactly one fetch instead of racing the module
 // registry with duplicate first imports.
-type RendererModule = typeof import('../graph/renderer/renderer');
+type RendererModule = {
+  createGraphRenderer: (host: HTMLElement, callbacks: RendererCallbacks) => Promise<GraphRenderer>;
+};
 let rendererModulePromise: Promise<RendererModule> | null = null;
 function loadRendererModule(): Promise<RendererModule> {
   rendererModulePromise ??= import('../graph/renderer/renderer').catch((error: unknown) => {
@@ -323,9 +325,12 @@ export function GraphView({
     if (engineReady) rendererRef.current?.setActive(selectedId ?? null);
   }, [engineReady, selectedId]);
 
-  // Dev-only debug hook for the Playwright pass (§10).
+  // Debug hook for the Playwright graph pass (§10): live in dev, and in
+  // any build when `?e2eGraph=1` is present. Read-only counts only.
   useEffect(() => {
-    if (import.meta.env.DEV && filtered && graph) {
+    const debug =
+      import.meta.env.DEV || new URLSearchParams(window.location.search).has('e2eGraph');
+    if (debug && filtered && graph) {
       (window as unknown as { __tephraGraph?: unknown }).__tephraGraph = {
         nodeCount: filtered.model.nodes.length,
         linkCount: filtered.model.links.length,
