@@ -601,3 +601,98 @@ describe('path resolver', () => {
     expect(line).toMatchObject({ path_resolved: true, resolve_match: 'exact' });
   });
 });
+
+describe('graph payload v2', () => {
+  async function seedGraphFixture() {
+    const { app, token, vault, database } = await setup();
+    const entries = [
+      { fileId: 'file-a', path: 'A.md', content: '[[B]] ![[img.png]] [[Missing Note]] #foo', kind: 'markdown' as const },
+      { fileId: 'file-b', path: 'B.md', content: '# B', kind: 'markdown' as const },
+      { fileId: 'file-img', path: 'img.png', content: 'png-bytes', kind: 'attachment' as const },
+    ];
+    const files: SyncManifestEntry[] = [];
+    for (const entry of entries) {
+      const bytes = new TextEncoder().encode(entry.content);
+      const hash = await sha256Hex(bytes);
+      await app.request(`/api/v1/vaults/${vault.id}/blobs/${hash}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength) },
+        body: bytes,
+      });
+      files.push({ fileId: entry.fileId, path: entry.path, hash, size: bytes.byteLength, mtime: 100, kind: entry.kind });
+    }
+    const commit = await app.request(`/api/v1/vaults/${vault.id}/sync/commit`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'device-1', manifestHash: await hashManifest(files), files }),
+    });
+    expect(commit.status).toBe(200);
+
+    // Seed the note index the way the indexer would.
+    const meta = (fileId: string, title: string, tags: string[] = []) => ({
+      fileId, vaultId: vault.id, indexedBlobHash: 'h', title, frontmatter: {}, headings: [], tags, blocks: [], indexedAt: 1,
+    });
+    database.noteIndex.listMetadata = async () => [meta('file-a', 'Alpha', ['foo']), meta('file-b', 'Beta')];
+    const link = (overrides: Record<string, unknown>) => ({
+      id: 'l', vaultId: vault.id, sourceFileId: 'file-a', rawText: '', linkPath: '',
+      subpath: null, displayText: null, isEmbed: false, targetFileId: null, createdAt: 1, ...overrides,
+    });
+    database.noteIndex.listLinks = async () => [
+      link({ id: 'l1', linkPath: 'B', targetFileId: 'file-b' }),
+      link({ id: 'l2', linkPath: 'img.png', targetFileId: 'file-img', isEmbed: true }),
+      link({ id: 'l3', linkPath: 'Missing Note' }),
+      link({ id: 'l4', linkPath: 'Missing Note', sourceFileId: 'file-b' }),
+    ];
+    database.noteIndex.getState = async () => ({ vaultId: vault.id, indexedRevision: 1, lastError: null });
+    return { app, token, vault };
+  }
+
+  it('synthesizes attachment, tag, and unresolved nodes with index-based edges', async () => {
+    const { app, token, vault } = await seedGraphFixture();
+    const response = await app.request(`/api/v1/vaults/${vault.id}/graph`, { headers: { authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe('W/"1-1-graph-v2"');
+    const body = (await response.json()) as {
+      revision: number; truncated: boolean;
+      nodes: { id: string; kind: string; path: string; tags: string[]; createdAt: number }[];
+      edges: { s: number; t: number; count: number; embeds: number }[];
+    };
+    expect(body.revision).toBe(1);
+    expect(body.truncated).toBe(false);
+    const byId = new Map(body.nodes.map((node, index) => [node.id, { ...node, index }]));
+    expect([...byId.keys()].sort()).toEqual(['file-a', 'file-b', 'file-img', 'tag:foo', 'unresolved:Missing Note']);
+    expect(byId.get('file-a')).toMatchObject({ kind: 'note', tags: ['foo'], createdAt: 100 });
+    expect(byId.get('file-img')).toMatchObject({ kind: 'attachment', createdAt: 100 });
+    expect(byId.get('tag:foo')).toMatchObject({ kind: 'tag', title: '#foo', createdAt: 100 });
+    expect(byId.get('unresolved:Missing Note')).toMatchObject({ kind: 'unresolved', title: 'Missing Note' });
+    // Markdown nodes come first so trimming prefers them.
+    expect(body.nodes.slice(0, 3).every((node) => node.kind !== 'tag' && node.kind !== 'unresolved')).toBe(true);
+    const edge = (a: string, b: string) =>
+      body.edges.find((item) => item.s === byId.get(a)!.index && item.t === byId.get(b)!.index);
+    expect(edge('file-a', 'file-b')).toMatchObject({ count: 1, embeds: 0 });
+    expect(edge('file-a', 'file-img')).toMatchObject({ count: 1, embeds: 1 });
+    expect(edge('file-a', 'tag:foo')).toMatchObject({ count: 1, embeds: 0 });
+    // Two links to the same unresolved target aggregate into one edge.
+    expect(edge('file-a', 'unresolved:Missing Note')).toMatchObject({ count: 1, embeds: 0 });
+    expect(edge('file-b', 'unresolved:Missing Note')).toMatchObject({ count: 1, embeds: 0 });
+    for (const item of body.edges) {
+      expect(item.s).toBeLessThan(body.nodes.length);
+      expect(item.t).toBeLessThan(body.nodes.length);
+    }
+  });
+
+  it('answers 304 when the vault and index revisions are unchanged', async () => {
+    const { app, token, vault } = await seedGraphFixture();
+    const first = await app.request(`/api/v1/vaults/${vault.id}/graph`, { headers: { authorization: `Bearer ${token}` } });
+    const etag = first.headers.get('etag')!;
+    const second = await app.request(`/api/v1/vaults/${vault.id}/graph`, {
+      headers: { authorization: `Bearer ${token}`, 'if-none-match': etag },
+    });
+    expect(second.status).toBe(304);
+    // A newer index revision invalidates the cached payload.
+    const third = await app.request(`/api/v1/vaults/${vault.id}/graph`, {
+      headers: { authorization: `Bearer ${token}`, 'if-none-match': 'W/"1-0-graph-v2"' },
+    });
+    expect(third.status).toBe(200);
+  });
+});

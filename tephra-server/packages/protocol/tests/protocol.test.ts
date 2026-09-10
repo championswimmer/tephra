@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalManifestJson,
   canonicalVaultPathSchema,
+  graphResponseSchema,
   hashManifest,
   isCanonicalVaultPath,
   resolveResponseSchema,
@@ -120,6 +121,71 @@ describe('resolve responses', () => {
         requestedPath: 'A.md',
         canonicalPath: 'A.md',
         file,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('graph response schema (v2)', () => {
+  const node = (id: string, kind: 'note' | 'attachment' | 'tag' | 'unresolved' = 'note') => ({
+    id,
+    path: kind === 'tag' ? id.slice(4) : kind === 'unresolved' ? id.slice(11) : `${id}.md`,
+    title: null,
+    kind,
+    tags: [],
+    createdAt: 0,
+  });
+
+  it('accepts a valid payload with all node kinds', () => {
+    const result = graphResponseSchema.safeParse({
+      revision: 7,
+      truncated: false,
+      indexPending: true,
+      nodes: [node('file_1'), node('file_2', 'attachment'), node('tag:x', 'tag'), node('unresolved:Missing', 'unresolved')],
+      edges: [
+        { s: 0, t: 1, count: 1, embeds: 1 },
+        { s: 0, t: 2, count: 1, embeds: 0 },
+        { s: 0, t: 3, count: 2, embeds: 0 },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects edges whose endpoint indices are out of range', () => {
+    const result = graphResponseSchema.safeParse({
+      revision: 1,
+      truncated: false,
+      nodes: [node('file_1')],
+      edges: [{ s: 0, t: 1, count: 1, embeds: 0 }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown node kinds and malformed embed counts', () => {
+    expect(
+      graphResponseSchema.safeParse({
+        revision: 1,
+        truncated: false,
+        nodes: [{ ...node('file_1'), kind: 'folder' }],
+        edges: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      graphResponseSchema.safeParse({
+        revision: 1,
+        truncated: false,
+        nodes: [node('file_1'), node('file_2')],
+        edges: [{ s: 0, t: 1, count: 1, embeds: -1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires the truncated flag', () => {
+    expect(
+      graphResponseSchema.safeParse({
+        revision: 1,
+        nodes: [],
+        edges: [],
       }).success,
     ).toBe(false);
   });

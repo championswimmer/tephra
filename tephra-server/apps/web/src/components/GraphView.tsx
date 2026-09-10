@@ -25,15 +25,16 @@ export interface ForceGraphDatum {
 
 /** Map `/graph` API nodes/edges onto the `{ nodes, links }` shape react-force-graph expects. */
 export function mapGraphToForceData(graph: GraphResponse): ForceGraphDatum {
+  const idAt = (index: number): string => graph.nodes[index]?.id ?? String(index);
   return {
     nodes: graph.nodes.map((node) => ({
       id: node.id,
       label: node.title ?? node.path,
-      path: node.path,
+      path: node.kind === 'note' || node.kind === 'attachment' ? node.path : node.id,
     })),
     links: graph.edges.map((edge) => ({
-      source: edge.source,
-      target: edge.target,
+      source: idAt(edge.s),
+      target: idAt(edge.t),
       count: edge.count,
     })),
   };
@@ -149,9 +150,11 @@ export function GraphView({
   const neighbors = useMemo(() => {
     if (!graph || !activeId) return new Set<string>();
     return new Set(
-      graph.edges.flatMap((edge) =>
-        edge.source === activeId ? [edge.target] : edge.target === activeId ? [edge.source] : [],
-      ),
+      graph.edges.flatMap((edge) => {
+        const source = graph.nodes[edge.s]?.id;
+        const target = graph.nodes[edge.t]?.id;
+        return source === activeId ? [target!] : target === activeId ? [source!] : [];
+      }),
     );
   }, [graph, activeId]);
   const isActive = (id: string) => activeId === null || id === activeId || neighbors.has(id);
@@ -166,6 +169,10 @@ export function GraphView({
     );
 
   const activeNode = activeId ? graph.nodes.find((node) => node.id === activeId) : undefined;
+  const activeNavigable =
+    activeNode && (activeNode.kind === 'note' || activeNode.kind === 'attachment')
+      ? activeNode
+      : undefined;
 
   // Obsidian graph language: uniform small dots in the graph-node color,
   // faint graph-line edges with directional arrows, and the hovered/selected
@@ -248,7 +255,11 @@ export function GraphView({
           }}
           onNodeClick={(node) => {
             const datum = node as { id?: unknown; path?: unknown };
-            onOpen(typeof datum.path === 'string' ? datum.path : String(node.id));
+            const id = String(node.id);
+            const kind = graph.nodes.find((entry) => entry.id === id)?.kind;
+            // Only real files are navigable; tag/unresolved nodes are not.
+            if (kind !== 'note' && kind !== 'attachment') return;
+            onOpen(typeof datum.path === 'string' ? datum.path : id);
           }}
           onNodeHover={(node) => {
             // After d3 resolves links, source/target become node objects.
@@ -268,23 +279,33 @@ export function GraphView({
       {activeNode && (
         <div className="graph-selection">
           <span>{activeNode.title ?? activeNode.path}</span>
-          <button type="button" onClick={() => onOpen(activeNode.path)}>
-            Open note
-          </button>
+          {activeNavigable && (
+            <button type="button" onClick={() => onOpen(activeNavigable.path)}>
+              Open note
+            </button>
+          )}
         </div>
       )}
+      {graph.truncated && (
+        <p className="notice" role="status">
+          Showing the first {graph.nodes.length} nodes — the vault graph is larger than the 10 000
+          node limit.
+        </p>
+      )}
       <ul className="graph-fallback-list" aria-label="Notes in graph">
-        {graph.nodes.map((node) => (
-          <li key={node.id}>
-            <button
-              type="button"
-              onClick={() => onOpen(node.path)}
-              aria-current={node.id === selectedId ? 'true' : undefined}
-            >
-              {node.title ?? node.path}
-            </button>
-          </li>
-        ))}
+        {graph.nodes
+          .filter((node) => node.kind === 'note')
+          .map((node) => (
+            <li key={node.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(node.path)}
+                aria-current={node.id === selectedId ? 'true' : undefined}
+              >
+                {node.title ?? node.path}
+              </button>
+            </li>
+          ))}
       </ul>
     </section>
   );

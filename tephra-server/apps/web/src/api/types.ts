@@ -40,10 +40,30 @@ export interface LinksResponse {
   backlinks?: NoteLink[];
   indexPending?: boolean;
 }
+export type GraphNodeKind = 'note' | 'attachment' | 'tag' | 'unresolved';
+export interface GraphNode {
+  /** File id for note/attachment nodes; `tag:<name>` / `unresolved:<path>` otherwise. */
+  id: string;
+  /** Canonical vault path for files; tag name / raw link path for synthesized nodes. */
+  path: string;
+  title: string | null;
+  kind: GraphNodeKind;
+  tags: string[];
+  createdAt: number;
+}
+export interface GraphEdge {
+  /** Index into `nodes`. */
+  s: number;
+  /** Index into `nodes`. */
+  t: number;
+  count: number;
+  embeds: number;
+}
 export interface GraphResponse {
   revision: number;
-  nodes: { id: string; path: string; title: string | null }[];
-  edges: { source: string; target: string; count: number }[];
+  truncated: boolean;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
   indexPending?: boolean;
 }
 export type ResolveMatch = 'exact' | 'case' | 'normalized' | 'historic';

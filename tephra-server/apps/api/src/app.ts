@@ -877,39 +877,138 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.get('/api/v1/vaults/:vaultId/links', async (c) =>
     c.json({ links: await dependencies.database.noteIndex.listLinks(c.req.param('vaultId')) }),
   );
+  // Graph payload v2 (plan 011): markdown notes plus synthesized attachment,
+  // tag, and unresolved-link nodes; edges reference nodes by array index to
+  // keep the payload small at ~30k edges. Pure derived state, so the response
+  // carries an ETag keyed by vault + index revision.
+  const GRAPH_NODE_LIMIT = 10_000;
   app.get('/api/v1/vaults/:vaultId/graph', async (c) => {
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
-    const files = (await dependencies.database.vaultFiles.listByVault(vault.id))
-      .filter((file) => file.kind === 'markdown')
-      .slice(0, 10_000);
-    const currentIds = new Set(files.map((file) => file.fileId));
-    const metadata = new Map(
-      (await dependencies.database.noteIndex.listMetadata(vault.id)).map((item) => [
-        item.fileId,
-        item,
-      ]),
-    );
-    const counts = new Map<string, number>();
-    for (const link of await dependencies.database.noteIndex.listLinks(vault.id))
-      if (
-        link.targetFileId &&
-        currentIds.has(link.sourceFileId) &&
-        currentIds.has(link.targetFileId)
-      ) {
-        const key = `${link.sourceFileId}\0${link.targetFileId}`;
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-    return c.json({
-      revision: vault.latestRevision,
-      nodes: files.map((file) => ({
+    const indexState = await dependencies.database.noteIndex.getState(vault.id);
+    const indexedRevision = indexState?.indexedRevision ?? 0;
+    const etag = `W/"${vault.latestRevision}-${indexedRevision}-graph-v2"`;
+    c.header('ETag', etag);
+    if (c.req.header('if-none-match') === etag) return c.body(null, 304);
+
+    const [files, metadataRows, links] = await Promise.all([
+      dependencies.database.vaultFiles.listByVault(vault.id),
+      dependencies.database.noteIndex.listMetadata(vault.id),
+      dependencies.database.noteIndex.listLinks(vault.id),
+    ]);
+    const metadata = new Map(metadataRows.map((item) => [item.fileId, item]));
+
+    type NodeSeed = {
+      id: string;
+      path: string;
+      title: string | null;
+      kind: 'note' | 'attachment' | 'tag' | 'unresolved';
+      tags: string[];
+      createdAt: number;
+    };
+    // Ordering doubles as the trim preference: markdown notes first, then
+    // attachments, then synthesized tag/unresolved nodes.
+    const notes: NodeSeed[] = [];
+    const attachments: NodeSeed[] = [];
+    for (const file of files) {
+      const meta = metadata.get(file.fileId);
+      const seed: NodeSeed = {
         id: file.fileId,
         path: file.path,
-        title: metadata.get(file.fileId)?.title ?? null,
-      })),
-      edges: [...counts].map(([key, count]) => {
-        const [source, target] = key.split('\0');
-        return { source: source!, target: target!, count };
-      }),
+        title: meta?.title ?? null,
+        kind: file.kind === 'markdown' ? 'note' : 'attachment',
+        tags: file.kind === 'markdown' ? (meta?.tags ?? []) : [],
+        createdAt: file.mtime,
+      };
+      (file.kind === 'markdown' ? notes : attachments).push(seed);
+    }
+    notes.sort((left, right) => left.path.localeCompare(right.path));
+    attachments.sort((left, right) => left.path.localeCompare(right.path));
+
+    // Tag nodes are synthesized from indexed note metadata; their createdAt
+    // inherits the oldest tagged note so time-lapse reveals them with it.
+    const tagCreatedAt = new Map<string, number>();
+    for (const note of notes)
+      for (const tag of note.tags) {
+        const current = tagCreatedAt.get(tag);
+        if (current === undefined || note.createdAt < current)
+          tagCreatedAt.set(tag, note.createdAt);
+      }
+    const tags: NodeSeed[] = [...tagCreatedAt.keys()].sort().map((name) => ({
+      id: `tag:${name}`,
+      path: name,
+      title: `#${name}`,
+      kind: 'tag',
+      tags: [],
+      createdAt: tagCreatedAt.get(name) ?? 0,
+    }));
+
+    // Unresolved nodes come from links with a null target, deduped by the
+    // normalized raw link path.
+    const mtimeByFileId = new Map(files.map((file) => [file.fileId, file.mtime]));
+    const unresolved = new Map<string, NodeSeed>();
+    for (const link of links) {
+      if (link.targetFileId !== null) continue;
+      const key = link.linkPath.normalize('NFC').trim();
+      if (key.length === 0) continue;
+      const sourceCreatedAt = mtimeByFileId.get(link.sourceFileId) ?? 0;
+      const existing = unresolved.get(key);
+      if (existing) {
+        if (sourceCreatedAt > 0 && (existing.createdAt === 0 || sourceCreatedAt < existing.createdAt))
+          existing.createdAt = sourceCreatedAt;
+      } else {
+        unresolved.set(key, {
+          id: `unresolved:${key}`,
+          path: key,
+          title: key.split('/').at(-1) ?? key,
+          kind: 'unresolved',
+          tags: [],
+          createdAt: sourceCreatedAt,
+        });
+      }
+    }
+    const unresolvedNodes = [...unresolved.values()].sort((left, right) =>
+      left.path.localeCompare(right.path),
+    );
+
+    const all = [...notes, ...attachments, ...tags, ...unresolvedNodes];
+    const truncated = all.length > GRAPH_NODE_LIMIT;
+    const nodes = all.slice(0, GRAPH_NODE_LIMIT);
+    const indexById = new Map(nodes.map((node, index) => [node.id, index]));
+
+    const edgeMap = new Map<string, { s: number; t: number; count: number; embeds: number }>();
+    const addEdge = (s: number, t: number, embed: boolean) => {
+      const key = `${s}\0${t}`;
+      const existing = edgeMap.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (embed) existing.embeds += 1;
+      } else {
+        edgeMap.set(key, { s, t, count: 1, embeds: embed ? 1 : 0 });
+      }
+    };
+    for (const link of links) {
+      const s = indexById.get(link.sourceFileId);
+      if (s === undefined) continue;
+      const targetId =
+        link.targetFileId ?? `unresolved:${link.linkPath.normalize('NFC').trim()}`;
+      const t = indexById.get(targetId);
+      if (t !== undefined) addEdge(s, t, link.isEmbed);
+    }
+    for (const note of notes) {
+      const s = indexById.get(note.id);
+      if (s === undefined) continue;
+      for (const tag of note.tags) {
+        const t = indexById.get(`tag:${tag}`);
+        if (t !== undefined) addEdge(s, t, false);
+      }
+    }
+
+    return c.json({
+      revision: vault.latestRevision,
+      truncated,
+      ...(indexedRevision < vault.latestRevision ? { indexPending: true } : {}),
+      nodes,
+      edges: [...edgeMap.values()],
     });
   });
 

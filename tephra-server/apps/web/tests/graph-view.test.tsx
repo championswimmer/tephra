@@ -33,14 +33,15 @@ function renderGraph(ui: ReactElement) {
 
 const graphFixture: GraphResponse = {
   revision: 3,
+  truncated: false,
   nodes: [
-    { id: 'a', path: 'a.md', title: 'Alpha' },
-    { id: 'b', path: 'b.md', title: null },
-    { id: 'c', path: 'c.md', title: 'Gamma' },
+    { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: [], createdAt: 1 },
+    { id: 'b', path: 'b.md', title: null, kind: 'note', tags: [], createdAt: 2 },
+    { id: 'c', path: 'c.md', title: 'Gamma', kind: 'note', tags: [], createdAt: 3 },
   ],
   edges: [
-    { source: 'a', target: 'b', count: 1 },
-    { source: 'b', target: 'c', count: 2 },
+    { s: 0, t: 1, count: 1, embeds: 0 },
+    { s: 1, t: 2, count: 2, embeds: 0 },
   ],
 };
 
@@ -63,13 +64,14 @@ describe('mapGraphToForceData', () => {
   });
 
   it('handles an empty graph and a single node', () => {
-    expect(mapGraphToForceData({ revision: 1, nodes: [], edges: [] })).toEqual({
+    expect(mapGraphToForceData({ revision: 1, truncated: false, nodes: [], edges: [] })).toEqual({
       nodes: [],
       links: [],
     });
     const single = mapGraphToForceData({
       revision: 1,
-      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo' }],
+      truncated: false,
+      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo', kind: 'note', tags: [], createdAt: 1 }],
       edges: [],
     });
     expect(single.nodes).toHaveLength(1);
@@ -85,7 +87,7 @@ describe('GraphView', () => {
   });
 
   it('shows an empty state when the graph has no nodes', async () => {
-    mockGraph({ revision: 1, nodes: [], edges: [] });
+    mockGraph({ revision: 1, truncated: false, nodes: [], edges: [] });
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     expect(await screen.findByText('The graph is empty')).toBeInTheDocument();
     expect(screen.queryByTestId('force-graph')).not.toBeInTheDocument();
@@ -199,6 +201,28 @@ describe('GraphView', () => {
     expect(hexToRgba('#abc', 1)).toBe('rgba(170, 187, 204, 1)');
   });
 
+  it('does not navigate for synthesized tag or unresolved nodes', async () => {
+    mockGraph({
+      revision: 1,
+      truncated: false,
+      nodes: [
+        { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: ['x'], createdAt: 1 },
+        { id: 'tag:x', path: 'x', title: '#x', kind: 'tag', tags: [], createdAt: 1 },
+      ],
+      edges: [{ s: 0, t: 1, count: 1, embeds: 0 }],
+    });
+    const onOpen = vi.fn();
+    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
+    await screen.findByTestId('force-graph');
+    const props = captured.current as unknown as {
+      onNodeClick: (node: { id: string; path?: string }) => void;
+    };
+    props.onNodeClick({ id: 'tag:x', path: 'x' });
+    expect(onOpen).not.toHaveBeenCalled();
+    props.onNodeClick({ id: 'a', path: 'a.md' });
+    expect(onOpen).toHaveBeenCalledWith('a.md');
+  });
+
   it('labels only the active node, leaving the rest unpainted', async () => {
     mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} selectedId="c" />);
@@ -223,7 +247,8 @@ describe('GraphView', () => {
   it('renders a single-node graph without links', async () => {
     mockGraph({
       revision: 1,
-      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo' }],
+      truncated: false,
+      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo', kind: 'note', tags: [], createdAt: 1 }],
       edges: [],
     });
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
