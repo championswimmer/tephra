@@ -31,7 +31,11 @@ async function fixture() {
   const database = {
     users: { findById: async (id: string) => (id === user.id ? user : null) },
     sessions: { findById: async () => null },
-    vaults: { findById: async (id: string) => (id === vault.id ? vault : null) },
+    vaults: {
+      findById: async (id: string) => (id === vault.id ? vault : null),
+      findByName: async (name: string) => (name === vault.name ? vault : null),
+      listByOwner: async (id: string) => (id === user.id ? [vault] : []),
+    },
     apiTokens: {
       findById: async (id: string) => (id === token.id ? token : null),
       findByTokenHash: async (hash: string) => (hash === token.tokenHash ? token : null),

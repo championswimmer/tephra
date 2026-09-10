@@ -195,7 +195,9 @@ export class TephraSettingTab extends PluginSettingTab {
       activeSetting.addButton((button) =>
         button.setButtonText('Open Web Mirror').onClick(() => {
           const base = settings.serverUrl.replace(/\/+$/, '');
-          window.open(`${base}/vaults/${encodeURIComponent(settings.vaultId)}`, '_blank');
+          // Web URLs are addressed by the globally-unique vault name.
+          const slug = settings.vaultName || settings.vaultId;
+          window.open(`${base}/v/${encodeURIComponent(slug)}`, '_blank');
         }),
       );
     }

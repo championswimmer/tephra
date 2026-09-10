@@ -96,32 +96,33 @@ export class ApiClient {
     this.request<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify(input) });
   logout = () => this.request<void>('/auth/logout', { method: 'POST' });
   vaults = () => this.request<{ vaults: Vault[] }>('/vaults');
-  vault = (id: string) => this.request<{ vault: Vault }>(`/vaults/${encodeURIComponent(id)}`);
+  vault = (idOrName: string) =>
+    this.request<{ vault: Vault }>(`/vaults/${encodeURIComponent(idOrName)}`);
   createVault = (name: string) =>
     this.request<{ vault: Vault }>('/vaults', { method: 'POST', body: JSON.stringify({ name }) });
-  files = (vaultId: string) =>
-    this.request<FilesResponse>(`/vaults/${encodeURIComponent(vaultId)}/files`);
-  resolve = (vaultId: string, path: string) =>
+  files = (vaultIdOrName: string) =>
+    this.request<FilesResponse>(`/vaults/${encodeURIComponent(vaultIdOrName)}/files`);
+  resolve = (vaultIdOrName: string, path: string) =>
     this.request<ResolveResponse>(
-      `/vaults/${encodeURIComponent(vaultId)}/resolve?path=${encodeURIComponent(path)}`,
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/resolve?path=${encodeURIComponent(path)}`,
     );
-  rendered = (vaultId: string, fileId: string) =>
+  rendered = (vaultIdOrName: string, fileId: string) =>
     this.request<RenderedNote>(
-      `/vaults/${encodeURIComponent(vaultId)}/files/${encodeURIComponent(fileId)}/rendered`,
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/rendered`,
     );
-  source = (vaultId: string, fileId: string) =>
+  source = (vaultIdOrName: string, fileId: string) =>
     this.request<string>(
-      `/vaults/${encodeURIComponent(vaultId)}/files/${encodeURIComponent(fileId)}/content`,
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/content`,
       { headers: { Accept: 'text/plain' } },
     );
-  contentUrl = (vaultId: string, fileId: string) =>
-    `${this.baseUrl}/vaults/${encodeURIComponent(vaultId)}/files/${encodeURIComponent(fileId)}/content`;
+  contentUrl = (vaultIdOrName: string, fileId: string) =>
+    `${this.baseUrl}/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/content`;
   // The graph endpoint is pure derived state with an ETag; reuse the last
   // payload on 304 instead of re-downloading it.
   private readonly graphCache = new Map<string, { etag: string; body: GraphResponse }>();
-  graph = async (vaultId: string): Promise<GraphResponse> => {
-    const path = `/vaults/${encodeURIComponent(vaultId)}/graph`;
-    const cached = this.graphCache.get(vaultId);
+  graph = async (vaultIdOrName: string): Promise<GraphResponse> => {
+    const path = `/vaults/${encodeURIComponent(vaultIdOrName)}/graph`;
+    const cached = this.graphCache.get(vaultIdOrName);
     const response = await this.fetchRaw(
       path,
       cached ? { headers: { 'If-None-Match': cached.etag } } : {},
@@ -129,24 +130,24 @@ export class ApiClient {
     if (response.status === 304 && cached) return cached.body;
     const body = (await response.json()) as GraphResponse;
     const etag = response.headers.get('etag');
-    if (etag) this.graphCache.set(vaultId, { etag, body });
-    else this.graphCache.delete(vaultId);
+    if (etag) this.graphCache.set(vaultIdOrName, { etag, body });
+    else this.graphCache.delete(vaultIdOrName);
     return body;
   };
-  links = (vaultId: string, fileId: string) =>
+  links = (vaultIdOrName: string, fileId: string) =>
     this.request<LinksResponse>(
-      `/vaults/${encodeURIComponent(vaultId)}/links?fileId=${encodeURIComponent(fileId)}`,
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/links?fileId=${encodeURIComponent(fileId)}`,
     );
-  tokens = (vaultId: string) =>
-    this.request<{ tokens: ApiToken[] }>(`/vaults/${encodeURIComponent(vaultId)}/tokens`);
-  createToken = (vaultId: string, name: string) =>
-    this.request<CreatedToken>(`/vaults/${encodeURIComponent(vaultId)}/tokens`, {
+  tokens = (vaultIdOrName: string) =>
+    this.request<{ tokens: ApiToken[] }>(`/vaults/${encodeURIComponent(vaultIdOrName)}/tokens`);
+  createToken = (vaultIdOrName: string, name: string) =>
+    this.request<CreatedToken>(`/vaults/${encodeURIComponent(vaultIdOrName)}/tokens`, {
       method: 'POST',
       body: JSON.stringify({ name }),
     });
-  revokeToken = (vaultId: string, tokenId: string) =>
+  revokeToken = (vaultIdOrName: string, tokenId: string) =>
     this.request<void>(
-      `/vaults/${encodeURIComponent(vaultId)}/tokens/${encodeURIComponent(tokenId)}`,
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/tokens/${encodeURIComponent(tokenId)}`,
       { method: 'DELETE' },
     );
 }

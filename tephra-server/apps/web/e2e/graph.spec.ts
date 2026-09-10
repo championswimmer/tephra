@@ -37,7 +37,6 @@ async function setupVault(request: APIRequestContext, base: string) {
     data: { name: VAULT_NAME },
   });
   expect(created.status(), 'vault creation succeeds').toBe(201);
-  const { vault } = (await created.json()) as { vault: { id: string } };
 
   const syncScript = fileURLToPath(new URL('../../../../e2e/sync-vault.mjs', import.meta.url));
   const fixtureVault = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
@@ -63,7 +62,6 @@ async function setupVault(request: APIRequestContext, base: string) {
     expect(syncOutput, `sync-vault.mjs seeding failed:\n${syncOutput}`).toBe('');
   }
   expect(syncOutput).toContain('[sync] DONE');
-  return vault.id as string;
 }
 
 /**
@@ -81,7 +79,7 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
 }) => {
   expect(baseURL, 'playwright baseURL must be configured').toBeTruthy();
   const base = baseURL as string;
-  const vaultId = await setupVault(request, base);
+  await setupVault(request, base);
 
   // Login through the UI, then open the vault.
   await page.goto('/login');
@@ -90,7 +88,7 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/vaults\/?$/);
   await page.getByRole('link', { name: new RegExp(VAULT_NAME) }).click();
-  await expect(page).toHaveURL(new RegExp(`/v/${vaultId}/?`));
+  await expect(page).toHaveURL(new RegExp(`/v/${encodeURIComponent(VAULT_NAME)}/?`));
 
   // The open note carries its local neighbourhood: Home links to Target
   // Note and Deep Note (Target links back, so the count stays at two).
@@ -100,7 +98,7 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await expect(local.getByText('2 neighbours within depth 1')).toBeVisible({ timeout: 30_000 });
 
   // Global graph with the e2e debug hook enabled via query param.
-  await page.goto(`/v/${vaultId}/graph?e2eGraph=1`);
+  await page.goto(`/v/${encodeURIComponent(VAULT_NAME)}/graph?e2eGraph=1`);
   const graph = page.getByRole('region', { name: 'Vault graph' });
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 30_000 });
   await page.waitForFunction(() => (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount === 3, null, {

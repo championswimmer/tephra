@@ -70,7 +70,7 @@ export function VaultListPage() {
         <ul className="vault-grid">
           {vaults?.map((vault) => (
             <li key={vault.id}>
-              <Link to={`/v/${vault.id}`}>
+              <Link to={`/v/${encodeURIComponent(vault.name)}`}>
                 <span className="vault-icon" aria-hidden="true">
                   ◇
                 </span>

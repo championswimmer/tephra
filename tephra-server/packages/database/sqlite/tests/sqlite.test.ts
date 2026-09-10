@@ -95,6 +95,20 @@ describe('SQLite database adapter', () => {
     await expect(db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 2, manifestHash: 'same-manifest', deviceId: 'device-1', createdAt: 2 })).rejects.toThrow();
   });
 
+  it('enforces globally unique vault names case-sensitively and resolves by name', async () => {
+    const { db } = await database();
+    await seed(db);
+    expect(await db.vaults.findByName('Vault')).toMatchObject({ id: 'vault-1' });
+    expect(await db.vaults.findByName('vault')).toBeNull();
+    expect(await db.vaults.findByName('Missing')).toBeNull();
+    await expect(
+      db.vaults.insert({ id: 'vault-2', ownerUserId: 'user-1', name: 'Vault', latestRevision: 0, createdAt: 3, updatedAt: 3 }),
+    ).rejects.toThrow();
+    // Case variants are distinct names (BINARY collation).
+    await db.vaults.insert({ id: 'vault-3', ownerUserId: 'user-1', name: 'vault', latestRevision: 0, createdAt: 3, updatedAt: 3 });
+    expect(await db.vaults.findByName('vault')).toMatchObject({ id: 'vault-3' });
+  });
+
   it('serializes vault transactions', async () => {
     const { db } = await database();
     await seed(db);

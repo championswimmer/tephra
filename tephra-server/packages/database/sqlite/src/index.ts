@@ -25,7 +25,11 @@ import type {
   VaultRevision,
 } from '@tephra/vault-model';
 
-const MIGRATION_URL = new URL('../../../../migrations/sqlite/001_initial.sql', import.meta.url);
+const MIGRATIONS_URL = new URL('../../../../migrations/sqlite/', import.meta.url);
+const MIGRATIONS = [
+  { version: 1, file: '001_initial.sql' },
+  { version: 2, file: '002_vault_name_unique.sql' },
+] as const;
 const TOKEN_SCOPES = new Set<ApiTokenScope>(['vault:read-metadata', 'vault:upload']);
 
 type Row = Record<string, unknown>;
@@ -151,6 +155,7 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
     },
     vaults: {
       async findById(id) { const row = first(db, 'SELECT * FROM vaults WHERE id=?', id); return row && vault(row); },
+      async findByName(name) { const row = first(db, 'SELECT * FROM vaults WHERE name=?', name); return row && vault(row); },
       async listByOwner(id) { return all(db, 'SELECT * FROM vaults WHERE owner_user_id=? ORDER BY created_at, id', id).map(vault); },
       async insert(v) { db.prepare('INSERT INTO vaults VALUES (?, ?, ?, ?, ?, ?)').run(v.id, v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt); },
       async update(v) { db.prepare('UPDATE vaults SET owner_user_id=?, name=?, latest_revision=?, created_at=?, updated_at=? WHERE id=?').run(v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt, v.id); },
@@ -243,16 +248,27 @@ export interface OpenSqliteDatabaseOptions {
   migrationFile?: string | URL;
 }
 
-function migrate(db: DatabaseSync, migrationFile: string | URL): void {
+function migrate(db: DatabaseSync, migrationFile: string | URL | undefined): void {
   const versionRow = first(db, 'PRAGMA user_version');
   const version = versionRow ? requiredNumber(versionRow, 'user_version') : 0;
-  if (version > 1) throw new Error(`SQLite schema version ${version} is newer than supported version 1`);
-  if (version === 1) return;
-  const sql = readFileSync(migrationFile instanceof URL ? fileURLToPath(migrationFile) : migrationFile, 'utf8');
+  const latest = MIGRATIONS[MIGRATIONS.length - 1]!.version;
+  if (version > latest) throw new Error(`SQLite schema version ${version} is newer than supported version ${latest}`);
+  // A custom migration file replaces the whole chain (used by tests). The
+  // production migrations live under the default migrations directory.
+  if (migrationFile === undefined && version === latest) return;
   db.exec('BEGIN IMMEDIATE');
   try {
-    db.exec(sql);
-    db.exec('PRAGMA user_version = 1');
+    if (migrationFile !== undefined) {
+      const sql = readFileSync(migrationFile instanceof URL ? fileURLToPath(migrationFile) : migrationFile, 'utf8');
+      db.exec(sql);
+    } else {
+      for (const migration of MIGRATIONS) {
+        if (migration.version <= version) continue;
+        const sql = readFileSync(fileURLToPath(new URL(migration.file, MIGRATIONS_URL)), 'utf8');
+        db.exec(sql);
+      }
+    }
+    db.exec(`PRAGMA user_version = ${latest}`);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
@@ -266,7 +282,7 @@ export function openSqliteDatabase(options: OpenSqliteDatabaseOptions | string):
   try {
     connection.exec('PRAGMA foreign_keys = ON');
     connection.exec('PRAGMA busy_timeout = 5000');
-    migrate(connection, normalized.migrationFile ?? MIGRATION_URL);
+    migrate(connection, normalized.migrationFile);
   } catch (error) {
     connection.close();
     throw error;

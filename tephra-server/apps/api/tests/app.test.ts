@@ -46,8 +46,16 @@ class MemoryDatabase implements Database {
   };
   vaults = {
     findById: async (id: string) => this.state.vaults.get(id) ?? null,
+    findByName: async (name: string) =>
+      [...this.state.vaults.values()].find((item) => item.name === name) ?? null,
     listByOwner: async (id: string) => [...this.state.vaults.values()].filter((item) => item.ownerUserId === id),
-    insert: async (item: Vault) => { this.state.vaults.set(item.id, item); },
+    insert: async (item: Vault) => {
+      if ([...this.state.vaults.values()].some((existing) => existing.name === item.name))
+        throw Object.assign(new Error('UNIQUE constraint failed: vaults.name'), {
+          code: 'SQLITE_CONSTRAINT_UNIQUE',
+        });
+      this.state.vaults.set(item.id, item);
+    },
     update: async (item: Vault) => { this.state.vaults.set(item.id, item); },
     delete: async (id: string) => { this.state.vaults.delete(id); },
   };
@@ -149,6 +157,45 @@ describe('Tephra API', () => {
     const { vault } = await other.json() as { vault: Vault };
     const denied = await app.request(`/api/v1/vaults/${vault.id}/files`, { headers: { authorization: `Bearer ${token}` } });
     expect(denied.status).toBe(403);
+  });
+
+  it('rejects duplicate vault names, validates names, and resolves vaults by name', async () => {
+    const { app, vault, browserHeaders } = await setup();
+    const duplicate = await app.request('/api/v1/vaults', { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'Test Vault' }) });
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({
+      error: { code: 'VAULT_NAME_TAKEN', message: 'A vault with this name already exists.' },
+    });
+    const caseVariant = await app.request('/api/v1/vaults', { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'test vault' }) });
+    expect(caseVariant.status).toBe(201);
+    const slashed = await app.request('/api/v1/vaults', { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'a/b' }) });
+    expect(slashed.status).toBe(400);
+
+    const byName = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}`, { headers: browserHeaders });
+    expect(byName.status).toBe(200);
+    expect(await byName.json()).toEqual({ vault });
+    const byId = await app.request(`/api/v1/vaults/${vault.id}`, { headers: browserHeaders });
+    expect(byId.status).toBe(200);
+    const filesByName = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}/files`, { headers: browserHeaders });
+    expect(filesByName.status).toBe(200);
+  });
+
+  it('creates tokens by vault name and syncs through the name address', async () => {
+    const { app, vault, browserHeaders } = await setup();
+    const created = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}/tokens`, { method: 'POST', headers: browserHeaders, body: JSON.stringify({ name: 'Plugin by name' }) });
+    expect(created.status).toBe(201);
+    const { value: token } = await created.json() as { value: string };
+    const bytes = new TextEncoder().encode('# Named');
+    const hash = await sha256Hex(bytes);
+    const files: SyncManifestEntry[] = [{ fileId: 'file-1', path: 'Note.md', hash, size: bytes.byteLength, mtime: 1, kind: 'markdown' }];
+    const body = JSON.stringify({ deviceId: 'device-1', manifestHash: await hashManifest(files), files });
+    const plan = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}/sync/plan`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body });
+    expect(plan.status).toBe(200);
+    await app.request(`/api/v1/vaults/${vault.id}/blobs/${hash}`, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'x-tephra-blob-size': String(bytes.byteLength), 'content-type': 'text/markdown' }, body: bytes });
+    const commit = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}/sync/commit`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body });
+    expect(commit.status).toBe(200);
+    const filesById = await app.request(`/api/v1/vaults/${vault.id}/files`, { headers: { authorization: `Bearer ${token}` } });
+    expect((await filesById.json() as { revision: number }).revision).toBe(1);
   });
 
   it('rejects bad uploads and rolls back missing-blob commits', async () => {

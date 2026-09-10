@@ -30,6 +30,7 @@ export interface SessionRepository {
 
 export interface VaultRepository {
   findById(id: string): Promise<Vault | null>;
+  findByName(name: string): Promise<Vault | null>;
   listByOwner(ownerUserId: string): Promise<Vault[]>;
   insert(vault: Vault): Promise<void>;
   update(vault: Vault): Promise<void>;

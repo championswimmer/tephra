@@ -25,7 +25,8 @@ type ResolveState =
  * `/files/:fileId/*` endpoints (content, rendered, links, backlinks).
  */
 export function VaultWorkspace() {
-  // `:vaultSlug` is the vault id today; slug addressing is a later plan.
+  // `:vaultSlug` is the globally-unique vault name in the URL. It is passed
+  // straight to the API, which also accepts the internal id for sync clients.
   const { vaultSlug = '', '*': rest } = useParams();
   const vaultId = vaultSlug;
   const location = useLocation();
@@ -127,7 +128,10 @@ export function VaultWorkspace() {
       : undefined;
 
   const open = (path: string) => {
-    navigate({ pathname: `/v/${vaultId}/`, hash: `#/${encodePathForHash(path)}` });
+    navigate({
+      pathname: `/v/${encodeURIComponent(vault?.name ?? vaultId)}/`,
+      hash: `#/${encodePathForHash(path)}`,
+    });
     setTreeOpen(false);
   };
   const openFileId = (fileId: string) => {
@@ -163,10 +167,16 @@ export function VaultWorkspace() {
           <strong>{vault.name}</strong>
         </div>
         <nav aria-label="Vault views">
-          <Link className={view.type === 'graph' ? 'active' : ''} to={`/v/${vaultId}/graph`}>
+          <Link
+            className={view.type === 'graph' ? 'active' : ''}
+            to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/graph`}
+          >
             Graph
           </Link>
-          <Link className={view.type === 'tokens' ? 'active' : ''} to={`/v/${vaultId}/tokens`}>
+          <Link
+            className={view.type === 'tokens' ? 'active' : ''}
+            to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/tokens`}
+          >
             Tokens
           </Link>
         </nav>

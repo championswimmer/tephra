@@ -165,6 +165,7 @@ export const apiErrorCodeSchema = z.enum([
   'TOKEN_REVOKED',
   'VAULT_NOT_FOUND',
   'VAULT_ACCESS_DENIED',
+  'VAULT_NAME_TAKEN',
   'INVALID_PATH',
   'INVALID_MANIFEST',
   'DUPLICATE_PATH',

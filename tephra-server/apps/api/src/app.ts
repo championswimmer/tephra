@@ -115,7 +115,22 @@ const bootstrapSchema = credentialsSchema
     message: "Bootstrap token is required.",
     path: ["token"],
   });
-const vaultSchema = z.strictObject({ name: z.string().trim().min(1).max(200) });
+const vaultNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine(
+    (name) =>
+      !name.includes('/') &&
+      !name.includes('\\') &&
+      name !== '.' &&
+      name !== '..' &&
+      // eslint-disable-next-line no-control-regex
+      !/[\u0000-\u001f\u007f-\u009f]/.test(name),
+    { message: 'Vault name must not contain slashes or control characters.' },
+  );
+const vaultSchema = z.strictObject({ name: vaultNameSchema });
 const deleteVaultSchema = z.strictObject({ confirmation: z.string().max(200) });
 const scopesSchema = z
   .array(z.enum(['vault:read-metadata', 'vault:upload']))
@@ -198,12 +213,40 @@ async function ownedVault(
   scope: ApiTokenScope,
 ): Promise<Vault> {
   const principal = c.get('principal');
-  const vaultId = z.string().min(1).parse(c.req.param('vaultId'));
-  const vault = await dependencies.database.vaults.findById(vaultId);
+  const vaultIdOrName = z.string().min(1).parse(c.req.param('vaultId'));
+  const vault = await findVaultByIdOrName(dependencies.database.vaults, vaultIdOrName);
   if (vault === null) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
   if (!canAccessVault(principal, vault, scope))
     fail(403, 'VAULT_ACCESS_DENIED', 'Access to this vault is denied.');
   return vault;
+}
+
+async function findVaultByIdOrName(
+  vaults: Pick<TransactionRepositories['vaults'], 'findById' | 'findByName'>,
+  vaultIdOrName: string,
+): Promise<Vault | null> {
+  // Vault names are globally unique, so the `:vaultId` URL/API segment can be
+  // either the internal id (existing plugin bindings) or the name (web URLs).
+  // Names win no special priority: an id always resolves first so stored sync
+  // tokens keep working even if a name ever collides with an id string.
+  return (
+    (await vaults.findById(vaultIdOrName)) ?? (await vaults.findByName(vaultIdOrName))
+  );
+}
+
+function isVaultNameConflict(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const record = error as { code?: unknown; message?: unknown };
+  // node:sqlite surfaces UNIQUE violations as ERR_SQLITE_ERROR with
+  // "UNIQUE constraint failed: vaults.name"; other drivers use
+  // SQLITE_CONSTRAINT_UNIQUE. Match on the vaults.name target in both.
+  if (typeof record.message === 'string' && record.message.includes('vaults.name'))
+    return true;
+  return (
+    typeof record.code === 'string' &&
+    (record.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+      record.code === 'SQLITE_CONSTRAINT_PRIMARYKEY')
+  );
 }
 
 function requireSession(c: AppContext): Extract<AuthPrincipal, { kind: 'session' }> {
@@ -447,7 +490,15 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
       createdAt: now,
       updatedAt: now,
     };
-    await dependencies.database.vaults.insert(vault);
+    if ((await dependencies.database.vaults.findByName(vault.name)) !== null)
+      fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
+    try {
+      await dependencies.database.vaults.insert(vault);
+    } catch (error) {
+      if (isVaultNameConflict(error))
+        fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
+      throw error;
+    }
     return c.json({ vault }, 201);
   });
 
@@ -474,7 +525,8 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
 
   app.get('/api/v1/vaults/:vaultId/tokens', async (c) => {
     requireSession(c);
-    const tokens = await dependencies.database.apiTokens.listByVault(c.req.param('vaultId'));
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const tokens = await dependencies.database.apiTokens.listByVault(vault.id);
     return c.json({
       tokens: tokens.map((token) => {
         const { tokenHash, ...publicToken } = token;
@@ -485,6 +537,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
   app.post('/api/v1/vaults/:vaultId/tokens', async (c) => {
     const principal = requireSession(c);
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const body = await jsonBody(c, tokenSchema);
     const now = dependencies.clock.now();
     let deviceId = body.deviceId ?? null;
@@ -525,7 +578,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     const token = {
       id: dependencies.ids.generate(),
       userId: principal.user.id,
-      vaultId: c.req.param('vaultId'),
+      vaultId: vault.id,
       deviceId,
       tokenHash: await hashOpaqueToken(raw),
       name: body.name,
@@ -546,8 +599,9 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
   app.delete('/api/v1/vaults/:vaultId/tokens/:tokenId', async (c) => {
     requireSession(c);
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const token = await dependencies.database.apiTokens.findById(c.req.param('tokenId'));
-    if (!token || token.vaultId !== c.req.param('vaultId'))
+    if (!token || token.vaultId !== vault.id)
       fail(404, 'VAULT_NOT_FOUND', 'Token was not found.');
     await dependencies.database.apiTokens.update({ ...token, revokedAt: dependencies.clock.now() });
     return c.body(null, 204);
@@ -598,7 +652,8 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
 
   app.put('/api/v1/vaults/:vaultId/blobs/:hash', async (c) => {
-    Object.assign(c.get('logContext'), { vault_id: c.req.param('vaultId') });
+    const uploadVault = await ownedVault(c, dependencies, 'vault:upload');
+    Object.assign(c.get('logContext'), { vault_id: uploadVault.id });
     const hash = sha256Schema.parse(c.req.param('hash'));
     const max = dependencies.maxBlobBytes ?? DEFAULT_BLOB_LIMIT;
     const declaredText = c.req.header('x-tephra-blob-size');
@@ -641,15 +696,20 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
 
   app.post('/api/v1/vaults/:vaultId/sync/commit', async (c) => {
     const body = await jsonBody(c, syncCommitBodySchema);
+    const vaultIdOrName = z.string().min(1).parse(c.req.param('vaultId'));
+    // Resolve the vault id before entering the transaction so plugin clients
+    // bound to the internal id keep working while web URLs carry the name.
+    const resolved = await findVaultByIdOrName(dependencies.database.vaults, vaultIdOrName);
+    if (!resolved) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
+    const vaultId = resolved.id;
     Object.assign(c.get('logContext'), {
-      vault_id: c.req.param('vaultId'),
+      vault_id: vaultId,
       device_id: body.deviceId,
       manifest_hash: body.manifestHash,
       changed_file_count: body.files.length,
     });
     await verifyManifest(body.files, body.manifestHash);
     void syncClientVersions(c);
-    const vaultId = c.req.param('vaultId');
     const result = await dependencies.database.transaction(async (repositories) => {
       await repositories.lockVault(vaultId);
       const vault = await repositories.vaults.findById(vaultId);
@@ -767,9 +827,9 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
 
   const findFile = async (c: AppContext): Promise<CurrentVaultFile> => {
-    const vaultId = z.string().min(1).parse(c.req.param('vaultId'));
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const fileId = z.string().min(1).parse(c.req.param('fileId'));
-    const file = await dependencies.database.vaultFiles.findById(vaultId, fileId);
+    const file = await dependencies.database.vaultFiles.findById(vault.id, fileId);
     if (!file) fail(404, 'VAULT_NOT_FOUND', 'File was not found.');
     return file;
   };
@@ -861,7 +921,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.get('/api/v1/vaults/:vaultId/files/:fileId/links', async (c) =>
     c.json({
       links: await dependencies.database.noteIndex.listLinksBySource(
-        c.req.param('vaultId'),
+        (await ownedVault(c, dependencies, 'vault:read-metadata')).id,
         (await findFile(c)).fileId,
       ),
     }),
@@ -869,13 +929,17 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   app.get('/api/v1/vaults/:vaultId/files/:fileId/backlinks', async (c) =>
     c.json({
       links: await dependencies.database.noteIndex.listLinksByTarget(
-        c.req.param('vaultId'),
+        (await ownedVault(c, dependencies, 'vault:read-metadata')).id,
         (await findFile(c)).fileId,
       ),
     }),
   );
   app.get('/api/v1/vaults/:vaultId/links', async (c) =>
-    c.json({ links: await dependencies.database.noteIndex.listLinks(c.req.param('vaultId')) }),
+    c.json({
+      links: await dependencies.database.noteIndex.listLinks(
+        (await ownedVault(c, dependencies, 'vault:read-metadata')).id,
+      ),
+    }),
   );
   // Graph payload v2 (plan 011): markdown notes plus synthesized attachment,
   // tag, and unresolved-link nodes; edges reference nodes by array index to

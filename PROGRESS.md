@@ -119,3 +119,21 @@ workspace tests, all green) plus a passing Playwright graph pass.
 - [x] Time-lapse transport (play/pause/scrub/reset, no snap-back)
 - [x] Hardening: WebGL-failure fallback list, Playwright graph pass
       (local neighbourhood, debug-hook counts, live search filter)
+
+## Vault-name URLs (plan 012)
+
+Implemented and verified by `npm run check` (lint + typecheck + build +
+workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
+
+- [x] Vault names globally unique (case-sensitive BINARY collation) via
+      `migrations/sqlite/002_vault_name_unique.sql`; sequential
+      `user_version` migrations (fresh → v2, v1 → v2 upgrade path verified)
+- [x] `findByName` on `VaultRepository` (core + sqlite + test doubles)
+- [x] API `:vaultId` segment resolves id-or-name (`ownedVault`, token
+      routes, blob upload, sync commit); all handlers use the resolved
+      internal `vault.id`; plugin tokens bound to ids keep working
+- [x] Duplicate create → `409 VAULT_NAME_TAKEN` (pre-check + UNIQUE-race
+      catch); names reject `/`, `\`, `.`/`..`, controls
+- [x] Web URLs use `/v/:vaultName` end-to-end (list, workspace, graph,
+      tokens views); Playwright specs updated; plugin "Open Web Mirror"
+      opens `/v/<name>`

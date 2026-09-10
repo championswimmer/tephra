@@ -59,7 +59,6 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
     data: { name: VAULT_NAME },
   });
   expect(created.status(), 'vault creation succeeds').toBe(201);
-  const { vault } = (await created.json()) as { vault: { id: string } };
 
   // 3. Seed via the sync API using the shared repo-root harness (plan →
   //    upload → commit), pointed at the fixture vault and this server. The
@@ -98,7 +97,7 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
 
   // 5. Open the vault from the list.
   await page.getByRole('link', { name: new RegExp(VAULT_NAME) }).click();
-  await expect(page).toHaveURL(new RegExp(`/v/${vault.id}/?`));
+  await expect(page).toHaveURL(new RegExp(`/v/${encodeURIComponent(VAULT_NAME)}/?`));
   await expect(page.getByText(`Welcome to ${VAULT_NAME}`)).toBeVisible();
 
   // 6. Expand/collapse folders, then open the Home note from the tree.
@@ -180,7 +179,6 @@ test('path urls: open by path, rename redirects with moved hint', async ({
     data: { name: PATH_VAULT_NAME },
   });
   expect(created.status(), 'vault creation succeeds').toBe(201);
-  const { vault } = (await created.json()) as { vault: { id: string } };
 
   // 2. Copy the fixture vault to a temp dir with stable frontmatter ids.
   const staging = mkdtempSync(join(tmpdir(), 'tephra-e2e-paths-'));
@@ -223,7 +221,7 @@ test('path urls: open by path, rename redirects with moved hint', async ({
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/vaults\/?$/);
-  await page.goto(`/v/${vault.id}/#/Notes/Target%20Note.md`);
+  await page.goto(`/v/${encodeURIComponent(PATH_VAULT_NAME)}/#/Notes/Target%20Note.md`);
   await expect(page.getByRole('heading', { name: 'Target Note' })).toBeVisible();
   await expect(page).toHaveURL(/#\/Notes\/Target%20Note\.md/);
 
