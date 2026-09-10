@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { GraphResponse } from '../api/types';
 import { applyFilters } from '../graph/filter';
+import { nodesWithinDepth, subgraph } from '../graph/depth';
 import { buildGraphModel, nodeRadius } from '../graph/model';
 import { resolveGroupColors } from '../graph/renderer/groups';
 import { readGraphPalette } from '../graph/renderer/palette';
@@ -13,6 +14,7 @@ import {
   loadGraphSettings,
   restoreDefaultGraphSettings,
   saveGraphSettings,
+  type GraphScope,
 } from '../graph/settings';
 import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
@@ -22,15 +24,39 @@ function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
 }
 
+// The Pixi renderer (~450 KB) stays out of the initial bundle: only its
+// type is imported statically. The module itself loads on demand through
+// this shared promise, so concurrently mounting GraphView instances
+// (global + local) trigger exactly one fetch instead of racing the module
+// registry with duplicate first imports.
+type RendererModule = typeof import('../graph/renderer/renderer');
+let rendererModulePromise: Promise<RendererModule> | null = null;
+function loadRendererModule(): Promise<RendererModule> {
+  rendererModulePromise ??= import('../graph/renderer/renderer').catch((error: unknown) => {
+    rendererModulePromise = null;
+    throw error;
+  });
+  return rendererModulePromise;
+}
+
 export function GraphView({
   vaultId,
   onOpen,
   selectedId,
+  rootId,
+  scope = 'global',
 }: {
   vaultId: string;
   /** Navigate by vault-relative path (graph nodes carry both id and path). */
   onOpen: (path: string) => void;
   selectedId?: string;
+  /**
+   * Local-graph mode: restrict the view to the neighbourhood of this node
+   * id (a file id) within `settings.depth` hops. Persisted separately under
+   * the `'local'` scope.
+   */
+  rootId?: string;
+  scope?: GraphScope;
 }) {
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<unknown>();
@@ -53,25 +79,35 @@ export function GraphView({
   const pushedBaseRef = useRef<ReturnType<typeof buildGraphModel> | null>(null);
   const fittedRef = useRef(false);
 
-  // Settings are live state backed by localStorage; every change re-filters
-  // the model and re-pushes the engine below. Obsidian defaults hide
-  // tags/attachments.
-  const [settings, setSettings] = useState(() => loadGraphSettings(vaultId, 'global'));
+  // Settings are live state backed by localStorage (keyed per vault and
+  // scope, so the global and local graphs never share); every change
+  // re-filters the model and re-pushes the engine below. Obsidian defaults
+  // hide tags/attachments.
+  const [settings, setSettings] = useState(() => loadGraphSettings(vaultId, scope));
   useEffect(() => {
-    setSettings(loadGraphSettings(vaultId, 'global'));
+    setSettings(loadGraphSettings(vaultId, scope));
     setPanelOpen(false);
-  }, [vaultId]);
+  }, [vaultId, scope]);
   const handleSettingsChange = (next: typeof settings) => {
     setSettings(next);
-    saveGraphSettings(vaultId, 'global', next);
+    saveGraphSettings(vaultId, scope, next);
   };
   const handleRestoreDefaults = () => {
-    setSettings(restoreDefaultGraphSettings(vaultId, 'global'));
+    setSettings(restoreDefaultGraphSettings(vaultId, scope));
   };
   const baseModel = useMemo(() => (graph ? buildGraphModel(graph) : null), [graph]);
+  // Local-graph mode structurally restricts to the root neighbourhood
+  // before filtering, so filters and groups behave exactly as globally.
+  const scopedBase = useMemo(() => {
+    if (!baseModel) return null;
+    if (!rootId) return baseModel;
+    const within = nodesWithinDepth(baseModel, rootId, settings.depth);
+    if (within.size === 0) return null;
+    return subgraph(baseModel, within);
+  }, [baseModel, rootId, settings.depth]);
   const filtered = useMemo(
-    () => (baseModel ? applyFilters(baseModel, settings) : null),
-    [baseModel, settings],
+    () => (scopedBase ? applyFilters(scopedBase, settings) : null),
+    [scopedBase, settings],
   );
   const groupColors = useMemo(
     () => (filtered ? resolveGroupColors(filtered.model, settings.groups) : []),
@@ -151,7 +187,7 @@ export function GraphView({
     const sim = simRef.current;
     const host = hostRef.current;
     if (!sim || !host) return Promise.resolve();
-    rendererPromiseRef.current = import('../graph/renderer/renderer').then((loaded) =>
+    rendererPromiseRef.current = loadRendererModule().then((loaded) =>
       loaded
         .createGraphRenderer(host, {
           onNodeClick: (id) => {
@@ -188,11 +224,12 @@ export function GraphView({
   };
 
   // Push model + settings into the engine whenever they change. A new payload
-  // restarts the layout; filter-only changes carry positions across.
+  // or a new local scope restarts the layout; filter-only changes carry
+  // positions across.
   useEffect(() => {
     const renderer = rendererRef.current;
     const sim = simRef.current;
-    if (!engineReady || !renderer || !sim || !filtered || !baseModel) return;
+    if (!engineReady || !renderer || !sim || !filtered || !scopedBase) return;
     const nodes = filtered.model.nodes;
     const radii = new Float64Array(nodes.length);
     for (let index = 0; index < nodes.length; index += 1)
@@ -204,14 +241,14 @@ export function GraphView({
     };
     renderer.setModel(filtered.model, groupColors);
     renderer.setSettings(display);
-    if (pushedBaseRef.current !== baseModel) {
-      pushedBaseRef.current = baseModel;
+    if (pushedBaseRef.current !== scopedBase) {
+      pushedBaseRef.current = scopedBase;
       fittedRef.current = false;
       sim.setGraph({ ...topology, seed: graph?.revision ?? 1 }, forces);
     } else {
       sim.setFilteredGraph(topology, forces, filtered.indexMap, positionsRef.current);
     }
-  }, [engineReady, filtered, baseModel, groupColors, display, forces, graph?.revision, settings.nodeSize]);
+  }, [engineReady, filtered, scopedBase, groupColors, display, forces, graph?.revision, settings.nodeSize]);
 
   // Re-tint on theme switch; no re-init.
   useEffect(() => {
@@ -235,34 +272,49 @@ export function GraphView({
 
   if (error) return <ErrorState error={error} retry={() => setReloadToken((token) => token + 1)} />;
   if (!graph || !baseModel)
-    return <Loading label="Loading graph…" />;
+    return <Loading label={rootId ? 'Loading local graph…' : 'Loading graph…'} />;
   if (baseModel.nodes.length === 0)
     return (
       <EmptyState title="The graph is empty">
         <p>Notes and resolved links appear after the vault is indexed.</p>
       </EmptyState>
     );
+  if (rootId && (!scopedBase || scopedBase.nodes.length <= 1))
+    return (
+      <EmptyState title="No local graph yet">
+        <p>This note has no linked neighbours within depth {settings.depth}.</p>
+        <p>Link it to other notes to grow its neighbourhood.</p>
+        <p>
+          <button type="button" onClick={() => setReloadToken((token) => token + 1)}>
+            Retry
+          </button>
+        </p>
+      </EmptyState>
+    );
 
   const visible = filtered?.model;
+  const neighbourCount = rootId && scopedBase ? scopedBase.nodes.length - 1 : null;
   const activeNode =
     (hoveredId ?? selectedId) ? visible?.nodes.find((node) => node.id === (hoveredId ?? selectedId)) : undefined;
   const activeNavigable = activeNode && isNavigable(activeNode.kind) ? activeNode : undefined;
 
   return (
-    <section className="graph-view" aria-label="Vault graph">
+    <section className="graph-view" aria-label={rootId ? 'Local graph' : 'Vault graph'}>
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Knowledge map</p>
-          <h2>Graph</h2>
+          <p className="eyebrow">{rootId ? 'Neighbourhood' : 'Knowledge map'}</p>
+          <h2>{rootId ? 'Local graph' : 'Graph'}</h2>
         </div>
         <p>
-          {visible?.nodes.length ?? 0} notes · {visible?.links.length ?? 0} connections
+          {neighbourCount === null
+            ? `${visible?.nodes.length ?? 0} notes · ${visible?.links.length ?? 0} connections`
+            : `${neighbourCount} neighbour${neighbourCount === 1 ? '' : 's'} within depth ${settings.depth}`}
         </p>
         <button
           ref={cogRef}
           type="button"
           aria-expanded={panelOpen}
-          aria-controls="graph-settings-panel"
+          aria-controls={`graph-settings-panel-${scope}`}
           aria-label="Graph settings"
           onClick={() => setPanelOpen((open) => !open)}
         >
@@ -277,11 +329,12 @@ export function GraphView({
         }
       }}>
         <GraphSettingsPanel
-          id="graph-settings-panel"
-          scope="global"
+          id={`graph-settings-panel-${scope}`}
+          scope={scope}
           settings={settings}
           onChange={handleSettingsChange}
           onRestoreDefaults={handleRestoreDefaults}
+          depthVisible={rootId !== undefined}
         />
       </div>
       {webglFailed ? (

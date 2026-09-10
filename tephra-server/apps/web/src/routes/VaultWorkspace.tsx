@@ -5,6 +5,7 @@ import type { LinksResponse, ResolveResponse, Vault, VaultFile } from '../api/ty
 import { AttachmentViewer } from '../components/AttachmentViewer';
 import { FileTree } from '../components/FileTree';
 import { GraphView } from '../components/GraphView';
+import { LocalGraph } from '../components/LocalGraph';
 import { LinksPanel } from '../components/LinksPanel';
 import { NoteViewer } from '../components/NoteViewer';
 import { EmptyState, ErrorState, IndexPending, Loading } from '../components/Status';
@@ -226,12 +227,15 @@ export function VaultWorkspace() {
                   </p>
                 )}
                 {selected.kind === 'markdown' ? (
-                  <NoteViewer
-                    vaultId={vaultId}
-                    fileId={selected.fileId}
-                    onOpen={open}
-                    getPathForFileId={(fileId) => pathByFileId.get(fileId)}
-                  />
+                  <>
+                    <NoteViewer
+                      vaultId={vaultId}
+                      fileId={selected.fileId}
+                      onOpen={open}
+                      getPathForFileId={(fileId) => pathByFileId.get(fileId)}
+                    />
+                    <LocalGraph vaultId={vaultId} fileId={selected.fileId} onOpen={open} />
+                  </>
                 ) : (
                   <AttachmentViewer vaultId={vaultId} file={selected} />
                 )}

@@ -1094,3 +1094,13 @@ html.theme-dark .vault-grid a {
   border-radius: 4px;
   background: none;
 }
+
+.local-graph {
+  margin-top: 2rem;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 1rem;
+}
+
+.local-graph .graph-canvas {
+  min-height: 22rem;
+}
