@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Database, Repositories, TransactionRepositories } from '@tephra/database-core';
+import type { Database, NoteIndexRepository, Repositories, TransactionRepositories } from '@tephra/database-core';
 import type { BlobStore } from '@tephra/blob-store-core';
 import {
   hashManifest,
@@ -8,7 +8,7 @@ import {
   sha256Hex,
   type SyncManifestEntry,
 } from '@tephra/protocol';
-import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, NoteIndexRepository, NoteLink, NoteMetadata, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
+import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, NoteLink, NoteMetadata, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
 import { createApp } from '../src/app.js';
 
 class MemoryBlobStore implements BlobStore {
