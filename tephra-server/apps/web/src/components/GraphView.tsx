@@ -9,9 +9,14 @@ import { readGraphPalette } from '../graph/renderer/palette';
 // type is imported statically, the module itself loads dynamically below.
 import type { GraphRenderer } from '../graph/renderer/renderer';
 import { createSimulationHost, type SimulationHost } from '../graph/worker/host';
-import { loadGraphSettings } from '../graph/settings';
+import {
+  loadGraphSettings,
+  restoreDefaultGraphSettings,
+  saveGraphSettings,
+} from '../graph/settings';
 import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
+import { GraphSettingsPanel } from './GraphSettingsPanel';
 
 function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
@@ -33,7 +38,9 @@ export function GraphView({
   const [engineReady, setEngineReady] = useState(false);
   const [webglFailed, setWebglFailed] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   const { theme } = useTheme();
+  const cogRef = useRef<HTMLButtonElement | null>(null);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<GraphRenderer | null>(null);
@@ -46,9 +53,21 @@ export function GraphView({
   const pushedBaseRef = useRef<ReturnType<typeof buildGraphModel> | null>(null);
   const fittedRef = useRef(false);
 
-  // Persisted settings back the filters even before the settings panel
-  // (phase 5) makes them editable; Obsidian defaults hide tags/attachments.
-  const settings = useMemo(() => loadGraphSettings(vaultId, 'global'), [vaultId]);
+  // Settings are live state backed by localStorage; every change re-filters
+  // the model and re-pushes the engine below. Obsidian defaults hide
+  // tags/attachments.
+  const [settings, setSettings] = useState(() => loadGraphSettings(vaultId, 'global'));
+  useEffect(() => {
+    setSettings(loadGraphSettings(vaultId, 'global'));
+    setPanelOpen(false);
+  }, [vaultId]);
+  const handleSettingsChange = (next: typeof settings) => {
+    setSettings(next);
+    saveGraphSettings(vaultId, 'global', next);
+  };
+  const handleRestoreDefaults = () => {
+    setSettings(restoreDefaultGraphSettings(vaultId, 'global'));
+  };
   const baseModel = useMemo(() => (graph ? buildGraphModel(graph) : null), [graph]);
   const filtered = useMemo(
     () => (baseModel ? applyFilters(baseModel, settings) : null),
@@ -239,8 +258,32 @@ export function GraphView({
         <p>
           {visible?.nodes.length ?? 0} notes · {visible?.links.length ?? 0} connections
         </p>
+        <button
+          ref={cogRef}
+          type="button"
+          aria-expanded={panelOpen}
+          aria-controls="graph-settings-panel"
+          aria-label="Graph settings"
+          onClick={() => setPanelOpen((open) => !open)}
+        >
+          ⚙
+        </button>
       </div>
       {graph.indexPending && <IndexPending />}
+      <div hidden={!panelOpen} onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          setPanelOpen(false);
+          cogRef.current?.focus();
+        }
+      }}>
+        <GraphSettingsPanel
+          id="graph-settings-panel"
+          scope="global"
+          settings={settings}
+          onChange={handleSettingsChange}
+          onRestoreDefaults={handleRestoreDefaults}
+        />
+      </div>
       {webglFailed ? (
         <p className="notice" role="status">
           The interactive graph needs WebGL, which this browser could not provide. The full note

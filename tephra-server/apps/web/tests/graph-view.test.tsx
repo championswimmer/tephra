@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -162,5 +162,29 @@ describe('GraphView shell', () => {
     await user.click(button);
     expect(onOpen).toHaveBeenCalledWith('b.md');
     expect(screen.getByRole('button', { name: 'Alpha' })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('toggles the settings panel and applies tag visibility live', async () => {
+    const user = userEvent.setup();
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    const toggle = screen.getByRole('button', { name: 'Graph settings' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await user.click(screen.getByLabelText('Tags'));
+    await waitFor(() => {
+      const calls = hoisted.rendererStub.setModel.mock.calls;
+      const last = calls[calls.length - 1]![0] as { nodes: { id: string }[] };
+      expect(last.nodes.map((node) => node.id)).toContain('tag:x');
+    });
+    // The change persists per vault.
+    const stored = JSON.parse(localStorage.getItem('tephra:graph:vault-1:global') ?? '{}');
+    expect(stored.showTags).toBe(true);
+    // Escape closes the panel and returns focus to the toggle.
+    fireEvent.keyDown(screen.getByLabelText('Search'), { key: 'Escape' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
   });
 });
