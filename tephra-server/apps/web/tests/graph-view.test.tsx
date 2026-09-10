@@ -1,260 +1,166 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { api } from '../src/api/client';
 import type { GraphResponse } from '../src/api/types';
+import { GraphView } from '../src/components/GraphView';
+import { ThemeProvider } from '../src/theme/ThemeContext';
 
-const { captured } = vi.hoisted(() => ({
-  captured: { current: undefined as Record<string, unknown> | undefined },
-}));
+vi.mock('../src/api/client', () => ({ api: { graph: vi.fn() } }));
 
-vi.mock('react-force-graph-2d', async () => {
-  const React = await import('react');
+const hoisted = vi.hoisted(() => {
+  const rendererStub = {
+    setModel: vi.fn(),
+    setPositions: vi.fn(),
+    setSettings: vi.fn(),
+    setTheme: vi.fn(),
+    setActive: vi.fn(),
+    zoomToFit: vi.fn(),
+    screenToWorld: vi.fn(),
+    destroy: vi.fn(),
+  };
+  const hostStub = {
+    workerBacked: false,
+    setGraph: vi.fn(),
+    setFilteredGraph: vi.fn(),
+    setForces: vi.fn(),
+    pin: vi.fn(),
+    unpin: vi.fn(),
+    reheat: vi.fn(),
+    destroy: vi.fn(),
+  };
   return {
-    default: (props: Record<string, unknown>) => {
-      captured.current = props;
-      const data = props.graphData as { nodes: unknown[]; links: unknown[] };
-      return React.createElement('div', {
-        'data-testid': 'force-graph',
-        'data-nodes': data.nodes.length,
-        'data-links': data.links.length,
-      });
-    },
+    rendererStub,
+    hostStub,
+    createGraphRenderer: vi.fn(async (_host: unknown, _callbacks: unknown) => rendererStub),
+    createSimulationHost: vi.fn((_events: unknown) => hostStub),
+    callbacks: {} as Record<string, (...args: never[]) => void>,
   };
 });
 
-import type { ReactElement } from 'react';
-import { GraphView, hexToRgba, mapGraphToForceData } from '../src/components/GraphView';
-import { ThemeProvider } from '../src/theme/ThemeContext';
-
-function renderGraph(ui: ReactElement) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>);
-}
+vi.mock('../src/graph/renderer/renderer', () => ({
+  createGraphRenderer: (host: unknown, callbacks: unknown) => {
+    hoisted.callbacks = (callbacks ?? {}) as Record<string, (...args: never[]) => void>;
+    return hoisted.createGraphRenderer(host, callbacks);
+  },
+}));
+vi.mock('../src/graph/worker/host', () => ({
+  createSimulationHost: (events: unknown) => hoisted.createSimulationHost(events),
+}));
 
 const graphFixture: GraphResponse = {
   revision: 3,
   truncated: false,
   nodes: [
-    { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: [], createdAt: 1 },
+    { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: ['x'], createdAt: 1 },
     { id: 'b', path: 'b.md', title: null, kind: 'note', tags: [], createdAt: 2 },
-    { id: 'c', path: 'c.md', title: 'Gamma', kind: 'note', tags: [], createdAt: 3 },
+    { id: 'img', path: 'img.png', title: null, kind: 'attachment', tags: [], createdAt: 3 },
+    { id: 'tag:x', path: 'x', title: '#x', kind: 'tag', tags: [], createdAt: 1 },
+    { id: 'unresolved:Missing', path: 'Missing', title: 'Missing', kind: 'unresolved', tags: [], createdAt: 2 },
   ],
   edges: [
     { s: 0, t: 1, count: 1, embeds: 0 },
-    { s: 1, t: 2, count: 2, embeds: 0 },
+    { s: 0, t: 3, count: 1, embeds: 0 },
+    { s: 0, t: 2, count: 1, embeds: 1 },
+    { s: 1, t: 4, count: 1, embeds: 0 },
   ],
 };
 
-function mockGraph(result: GraphResponse) {
-  vi.spyOn(api, 'graph').mockResolvedValue(result);
+function mockGraph(graph: GraphResponse) {
+  vi.mocked(api.graph).mockResolvedValue(graph);
 }
 
-describe('mapGraphToForceData', () => {
-  it('maps API nodes and edges to force-graph nodes and links', () => {
-    const data = mapGraphToForceData(graphFixture);
-    expect(data.nodes).toEqual([
-      { id: 'a', label: 'Alpha', path: 'a.md' },
-      { id: 'b', label: 'b.md', path: 'b.md' },
-      { id: 'c', label: 'Gamma', path: 'c.md' },
-    ]);
-    expect(data.links).toEqual([
-      { source: 'a', target: 'b', count: 1 },
-      { source: 'b', target: 'c', count: 2 },
-    ]);
-  });
+function renderGraph(node: React.ReactElement) {
+  return render(<ThemeProvider>{node}</ThemeProvider>);
+}
 
-  it('handles an empty graph and a single node', () => {
-    expect(mapGraphToForceData({ revision: 1, truncated: false, nodes: [], edges: [] })).toEqual({
-      nodes: [],
-      links: [],
-    });
-    const single = mapGraphToForceData({
-      revision: 1,
-      truncated: false,
-      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo', kind: 'note', tags: [], createdAt: 1 }],
-      edges: [],
-    });
-    expect(single.nodes).toHaveLength(1);
-    expect(single.links).toHaveLength(0);
-  });
+async function ready() {
+  await waitFor(() => expect(hoisted.createGraphRenderer).toHaveBeenCalled());
+  await waitFor(() => expect(hoisted.rendererStub.setModel).toHaveBeenCalled());
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
 });
 
-describe('GraphView', () => {
-  it('shows a loading state while fetching', () => {
-    vi.spyOn(api, 'graph').mockReturnValue(new Promise(() => {}));
+describe('GraphView shell', () => {
+  it('shows the loading state while the graph loads', () => {
+    mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    expect(screen.getByRole('status')).toHaveTextContent('Loading graph');
+    expect(screen.getByText('Loading graph…')).toBeInTheDocument();
   });
 
-  it('shows an empty state when the graph has no nodes', async () => {
+  it('pushes the Obsidian-default filtered model to the renderer and simulation', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    // Defaults hide tags and attachments; notes + unresolved survive.
+    const model = hoisted.rendererStub.setModel.mock.calls[0]![0] as {
+      nodes: { id: string }[];
+    };
+    expect(model.nodes.map((node: { id: string }) => node.id).sort()).toEqual(['a', 'b', 'unresolved:Missing']);
+    const colors = hoisted.rendererStub.setModel.mock.calls[0]![1];
+    expect(colors).toEqual([null, null, null]);
+    expect(hoisted.hostStub.setGraph).toHaveBeenCalledTimes(1);
+    expect(hoisted.hostStub.setGraph.mock.calls[0]![0]).toMatchObject({ nodeCount: 3 });
+  });
+
+  it('opens notes on node click but ignores synthesized nodes', async () => {
+    mockGraph(graphFixture);
+    const onOpen = vi.fn();
+    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
+    await ready();
+    (hoisted.callbacks.onNodeClick as (id: string) => void)('unresolved:Missing');
+    expect(onOpen).not.toHaveBeenCalled();
+    (hoisted.callbacks.onNodeClick as (id: string) => void)('a');
+    expect(onOpen).toHaveBeenCalledWith('a.md');
+  });
+
+  it('shows the selection bar for the hovered node', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    (hoisted.callbacks.onNodeHover as (id: string | null) => void)('a');
+    expect(await screen.findByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open note' })).toBeInTheDocument();
+  });
+
+  it('marks the open note active in the renderer', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} selectedId="b" />);
+    await ready();
+    expect(hoisted.rendererStub.setActive).toHaveBeenCalledWith('b');
+  });
+
+  it('falls back to the note list with an explanation when WebGL fails', async () => {
+    hoisted.createGraphRenderer.mockRejectedValueOnce(new Error('no webgl'));
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    expect(await screen.findByText(/needs WebGL/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Alpha' })).toBeInTheDocument();
+  });
+
+  it('reports an empty graph and surfaces load errors', async () => {
     mockGraph({ revision: 1, truncated: false, nodes: [], edges: [] });
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     expect(await screen.findByText('The graph is empty')).toBeInTheDocument();
-    expect(screen.queryByTestId('force-graph')).not.toBeInTheDocument();
+
+    vi.mocked(api.graph).mockRejectedValueOnce(new Error('boom'));
+    const { unmount } = renderGraph(<GraphView vaultId="vault-2" onOpen={vi.fn()} />);
+    expect(await screen.findByText(/unable to load/i)).toBeInTheDocument();
+    unmount();
   });
 
-  it('shows an error state with retry', async () => {
-    const user = userEvent.setup();
-    const graph = vi.spyOn(api, 'graph');
-    graph.mockRejectedValueOnce(new Error('boom'));
-    graph.mockResolvedValue(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByTestId('force-graph')).toBeInTheDocument();
-    expect(graph).toHaveBeenCalledTimes(2);
-  });
-
-  it('passes mapped data and interaction props to the force graph', async () => {
-    mockGraph(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    const canvas = await screen.findByTestId('force-graph');
-    expect(canvas).toHaveAttribute('data-nodes', '3');
-    expect(canvas).toHaveAttribute('data-links', '2');
-    const props = captured.current as unknown as {
-      graphData: { nodes: { id: string; label: string }[] };
-      nodeLabel: string;
-      enableZoomInteraction: boolean;
-      enablePanInteraction: boolean;
-      onNodeClick: (node: { id: string }) => void;
-      onNodeHover: (node: { id: string } | null) => void;
-      nodeColor: (node: { id: string }) => string;
-    };
-    expect(props.graphData.nodes.map((node) => node.label)).toEqual(['Alpha', 'b.md', 'Gamma']);
-    expect(props.nodeLabel).toBe('label');
-    expect(props.enableZoomInteraction).toBe(true);
-    expect(props.enablePanInteraction).toBe(true);
-    expect(typeof props.onNodeClick).toBe('function');
-    expect(typeof props.onNodeHover).toBe('function');
-  });
-
-  it('navigates by path on node click', async () => {
+  it('opens fallback-list notes and flags the selected one', async () => {
     const user = userEvent.setup();
     mockGraph(graphFixture);
     const onOpen = vi.fn();
-    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      onNodeClick: (node: { id: string; path?: string }) => void;
-    };
-    props.onNodeClick({ id: 'b', path: 'b.md' });
+    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} selectedId="a" />);
+    const button = await screen.findByRole('button', { name: 'b.md' });
+    await user.click(button);
     expect(onOpen).toHaveBeenCalledWith('b.md');
-    // The keyboard-focusable fallback list offers the same navigation.
-    const fallback = screen.getByRole('list', { name: 'Notes in graph' });
-    expect(fallback).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'b.md' }));
-    expect(onOpen).toHaveBeenCalledWith('b.md');
-  });
-
-  it('shows the hovered note title with an Open note action', async () => {
-    const user = userEvent.setup();
-    mockGraph(graphFixture);
-    const onOpen = vi.fn();
-    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      onNodeHover: (node: { id: string } | null) => void;
-    };
-    props.onNodeHover({ id: 'a' });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Open note' })).toBeInTheDocument(),
-    );
-    expect(screen.getAllByText('Alpha')).toHaveLength(2);
-    await user.click(screen.getByRole('button', { name: 'Open note' }));
-    expect(onOpen).toHaveBeenCalledWith('a.md');
-  });
-
-  it('highlights the currently-open note when selectedId is provided', async () => {
-    mockGraph(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} selectedId="c" />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      nodeColor: (node: { id: string }) => string;
-      backgroundColor: string;
-    };
-    const selected = props.nodeColor({ id: 'c' });
-    const neighbor = props.nodeColor({ id: 'b' });
-    const distant = props.nodeColor({ id: 'a' });
-    // Obsidian default light palette: accent highlight, dimmed graph-node.
-    expect(selected).toBe('#7b6cd9');
-    expect(neighbor).toBe('#7b6cd9');
-    expect(distant).not.toBe('#7b6cd9');
-    expect(props.backgroundColor).toBe('#ffffff');
-    expect(screen.getByRole('button', { name: 'Gamma' }).getAttribute('aria-current')).toBe('true');
-  });
-
-  it('paints uniform graph-node dots when nothing is active', async () => {
-    mockGraph(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      nodeColor: (node: { id: string }) => string;
-      linkColor: (link: { source: string; target: string }) => string;
-    };
-    expect(props.nodeColor({ id: 'a' })).toBe('#000000');
-    expect(props.linkColor({ source: 'a', target: 'b' })).toBe('#d1d1d1');
-  });
-
-  it('hexToRgba expands short and long hex colors', () => {
-    expect(hexToRgba('#000000', 0.22)).toBe('rgba(0, 0, 0, 0.22)');
-    expect(hexToRgba('#d1d1d1', 0.45)).toBe('rgba(209, 209, 209, 0.45)');
-    expect(hexToRgba('#abc', 1)).toBe('rgba(170, 187, 204, 1)');
-  });
-
-  it('does not navigate for synthesized tag or unresolved nodes', async () => {
-    mockGraph({
-      revision: 1,
-      truncated: false,
-      nodes: [
-        { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: ['x'], createdAt: 1 },
-        { id: 'tag:x', path: 'x', title: '#x', kind: 'tag', tags: [], createdAt: 1 },
-      ],
-      edges: [{ s: 0, t: 1, count: 1, embeds: 0 }],
-    });
-    const onOpen = vi.fn();
-    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      onNodeClick: (node: { id: string; path?: string }) => void;
-    };
-    props.onNodeClick({ id: 'tag:x', path: 'x' });
-    expect(onOpen).not.toHaveBeenCalled();
-    props.onNodeClick({ id: 'a', path: 'a.md' });
-    expect(onOpen).toHaveBeenCalledWith('a.md');
-  });
-
-  it('labels only the active node, leaving the rest unpainted', async () => {
-    mockGraph(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} selectedId="c" />);
-    await screen.findByTestId('force-graph');
-    const props = captured.current as unknown as {
-      nodeCanvasObjectMode: (node: { id: string }) => string | undefined;
-      nodeCanvasObject: (
-        node: { id: string; x: number; y: number },
-        ctx: CanvasRenderingContext2D,
-        scale: number,
-      ) => void;
-    };
-    expect(props.nodeCanvasObjectMode({ id: 'c' })).toBe('after');
-    expect(props.nodeCanvasObjectMode({ id: 'a' })).toBeUndefined();
-    const ctx = { font: '', textAlign: '', textBaseline: '', fillStyle: '', fillText: vi.fn() };
-    props.nodeCanvasObject({ id: 'a', x: 0, y: 0 }, ctx as unknown as CanvasRenderingContext2D, 1);
-    expect(ctx.fillText).not.toHaveBeenCalled();
-    props.nodeCanvasObject({ id: 'c', x: 4, y: 8 }, ctx as unknown as CanvasRenderingContext2D, 1);
-    expect(ctx.fillText).toHaveBeenCalledWith('Gamma', 10, 8);
-  });
-
-  it('renders a single-node graph without links', async () => {
-    mockGraph({
-      revision: 1,
-      truncated: false,
-      nodes: [{ id: 'solo', path: 'solo.md', title: 'Solo', kind: 'note', tags: [], createdAt: 1 }],
-      edges: [],
-    });
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    const canvas = await screen.findByTestId('force-graph');
-    expect(canvas).toHaveAttribute('data-nodes', '1');
-    expect(canvas).toHaveAttribute('data-links', '0');
-    expect(screen.getByRole('button', { name: 'Solo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Alpha' })).toHaveAttribute('aria-current', 'true');
   });
 });

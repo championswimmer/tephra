@@ -35,7 +35,7 @@ function csrfToken(): string | undefined {
 export class ApiClient {
   constructor(private readonly baseUrl = '/api/v1') {}
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async fetchRaw(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     if (init.body !== undefined && !headers.has('Content-Type'))
       headers.set('Content-Type', 'application/json');
@@ -56,7 +56,7 @@ export class ApiClient {
     } catch {
       throw new ApiError(0, 'NETWORK_ERROR', 'Unable to reach the Tephra server.');
     }
-    if (!response.ok) {
+    if (!response.ok && response.status !== 304) {
       let body: ErrorBody = {};
       try {
         body = (await response.json()) as ErrorBody;
@@ -69,6 +69,11 @@ export class ApiClient {
         body.error?.message ?? `Request failed (${response.status}).`,
       );
     }
+    return response;
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await this.fetchRaw(path, init);
     if (response.status === 204) return undefined as T;
     if (response.headers.get('content-type')?.includes('application/json'))
       return response.json() as Promise<T>;
@@ -111,8 +116,23 @@ export class ApiClient {
     );
   contentUrl = (vaultId: string, fileId: string) =>
     `${this.baseUrl}/vaults/${encodeURIComponent(vaultId)}/files/${encodeURIComponent(fileId)}/content`;
-  graph = (vaultId: string) =>
-    this.request<GraphResponse>(`/vaults/${encodeURIComponent(vaultId)}/graph`);
+  // The graph endpoint is pure derived state with an ETag; reuse the last
+  // payload on 304 instead of re-downloading it.
+  private readonly graphCache = new Map<string, { etag: string; body: GraphResponse }>();
+  graph = async (vaultId: string): Promise<GraphResponse> => {
+    const path = `/vaults/${encodeURIComponent(vaultId)}/graph`;
+    const cached = this.graphCache.get(vaultId);
+    const response = await this.fetchRaw(
+      path,
+      cached ? { headers: { 'If-None-Match': cached.etag } } : {},
+    );
+    if (response.status === 304 && cached) return cached.body;
+    const body = (await response.json()) as GraphResponse;
+    const etag = response.headers.get('etag');
+    if (etag) this.graphCache.set(vaultId, { etag, body });
+    else this.graphCache.delete(vaultId);
+    return body;
+  };
   links = (vaultId: string, fileId: string) =>
     this.request<LinksResponse>(
       `/vaults/${encodeURIComponent(vaultId)}/links?fileId=${encodeURIComponent(fileId)}`,

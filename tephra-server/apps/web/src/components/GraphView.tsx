@@ -1,60 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import ForceGraph2D from 'react-force-graph-2d';
-import type { ForceGraphMethods } from 'react-force-graph-2d';
 import { api } from '../api/client';
 import type { GraphResponse } from '../api/types';
+import { applyFilters } from '../graph/filter';
+import { buildGraphModel, nodeRadius } from '../graph/model';
+import { resolveGroupColors } from '../graph/renderer/groups';
+import { readGraphPalette } from '../graph/renderer/palette';
+// The Pixi renderer (~450 KB) stays out of the initial bundle: only its
+// type is imported statically, the module itself loads dynamically below.
+import type { GraphRenderer } from '../graph/renderer/renderer';
+import { createSimulationHost, type SimulationHost } from '../graph/worker/host';
+import { loadGraphSettings } from '../graph/settings';
 import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
 
-export interface GraphNodeDatum {
-  id: string;
-  label: string;
-  path: string;
-}
-
-export interface GraphLinkDatum {
-  source: string;
-  target: string;
-  count: number;
-}
-
-export interface ForceGraphDatum {
-  nodes: GraphNodeDatum[];
-  links: GraphLinkDatum[];
-}
-
-/** Map `/graph` API nodes/edges onto the `{ nodes, links }` shape react-force-graph expects. */
-export function mapGraphToForceData(graph: GraphResponse): ForceGraphDatum {
-  const idAt = (index: number): string => graph.nodes[index]?.id ?? String(index);
-  return {
-    nodes: graph.nodes.map((node) => ({
-      id: node.id,
-      label: node.title ?? node.path,
-      path: node.kind === 'note' || node.kind === 'attachment' ? node.path : node.id,
-    })),
-    links: graph.edges.map((edge) => ({
-      source: idAt(edge.s),
-      target: idAt(edge.t),
-      count: edge.count,
-    })),
-  };
-}
-
-/** Expand `#rgb` / `#rrggbb` to an `rgba()` string for dimmed graph states. */
-export function hexToRgba(hex: string, alpha: number): string {
-  const clean = hex.replace(/^#/, '');
-  const full =
-    clean.length === 3
-      ? clean
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : clean;
-  const value = Number.parseInt(full.slice(0, 6).padEnd(6, '0'), 16);
-  const red = (value >> 16) & 0xff;
-  const green = (value >> 8) & 0xff;
-  const blue = value & 0xff;
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+function isNavigable(kind: string): boolean {
+  return kind === 'note' || kind === 'attachment';
 }
 
 export function GraphView({
@@ -69,29 +29,62 @@ export function GraphView({
 }) {
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<unknown>();
-  const [hovered, setHovered] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
-  const fittedRef = useRef(false);
-  // Obsidian-palette colors for the active base scheme. The provider
-  // re-renders this view on theme switch, so the canvas follows light/dark.
+  const [engineReady, setEngineReady] = useState(false);
+  const [webglFailed, setWebglFailed] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { theme } = useTheme();
-  const palette = {
-    background: theme.variables['--background-primary'] ?? '#ffffff',
-    node: theme.variables['--graph-node'] ?? '#000000',
-    line: theme.variables['--graph-line'] ?? '#d1d1d1',
-    accent: theme.variables['--interactive-accent'] ?? '#7b6cd9',
-    text: theme.variables['--text-normal'] ?? '#2e3338',
-  };
+
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const rendererRef = useRef<GraphRenderer | null>(null);
+  const rendererPromiseRef = useRef<Promise<void> | null>(null);
+  const simRef = useRef<SimulationHost | null>(null);
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const modelRef = useRef<ReturnType<typeof buildGraphModel> | null>(null);
+  const positionsRef = useRef<Float32Array>(new Float32Array(0));
+  const pushedBaseRef = useRef<ReturnType<typeof buildGraphModel> | null>(null);
+  const fittedRef = useRef(false);
+
+  // Persisted settings back the filters even before the settings panel
+  // (phase 5) makes them editable; Obsidian defaults hide tags/attachments.
+  const settings = useMemo(() => loadGraphSettings(vaultId, 'global'), [vaultId]);
+  const baseModel = useMemo(() => (graph ? buildGraphModel(graph) : null), [graph]);
+  const filtered = useMemo(
+    () => (baseModel ? applyFilters(baseModel, settings) : null),
+    [baseModel, settings],
+  );
+  const groupColors = useMemo(
+    () => (filtered ? resolveGroupColors(filtered.model, settings.groups) : []),
+    [filtered, settings.groups],
+  );
+  const forces = useMemo(
+    () => ({
+      centerForce: settings.centerForce,
+      repelForce: settings.repelForce,
+      linkForce: settings.linkForce,
+      linkDistance: settings.linkDistance,
+    }),
+    [settings.centerForce, settings.repelForce, settings.linkForce, settings.linkDistance],
+  );
+  const display = useMemo(
+    () => ({
+      showArrows: settings.showArrows,
+      textFadeThreshold: settings.textFadeThreshold,
+      nodeSize: settings.nodeSize,
+      linkThickness: settings.linkThickness,
+    }),
+    [settings.showArrows, settings.textFadeThreshold, settings.nodeSize, settings.linkThickness],
+  );
+  modelRef.current = filtered?.model ?? null;
 
   useEffect(() => {
     let cancelled = false;
     fittedRef.current = false;
+    pushedBaseRef.current = null;
     setGraph(null);
     setError(undefined);
-    setHovered(null);
+    setHoveredId(null);
     void api.graph(vaultId).then(
       (result) => {
         if (!cancelled) setGraph(result);
@@ -105,94 +98,136 @@ export function GraphView({
     };
   }, [vaultId, reloadToken]);
 
-  // Size the canvas to its container (the library defaults to window
-  // dimensions, which would overflow the card and break zoom-to-fit). Keep a
-  // fixed height that matches the `.graph-canvas` stylesheet rule.
+  // Engine lifecycle: the simulation host (worker with main-thread
+  // fallback) is created on mount; the lazily-loaded Pixi renderer is
+  // created once the canvas host div mounts (it renders only after the
+  // payload arrives).
   useEffect(() => {
-    const element = containerRef.current;
-    if (!element || typeof ResizeObserver === 'undefined') return;
-    const update = () => {
-      const height = Math.min(window.innerHeight * 0.62, 620);
-      setCanvasSize({ width: Math.max(1, element.clientWidth), height });
+    const sim = createSimulationHost({
+      onPositions: (positions) => {
+        // Copy: the worker recycles the transferred buffer after this call.
+        const copy = Float32Array.from(positions);
+        positionsRef.current = copy;
+        rendererRef.current?.setPositions(copy);
+        if (!fittedRef.current && copy.length >= 2) {
+          fittedRef.current = true;
+          rendererRef.current?.zoomToFit();
+        }
+      },
+    });
+    simRef.current = sim;
+    return () => {
+      sim.destroy();
+      simRef.current = null;
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
+      rendererPromiseRef.current = null;
     };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [graph]);
+  }, []);
 
-  // Stop the force simulation if the view unmounts mid-flight.
-  useEffect(
-    () => () => {
-      try {
-        graphRef.current?.pauseAnimation();
-      } catch {
-        /* graph already torn down */
-      }
-    },
-    [],
-  );
-
-  const data = useMemo<ForceGraphDatum>(
-    () => (graph ? mapGraphToForceData(graph) : { nodes: [], links: [] }),
-    [graph],
-  );
-  const labels = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const node of data.nodes) map.set(node.id, node.label);
-    return map;
-  }, [data]);
-
-  // The currently-open note (when provided) and the hovered node stay
-  // highlighted along with their neighbours; everything else is dimmed,
-  // mirroring the old SVG view's active/inactive styling.
-  const activeId = hovered ?? selectedId ?? null;
-  const neighbors = useMemo(() => {
-    if (!graph || !activeId) return new Set<string>();
-    return new Set(
-      graph.edges.flatMap((edge) => {
-        const source = graph.nodes[edge.s]?.id;
-        const target = graph.nodes[edge.t]?.id;
-        return source === activeId ? [target!] : target === activeId ? [source!] : [];
-      }),
+  // Create the renderer on demand; concurrent callers share the flight.
+  const ensureRendererRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  ensureRendererRef.current = () => {
+    if (rendererRef.current || rendererPromiseRef.current) return rendererPromiseRef.current ?? Promise.resolve();
+    const sim = simRef.current;
+    const host = hostRef.current;
+    if (!sim || !host) return Promise.resolve();
+    rendererPromiseRef.current = import('../graph/renderer/renderer').then((loaded) =>
+      loaded
+        .createGraphRenderer(host, {
+          onNodeClick: (id) => {
+            const node = modelRef.current?.nodes.find((entry) => entry.id === id);
+            if (node && isNavigable(node.kind)) onOpenRef.current(node.path);
+          },
+          onNodeHover: (id) => setHoveredId(id),
+          onDragStart: (index) => {
+            const positions = positionsRef.current;
+            sim.pin(index, positions[index * 2] ?? 0, positions[index * 2 + 1] ?? 0);
+          },
+          onDragMove: (index, x, y) => sim.pin(index, x, y),
+          onDragEnd: (index) => sim.unpin(index),
+        })
+        .then(
+          (created) => {
+            rendererRef.current = created;
+            created.setTheme(readGraphPalette());
+            setEngineReady(true);
+          },
+          () => {
+            // Pixi v8 has no canvas fallback: fall through to the
+            // accessible note list with an explanation (§11).
+            setWebglFailed(true);
+          },
+        ),
     );
-  }, [graph, activeId]);
-  const isActive = (id: string) => activeId === null || id === activeId || neighbors.has(id);
+    return rendererPromiseRef.current;
+  };
+  const hostCallbackRef = useRef<(element: HTMLDivElement | null) => void>(() => {});
+  hostCallbackRef.current = (element) => {
+    hostRef.current = element;
+    if (element) void ensureRendererRef.current();
+  };
+
+  // Push model + settings into the engine whenever they change. A new payload
+  // restarts the layout; filter-only changes carry positions across.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const sim = simRef.current;
+    if (!engineReady || !renderer || !sim || !filtered || !baseModel) return;
+    const nodes = filtered.model.nodes;
+    const radii = new Float64Array(nodes.length);
+    for (let index = 0; index < nodes.length; index += 1)
+      radii[index] = nodeRadius(nodes[index]!.degree, settings.nodeSize);
+    const topology = {
+      nodeCount: nodes.length,
+      links: filtered.model.links.map((link) => ({ source: link.source, target: link.target })),
+      radii,
+    };
+    renderer.setModel(filtered.model, groupColors);
+    renderer.setSettings(display);
+    if (pushedBaseRef.current !== baseModel) {
+      pushedBaseRef.current = baseModel;
+      fittedRef.current = false;
+      sim.setGraph({ ...topology, seed: graph?.revision ?? 1 }, forces);
+    } else {
+      sim.setFilteredGraph(topology, forces, filtered.indexMap, positionsRef.current);
+    }
+  }, [engineReady, filtered, baseModel, groupColors, display, forces, graph?.revision, settings.nodeSize]);
+
+  // Re-tint on theme switch; no re-init.
+  useEffect(() => {
+    rendererRef.current?.setTheme(readGraphPalette());
+  }, [theme]);
+
+  useEffect(() => {
+    if (engineReady) rendererRef.current?.setActive(selectedId ?? null);
+  }, [engineReady, selectedId]);
+
+  // Dev-only debug hook for the Playwright pass (§10).
+  useEffect(() => {
+    if (import.meta.env.DEV && filtered && graph) {
+      (window as unknown as { __tephraGraph?: unknown }).__tephraGraph = {
+        nodeCount: filtered.model.nodes.length,
+        linkCount: filtered.model.links.length,
+        revision: graph.revision,
+      };
+    }
+  }, [filtered, graph]);
 
   if (error) return <ErrorState error={error} retry={() => setReloadToken((token) => token + 1)} />;
-  if (!graph) return <Loading label="Loading graph…" />;
-  if (!graph.nodes.length)
+  if (!graph || !baseModel)
+    return <Loading label="Loading graph…" />;
+  if (baseModel.nodes.length === 0)
     return (
       <EmptyState title="The graph is empty">
         <p>Notes and resolved links appear after the vault is indexed.</p>
       </EmptyState>
     );
 
-  const activeNode = activeId ? graph.nodes.find((node) => node.id === activeId) : undefined;
-  const activeNavigable =
-    activeNode && (activeNode.kind === 'note' || activeNode.kind === 'attachment')
-      ? activeNode
-      : undefined;
-
-  // Obsidian graph language: uniform small dots in the graph-node color,
-  // faint graph-line edges with directional arrows, and the hovered/selected
-  // node plus its neighbourhood picked out in the accent color. When
-  // something is active, unrelated nodes and edges fade back.
-  const dimNode = hexToRgba(palette.node, 0.22);
-  const dimLine = hexToRgba(palette.line, 0.45);
-  const activeLine = hexToRgba(palette.accent, 0.65);
-  const paintNodeColor = (id: string): string => {
-    if (activeId === null) return palette.node;
-    return isActive(id) ? palette.accent : dimNode;
-  };
-  const paintLinkColor = (sourceId: string, targetId: string): string => {
-    if (activeId === null) return palette.line;
-    return sourceId === activeId || targetId === activeId ? activeLine : dimLine;
-  };
-  const linkEndpointId = (endpoint: unknown): string =>
-    typeof endpoint === 'object' && endpoint !== null
-      ? String((endpoint as { id?: unknown }).id)
-      : String(endpoint);
+  const visible = filtered?.model;
+  const activeNode =
+    (hoveredId ?? selectedId) ? visible?.nodes.find((node) => node.id === (hoveredId ?? selectedId)) : undefined;
+  const activeNavigable = activeNode && isNavigable(activeNode.kind) ? activeNode : undefined;
 
   return (
     <section className="graph-view" aria-label="Vault graph">
@@ -202,80 +237,23 @@ export function GraphView({
           <h2>Graph</h2>
         </div>
         <p>
-          {graph.nodes.length} notes · {graph.edges.length} connections
+          {visible?.nodes.length ?? 0} notes · {visible?.links.length ?? 0} connections
         </p>
       </div>
       {graph.indexPending && <IndexPending />}
-      <div
-        ref={containerRef}
-        className="graph-canvas"
-        role="img"
-        aria-label={`Interactive note relationship graph with ${graph.nodes.length} notes and ${graph.edges.length} connections. The note list below offers the same notes as buttons.`}
-      >
-        <ForceGraph2D
-          ref={graphRef}
-          width={canvasSize.width}
-          height={canvasSize.height}
-          graphData={data}
-          nodeId="id"
-          nodeLabel="label"
-          linkSource="source"
-          linkTarget="target"
-          backgroundColor={palette.background}
-          enableZoomInteraction
-          enablePanInteraction
-          enableNodeDrag
-          cooldownTicks={100}
-          warmupTicks={25}
-          nodeRelSize={4}
-          nodeColor={(node) => paintNodeColor(String(node.id))}
-          linkColor={(link) =>
-            paintLinkColor(linkEndpointId(link.source), linkEndpointId(link.target))
-          }
-          linkWidth={(link) => (Number(link.count) > 1 ? 2 : 1)}
-          linkDirectionalArrowLength={3.5}
-          linkDirectionalArrowRelPos={1}
-          linkDirectionalArrowColor={(link) =>
-            paintLinkColor(linkEndpointId(link.source), linkEndpointId(link.target))
-          }
-          // Labels are painted only for the hovered (or currently-open) node.
-          // Drawing text for every node costs a `fillText` per node per frame,
-          // which dominates the render loop on larger vaults.
-          nodeCanvasObjectMode={(node) => (String(node.id) === activeId ? 'after' : undefined)}
-          nodeCanvasObject={(node, ctx, globalScale) => {
-            const id = String(node.id);
-            if (id !== activeId) return;
-            const label = labels.get(id) ?? id;
-            const fontSize = 12 / globalScale;
-            ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = palette.text;
-            ctx.fillText(label, (node.x ?? 0) + 6, node.y ?? 0);
-          }}
-          onNodeClick={(node) => {
-            const datum = node as { id?: unknown; path?: unknown };
-            const id = String(node.id);
-            const kind = graph.nodes.find((entry) => entry.id === id)?.kind;
-            // Only real files are navigable; tag/unresolved nodes are not.
-            if (kind !== 'note' && kind !== 'attachment') return;
-            onOpen(typeof datum.path === 'string' ? datum.path : id);
-          }}
-          onNodeHover={(node) => {
-            // After d3 resolves links, source/target become node objects.
-            setHovered(node ? String(node.id) : null);
-          }}
-          onEngineStop={() => {
-            if (fittedRef.current || data.nodes.length < 2) return;
-            fittedRef.current = true;
-            try {
-              graphRef.current?.zoomToFit(300, 40);
-            } catch {
-              /* canvas already unmounted */
-            }
-          }}
+      {webglFailed ? (
+        <p className="notice" role="status">
+          The interactive graph needs WebGL, which this browser could not provide. The full note
+          list below offers the same notes as buttons.
+        </p>
+      ) : (
+        <div
+          ref={(element) => hostCallbackRef.current(element)}
+          className="graph-canvas"
+          role="img"
+          aria-label={`Interactive note relationship graph with ${visible?.nodes.length ?? 0} notes and ${visible?.links.length ?? 0} connections. The note list below offers the same notes as buttons.`}
         />
-      </div>
+      )}
       {activeNode && (
         <div className="graph-selection">
           <span>{activeNode.title ?? activeNode.path}</span>
