@@ -8,7 +8,7 @@ import {
   sha256Hex,
   type SyncManifestEntry,
 } from '@tephra/protocol';
-import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
+import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, NoteIndexRepository, NoteLink, NoteMetadata, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
 import { createApp } from '../src/app.js';
 
 class MemoryBlobStore implements BlobStore {
@@ -628,22 +628,24 @@ describe('graph payload v2', () => {
     });
     expect(commit.status).toBe(200);
 
-    // Seed the note index the way the indexer would.
-    const meta = (fileId: string, title: string, tags: string[] = []) => ({
+    // Seed the note index the way the indexer would. The in-memory stub
+    // infers never-returning methods, so go through the repository type.
+    const noteIndex = database.noteIndex as NoteIndexRepository;
+    const meta = (fileId: string, title: string, tags: string[] = []): NoteMetadata => ({
       fileId, vaultId: vault.id, indexedBlobHash: 'h', title, frontmatter: {}, headings: [], tags, blocks: [], indexedAt: 1,
     });
-    database.noteIndex.listMetadata = async () => [meta('file-a', 'Alpha', ['foo']), meta('file-b', 'Beta')];
-    const link = (overrides: Record<string, unknown>) => ({
+    noteIndex.listMetadata = async () => [meta('file-a', 'Alpha', ['foo']), meta('file-b', 'Beta')];
+    const link = (overrides: Record<string, unknown>): NoteLink => ({
       id: 'l', vaultId: vault.id, sourceFileId: 'file-a', rawText: '', linkPath: '',
       subpath: null, displayText: null, isEmbed: false, targetFileId: null, createdAt: 1, ...overrides,
-    });
-    database.noteIndex.listLinks = async () => [
+    }) as NoteLink;
+    noteIndex.listLinks = async () => [
       link({ id: 'l1', linkPath: 'B', targetFileId: 'file-b' }),
       link({ id: 'l2', linkPath: 'img.png', targetFileId: 'file-img', isEmbed: true }),
       link({ id: 'l3', linkPath: 'Missing Note' }),
       link({ id: 'l4', linkPath: 'Missing Note', sourceFileId: 'file-b' }),
     ];
-    database.noteIndex.getState = async () => ({ vaultId: vault.id, indexedRevision: 1, lastError: null });
+    noteIndex.getState = async () => ({ vaultId: vault.id, indexedRevision: 1, lastError: null });
     return { app, token, vault };
   }
 
