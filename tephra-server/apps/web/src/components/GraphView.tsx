@@ -24,6 +24,9 @@ function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
 }
 
+/** Wall-clock duration of one full time-lapse sweep. */
+export const TIME_LAPSE_DURATION_MS = 8000;
+
 // The Pixi renderer (~450 KB) stays out of the initial bundle: only its
 // type is imported statically. The module itself loads on demand through
 // this shared promise, so concurrently mounting GraphView instances
@@ -87,6 +90,8 @@ export function GraphView({
   useEffect(() => {
     setSettings(loadGraphSettings(vaultId, scope));
     setPanelOpen(false);
+    setCutoffState(null);
+    setPlaying(false);
   }, [vaultId, scope]);
   const handleSettingsChange = (next: typeof settings) => {
     setSettings(next);
@@ -105,10 +110,69 @@ export function GraphView({
     if (within.size === 0) return null;
     return subgraph(baseModel, within);
   }, [baseModel, rootId, settings.depth]);
+  // Time-lapse (§9): animate a createdAt cutoff over the scoped model on
+  // wall-clock time. The simulation lives in a worker, so transport and
+  // filter controls stay responsive mid-flight. Pausing, scrubbing, or
+  // unmounting keeps the last cutoff — playback never snaps back.
+  const timeBounds = useMemo(() => {
+    if (!scopedBase || scopedBase.nodes.length === 0) return null;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const node of scopedBase.nodes) {
+      if (node.createdAt < min) min = node.createdAt;
+      if (node.createdAt > max) max = node.createdAt;
+    }
+    return min < max ? { min, max } : null;
+  }, [scopedBase]);
+  const [cutoff, setCutoffState] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const playFromRef = useRef(0);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+
+  // Clamp a stale cutoff when the underlying model changes.
+  useEffect(() => {
+    if (cutoff === null || !timeBounds) return;
+    if (cutoff < timeBounds.min) setCutoffState(timeBounds.min);
+    else if (cutoff > timeBounds.max) setCutoffState(timeBounds.max);
+  }, [cutoff, timeBounds]);
+
+  useEffect(() => {
+    if (!playing || !timeBounds) return;
+    const from = playFromRef.current;
+    const startedAt = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / TIME_LAPSE_DURATION_MS);
+      setCutoffState(from + (timeBounds.max - from) * t);
+      if (t < 1 && playingRef.current) frame = requestAnimationFrame(step);
+      else setPlaying(false);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, timeBounds]);
+
+  const startPlayback = () => {
+    if (!timeBounds) return;
+    playFromRef.current = cutoff ?? timeBounds.min;
+    setPlaying(true);
+  };
+
   const filtered = useMemo(
-    () => (scopedBase ? applyFilters(scopedBase, settings) : null),
+    () =>
+      scopedBase
+        ? applyFilters(scopedBase, settings, cutoff === null ? undefined : { createdAtCutoff: cutoff })
+        : null,
+    [scopedBase, settings, cutoff],
+  );
+  // Denominator for the time-lapse status: everything the filters keep
+  // before the cutoff is applied.
+  const uncutCount = useMemo(
+    () => (scopedBase ? applyFilters(scopedBase, settings).model.nodes.length : 0),
     [scopedBase, settings],
   );
+  // Time-lapse lives here (after scopedBase, before filtered) because the
+  // filter memo reads the cutoff during render.
   const groupColors = useMemo(
     () => (filtered ? resolveGroupColors(filtered.model, settings.groups) : []),
     [filtered, settings.groups],
@@ -337,6 +401,44 @@ export function GraphView({
           depthVisible={rootId !== undefined}
         />
       </div>
+      {timeBounds && (
+        <div className="graph-timelapse" role="group" aria-label="Time-lapse controls">
+          <button
+            type="button"
+            aria-pressed={playing}
+            aria-label={playing ? 'Pause time-lapse' : 'Play time-lapse'}
+            disabled={!timeBounds}
+            onClick={() => (playing ? setPlaying(false) : startPlayback())}
+          >
+            {playing ? '⏸' : '▶'}
+          </button>
+          <label htmlFor={`graph-timelapse-${scope}`}>Time-lapse</label>
+          <input
+            id={`graph-timelapse-${scope}`}
+            type="range"
+            min={timeBounds.min}
+            max={timeBounds.max}
+            step={(timeBounds.max - timeBounds.min) / 200 || 1}
+            value={cutoff ?? timeBounds.max}
+            onChange={(event) => {
+              setPlaying(false);
+              setCutoffState(Number(event.target.value));
+            }}
+          />
+          <output>{cutoff === null ? `All ${uncutCount} notes` : `${visible?.nodes.length ?? 0} of ${uncutCount} notes up to ${new Date(cutoff).toLocaleDateString()}`}</output>
+          {cutoff !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                setPlaying(false);
+                setCutoffState(null);
+              }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      )}
       {webglFailed ? (
         <p className="notice" role="status">
           The interactive graph needs WebGL, which this browser could not provide. The full note

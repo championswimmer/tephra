@@ -97,4 +97,19 @@ describe('applyFilters', () => {
     const { model } = applyFilters(fixture(), baseFilters, { createdAtCutoff: 2 });
     expect(model.nodes.map((node) => node.id).sort()).toEqual(['a', 'b', 'tag:x']);
   });
+
+  it('keeps every node created at exactly the cutoff, including ties', () => {
+    const tied = buildGraphModel({
+      nodes: [
+        { id: 'a', path: 'a.md', title: null, kind: 'note', tags: [], createdAt: 5 },
+        { id: 'b', path: 'b.md', title: null, kind: 'note', tags: [], createdAt: 5 },
+        { id: 'c', path: 'c.md', title: null, kind: 'note', tags: [], createdAt: 6 },
+      ],
+      edges: [],
+    });
+    expect(
+      applyFilters(tied, baseFilters, { createdAtCutoff: 5 }).model.nodes.map((node) => node.id),
+    ).toEqual(['a', 'b']);
+    expect(applyFilters(tied, baseFilters, { createdAtCutoff: 4 }).model.nodes).toHaveLength(0);
+  });
 });
