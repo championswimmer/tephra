@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGraphModel } from '../../src/graph/model';
-import { resolveGroupColors } from '../../src/graph/renderer/groups';
+import { buildGraphModel } from '../src/model';
+import { resolveGroupColors } from '../src/groups';
 
 function fixture() {
   return buildGraphModel({
     nodes: [
-      { id: 'a', path: 'projects/a.md', title: 'Alpha', kind: 'note', tags: ['x'], createdAt: 1 },
-      { id: 'b', path: 'b.md', title: 'Beta', kind: 'note', tags: [], createdAt: 2 },
+      { id: 'a', path: 'projects/a.md', title: 'Alpha', kind: 'note', tags: ['x'] },
+      { id: 'b', path: 'b.md', title: 'Beta', kind: 'note', tags: [] },
     ],
     edges: [],
   });

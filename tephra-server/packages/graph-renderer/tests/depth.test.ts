@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { nodesWithinDepth, subgraph } from '../../src/graph/depth';
-import { buildGraphModel, type GraphModel } from '../../src/graph/model';
+import { nodesWithinDepth, subgraph } from '../src/depth';
+import { buildGraphModel, type GraphModel } from '../src/model';
 
 // a - b - c - d, plus a cycle a - d.
 function fixture(): GraphModel {
@@ -12,7 +12,6 @@ function fixture(): GraphModel {
       title: null,
       kind: 'note' as const,
       tags: [],
-      createdAt: 0,
     })),
     edges: [
       { s: 0, t: 1, count: 1, embeds: 0 },

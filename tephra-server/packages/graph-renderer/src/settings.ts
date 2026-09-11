@@ -26,7 +26,7 @@ export interface GraphSettings {
   nodeSize: number;
   /** Multiplier for link width. */
   linkThickness: number;
-  // Forces (slider values; the worker maps them onto d3 force strengths)
+  // Forces (slider values; mapped onto the ForceAtlas2 layout settings)
   centerForce: number;
   repelForce: number;
   linkForce: number;
@@ -109,18 +109,50 @@ export function sanitizeGraphSettings(raw: unknown): GraphSettings {
       SETTINGS_LIMITS.textFadeThreshold.min,
       SETTINGS_LIMITS.textFadeThreshold.max,
     ),
-    nodeSize: clampNumber(source.nodeSize, defaults.nodeSize, SETTINGS_LIMITS.nodeSize.min, SETTINGS_LIMITS.nodeSize.max),
+    nodeSize: clampNumber(
+      source.nodeSize,
+      defaults.nodeSize,
+      SETTINGS_LIMITS.nodeSize.min,
+      SETTINGS_LIMITS.nodeSize.max,
+    ),
     linkThickness: clampNumber(
       source.linkThickness,
       defaults.linkThickness,
       SETTINGS_LIMITS.linkThickness.min,
       SETTINGS_LIMITS.linkThickness.max,
     ),
-    centerForce: clampNumber(source.centerForce, defaults.centerForce, SETTINGS_LIMITS.centerForce.min, SETTINGS_LIMITS.centerForce.max),
-    repelForce: clampNumber(source.repelForce, defaults.repelForce, SETTINGS_LIMITS.repelForce.min, SETTINGS_LIMITS.repelForce.max),
-    linkForce: clampNumber(source.linkForce, defaults.linkForce, SETTINGS_LIMITS.linkForce.min, SETTINGS_LIMITS.linkForce.max),
-    linkDistance: clampNumber(source.linkDistance, defaults.linkDistance, SETTINGS_LIMITS.linkDistance.min, SETTINGS_LIMITS.linkDistance.max),
-    depth: Math.round(clampNumber(source.depth, defaults.depth, SETTINGS_LIMITS.depth.min, SETTINGS_LIMITS.depth.max)),
+    centerForce: clampNumber(
+      source.centerForce,
+      defaults.centerForce,
+      SETTINGS_LIMITS.centerForce.min,
+      SETTINGS_LIMITS.centerForce.max,
+    ),
+    repelForce: clampNumber(
+      source.repelForce,
+      defaults.repelForce,
+      SETTINGS_LIMITS.repelForce.min,
+      SETTINGS_LIMITS.repelForce.max,
+    ),
+    linkForce: clampNumber(
+      source.linkForce,
+      defaults.linkForce,
+      SETTINGS_LIMITS.linkForce.min,
+      SETTINGS_LIMITS.linkForce.max,
+    ),
+    linkDistance: clampNumber(
+      source.linkDistance,
+      defaults.linkDistance,
+      SETTINGS_LIMITS.linkDistance.min,
+      SETTINGS_LIMITS.linkDistance.max,
+    ),
+    depth: Math.round(
+      clampNumber(
+        source.depth,
+        defaults.depth,
+        SETTINGS_LIMITS.depth.min,
+        SETTINGS_LIMITS.depth.max,
+      ),
+    ),
   };
 }
 
@@ -159,7 +191,10 @@ export function saveGraphSettings(
   storage: StorageLike | null = defaultStorage(),
 ): void {
   try {
-    storage?.setItem(graphSettingsKey(vaultId, scope), JSON.stringify(sanitizeGraphSettings(settings)));
+    storage?.setItem(
+      graphSettingsKey(vaultId, scope),
+      JSON.stringify(sanitizeGraphSettings(settings)),
+    );
   } catch {
     // Storage may be unavailable (private mode); settings simply don't persist.
   }

@@ -120,6 +120,30 @@ workspace tests, all green) plus a passing Playwright graph pass.
 - [x] Hardening: WebGL-failure fallback list, Playwright graph pass
       (local neighbourhood, debug-hook counts, live search filter)
 
+## Graph renderer package (plan 012)
+
+Implemented and verified by `npm run check` (lint + typecheck + build +
+workspace tests, all green) plus a passing Playwright graph pass and a
+Sigma canvas smoke check (3 nodes, labels, zoom controls, no page errors).
+
+- [x] New `@tephra/graph-renderer` package: pure graph core
+      (model/query/filter/depth/settings/groups/palette) plus a
+      graphology adapter, ForceAtlas2 slider mapping, and an embeddable
+      `<TephraGraph>` React component on Sigma.js WebGL (all MIT deps:
+      `sigma`, `graphology`, `@react-sigma/core`,
+      `@react-sigma/layout-forceatlas2`); Sigma-free `/pure` subpath
+      keeps the 348 KB Sigma chunk out of the initial bundle
+- [x] Hand-rolled PixiJS renderer + d3-force worker deleted; no
+      `pixi.js`/`d3-*` deps remain; web graph DTOs re-exported from
+      `@tephra/protocol`
+- [x] Time-lapse removed end to end (transport UI, cutoff filter,
+      `TIME_LAPSE_DURATION_MS`, timelapse tests/CSS/docs); `createdAt`
+      stays on the `/graph` wire payload for ordering only
+- [x] Same Obsidian feature surface otherwise: Filters/Groups/Display/
+      Forces, search subset, local depth, persisted settings, hover
+      neighbourhood, click-to-open, keyboard camera, fallback list,
+      e2e debug hook
+
 ## Vault-name URLs (plan 012)
 
 Implemented and verified by `npm run check` (lint + typecheck + build +

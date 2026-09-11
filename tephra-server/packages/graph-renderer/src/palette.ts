@@ -13,7 +13,7 @@ export interface GraphPalette {
   label: string;
 }
 
-const FALLBACK: GraphPalette = {
+export const FALLBACK_GRAPH_PALETTE: GraphPalette = {
   node: '#000000',
   tag: '#7f6df2',
   attachment: '#d669bc',
@@ -35,12 +35,12 @@ function readVariable(name: string, fallback: string): string {
 /** Read the live palette from the document so theme switches re-tint without re-init. */
 export function readGraphPalette(): GraphPalette {
   return {
-    node: readVariable('--graph-node', FALLBACK.node),
-    tag: readVariable('--graph-node-tag', FALLBACK.tag),
-    attachment: readVariable('--graph-node-attachment', FALLBACK.attachment),
-    unresolved: readVariable('--graph-node-unresolved', FALLBACK.unresolved),
-    focused: readVariable('--graph-node-focused', FALLBACK.focused),
-    line: readVariable('--graph-line', FALLBACK.line),
-    label: readVariable('--text-normal', FALLBACK.label),
+    node: readVariable('--graph-node', FALLBACK_GRAPH_PALETTE.node),
+    tag: readVariable('--graph-node-tag', FALLBACK_GRAPH_PALETTE.tag),
+    attachment: readVariable('--graph-node-attachment', FALLBACK_GRAPH_PALETTE.attachment),
+    unresolved: readVariable('--graph-node-unresolved', FALLBACK_GRAPH_PALETTE.unresolved),
+    focused: readVariable('--graph-node-focused', FALLBACK_GRAPH_PALETTE.focused),
+    line: readVariable('--graph-line', FALLBACK_GRAPH_PALETTE.line),
+    label: readVariable('--text-normal', FALLBACK_GRAPH_PALETTE.label),
   };
 }

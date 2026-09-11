@@ -1105,25 +1105,8 @@ html.theme-dark .vault-grid a {
   min-height: 22rem;
 }
 
-.graph-timelapse {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin: 0.75rem 0;
-  padding: 0.5rem 0.75rem;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  max-width: 40rem;
-}
-
-.graph-timelapse input[type='range'] {
-  flex: 1;
-  min-width: 0;
-}
-
-.graph-timelapse output {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
+.tephra-graph {
+  width: 100%;
+  height: 100%;
+  min-height: 22rem;
 }

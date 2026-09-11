@@ -8,6 +8,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: { url: 'http://localhost:3000/' },
+    },
     setupFiles: './tests/setup.ts',
     css: false,
     // Playwright end-to-end specs live in ./e2e and must not run under vitest

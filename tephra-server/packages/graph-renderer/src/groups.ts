@@ -1,6 +1,6 @@
-import type { GraphModel } from '../model';
-import { matchesQuery, parseQuery } from '../query';
-import type { ColorGroup } from '../settings';
+import type { GraphModel } from './model';
+import { matchesQuery, parseQuery } from './query';
+import type { ColorGroup } from './settings';
 
 /**
  * Resolve group colors per node: first matching group query wins

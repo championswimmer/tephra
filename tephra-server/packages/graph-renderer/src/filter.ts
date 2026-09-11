@@ -14,16 +14,11 @@ export interface FilterState {
 export interface FilteredGraph {
   model: GraphModel;
   /**
-   * Old node index → new node index (or -1 when filtered out), so the
-   * simulation can reposition instead of restarting on filter changes.
+   * Old node index → new node index (or -1 when filtered out), so callers
+   * can carry positions across filter changes instead of restarting layout.
    */
   indexMap: Int32Array;
   removedCount: number;
-}
-
-export interface FilterOptions {
-  /** Time-lapse cutoff: nodes with createdAt > cutoff are hidden (§9). */
-  createdAtCutoff?: number;
 }
 
 /**
@@ -31,11 +26,7 @@ export interface FilterOptions {
  * kind toggles → search → existing-only → orphans (last, because every
  * earlier step can create new orphans).
  */
-export function applyFilters(
-  model: GraphModel,
-  filters: FilterState,
-  options: FilterOptions = {},
-): FilteredGraph {
+export function applyFilters(model: GraphModel, filters: FilterState): FilteredGraph {
   const query = parseQuery(filters.search);
   const keep = new Uint8Array(model.nodes.length).fill(1);
 
@@ -69,11 +60,6 @@ export function applyFilters(
     for (let index = 0; index < model.nodes.length; index += 1)
       if (model.nodes[index]!.kind === 'unresolved') keep[index] = 0;
 
-  // 3b. Time-lapse cutoff.
-  if (options.createdAtCutoff !== undefined)
-    for (let index = 0; index < model.nodes.length; index += 1)
-      if (model.nodes[index]!.createdAt > options.createdAtCutoff) keep[index] = 0;
-
   // 4. Orphans last: degree is recomputed over the surviving subgraph.
   if (!filters.showOrphans) {
     const degree = new Uint32Array(model.nodes.length);
@@ -96,7 +82,12 @@ export function applyFilters(
   }
   const keptEdges = model.links
     .filter((link) => keep[link.source] === 1 && keep[link.target] === 1)
-    .map((link) => ({ s: indexMap[link.source]!, t: indexMap[link.target]!, count: link.count, embeds: link.embeds }));
+    .map((link) => ({
+      s: indexMap[link.source]!,
+      t: indexMap[link.target]!,
+      count: link.count,
+      embeds: link.embeds,
+    }));
   const filtered = buildGraphModel({
     nodes: keptNodes,
     edges: keptEdges,

@@ -6,7 +6,7 @@ import {
   restoreDefaultGraphSettings,
   sanitizeGraphSettings,
   saveGraphSettings,
-} from '../../src/graph/settings';
+} from '../src/settings';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
@@ -21,7 +21,9 @@ describe('sanitizeGraphSettings', () => {
   it('defaults everything on garbage input', () => {
     expect(sanitizeGraphSettings(null)).toEqual(DEFAULT_GRAPH_SETTINGS);
     expect(sanitizeGraphSettings('nope')).toEqual(DEFAULT_GRAPH_SETTINGS);
-    expect(sanitizeGraphSettings({ nodeSize: 'huge', showTags: 'yes' })).toEqual(DEFAULT_GRAPH_SETTINGS);
+    expect(sanitizeGraphSettings({ nodeSize: 'huge', showTags: 'yes' })).toEqual(
+      DEFAULT_GRAPH_SETTINGS,
+    );
   });
 
   it('keeps valid values and clamps numeric ranges', () => {
@@ -65,7 +67,9 @@ describe('graph settings persistence', () => {
   it('restoreDefaults clears storage and returns defaults', () => {
     const storage = memoryStorage();
     saveGraphSettings('vault-1', 'global', { ...DEFAULT_GRAPH_SETTINGS, search: 'x' }, storage);
-    expect(restoreDefaultGraphSettings('vault-1', 'global', storage)).toEqual(DEFAULT_GRAPH_SETTINGS);
+    expect(restoreDefaultGraphSettings('vault-1', 'global', storage)).toEqual(
+      DEFAULT_GRAPH_SETTINGS,
+    );
     expect(loadGraphSettings('vault-1', 'global', storage)).toEqual(DEFAULT_GRAPH_SETTINGS);
   });
 });

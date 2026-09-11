@@ -225,9 +225,9 @@ export const graphNodeSchema = z.strictObject({
   kind: graphNodeKindSchema,
   // Tags carried by note nodes; empty for every other kind.
   tags: z.array(z.string().min(1).max(200)).max(100),
-  // Creation-order timestamp used by the time-lapse animation. For files
-  // this is the synced mtime (the closest available proxy for birth time);
-  // synthesized nodes inherit the oldest source note's value.
+  // Creation-order timestamp (the synced mtime for files, the oldest
+  // source note's value for synthesized nodes). Retained on the payload
+  // for ordering; the client no longer animates over it.
   createdAt: nonNegativeIntegerSchema,
 });
 export type GraphNodeDto = z.infer<typeof graphNodeSchema>;

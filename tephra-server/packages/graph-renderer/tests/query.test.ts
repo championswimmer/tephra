@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RenderNode } from '../../src/graph/model';
-import { matchesQuery, parseQuery, tokenizeQuery } from '../../src/graph/query';
+import type { RenderNode } from '../src/model';
+import { matchesQuery, parseQuery, tokenizeQuery } from '../src/query';
 
 const node = (overrides: Partial<RenderNode> = {}): RenderNode => ({
   id: 'a',
@@ -9,7 +9,6 @@ const node = (overrides: Partial<RenderNode> = {}): RenderNode => ({
   title: 'Alpha Note',
   kind: 'note',
   tags: ['project', 'area/work'],
-  createdAt: 0,
   degree: 0,
   ...overrides,
 });
@@ -43,7 +42,9 @@ describe('parseQuery', () => {
   });
 
   it('accepts bare #tag as tag shorthand', () => {
-    expect(parseQuery('#project').clauses).toEqual([{ type: 'tag', value: 'project', negated: false }]);
+    expect(parseQuery('#project').clauses).toEqual([
+      { type: 'tag', value: 'project', negated: false },
+    ]);
   });
 
   it('parses negation on terms and operators', () => {
@@ -86,7 +87,9 @@ describe('matchesQuery', () => {
     expect(matchesQuery(node(), parseQuery('tag:area/work'))).toBe(true);
     expect(matchesQuery(node(), parseQuery('tag:#proj'))).toBe(false);
     // Tag nodes match their own name.
-    expect(matchesQuery(node({ kind: 'tag', path: 'project', tags: [] }), parseQuery('tag:#project'))).toBe(true);
+    expect(
+      matchesQuery(node({ kind: 'tag', path: 'project', tags: [] }), parseQuery('tag:#project')),
+    ).toBe(true);
   });
 
   it('negates any clause type', () => {

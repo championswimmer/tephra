@@ -1,4 +1,33 @@
-import type { GraphNodeKind, GraphResponse } from '../api/types';
+import type { GraphNodeKind } from '@tephra/protocol';
+
+/**
+ * Structural subset of the `/graph` payload that the renderer consumes.
+ * The protocol `GraphResponse` is assignable to this input: `createdAt`
+ * stays on the wire (ordering/future use) but the client no longer needs
+ * it — time-lapse was removed.
+ */
+export interface GraphInputNode {
+  /** File id for note/attachment nodes; `tag:<name>` / `unresolved:<path>` otherwise. */
+  id: string;
+  path: string;
+  title: string | null;
+  kind: GraphNodeKind;
+  tags: string[];
+}
+
+export interface GraphInputEdge {
+  /** Index into `nodes`. */
+  s: number;
+  /** Index into `nodes`. */
+  t: number;
+  count: number;
+  embeds: number;
+}
+
+export interface GraphInput {
+  nodes: readonly GraphInputNode[];
+  edges: readonly GraphInputEdge[];
+}
 
 /** A node in the renderable graph, with degree precomputed once at build time. */
 export interface RenderNode {
@@ -8,7 +37,6 @@ export interface RenderNode {
   title: string | null;
   kind: GraphNodeKind;
   tags: string[];
-  createdAt: number;
   degree: number;
 }
 
@@ -28,15 +56,14 @@ export interface GraphModel {
   indexById: Map<string, number>;
 }
 
-/** Build the render model from a payload-v2 graph response. */
-export function buildGraphModel(payload: Pick<GraphResponse, 'nodes' | 'edges'>): GraphModel {
+/** Build the render model from a `/graph`-shaped payload. */
+export function buildGraphModel(payload: GraphInput): GraphModel {
   const nodes: RenderNode[] = payload.nodes.map((node) => ({
     id: node.id,
     path: node.path,
     title: node.title,
     kind: node.kind,
     tags: node.tags,
-    createdAt: node.createdAt,
     degree: 0,
   }));
   const links: RenderLink[] = [];

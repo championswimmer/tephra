@@ -10,41 +10,43 @@ import { ThemeProvider } from '../src/theme/ThemeContext';
 
 vi.mock('../src/api/client', () => ({ api: { graph: vi.fn() } }));
 
-const hoisted = vi.hoisted(() => {
-  const rendererStub = {
-    setModel: vi.fn(),
-    setPositions: vi.fn(),
-    setSettings: vi.fn(),
-    setTheme: vi.fn(),
-    setActive: vi.fn(),
-    zoomToFit: vi.fn(),
-    screenToWorld: vi.fn(),
-    destroy: vi.fn(),
-  };
-  const hostStub = {
-    workerBacked: false,
-    setGraph: vi.fn(),
-    setFilteredGraph: vi.fn(),
-    setForces: vi.fn(),
-    pin: vi.fn(),
-    unpin: vi.fn(),
-    reheat: vi.fn(),
-    destroy: vi.fn(),
-  };
+const hoisted = vi.hoisted(() => ({
+  instances: [] as {
+    model: { nodes: { id: string }[] };
+    groupColors: Array<string | null>;
+    selectedId: string | null;
+    onNodeClick: (id: string) => void;
+  }[],
+}));
+
+// The package barrel pulls in Sigma (WebGL) which cannot load under jsdom,
+// so the mock re-exports the pure source modules (none touch Sigma) plus a
+// TephraGraph stub that records every mounted instance's props.
+vi.mock('@tephra/graph-renderer', async () => {
+  const model = await import('../../../packages/graph-renderer/src/model');
+  const filter = await import('../../../packages/graph-renderer/src/filter');
+  const depth = await import('../../../packages/graph-renderer/src/depth');
+  const settings = await import('../../../packages/graph-renderer/src/settings');
+  const groups = await import('../../../packages/graph-renderer/src/groups');
+  const palette = await import('../../../packages/graph-renderer/src/palette');
   return {
-    rendererStub,
-    hostStub,
-    createGraphRenderer: vi.fn(async () => rendererStub),
-    createSimulationHost: vi.fn(() => hostStub),
+    ...model,
+    ...filter,
+    ...depth,
+    ...settings,
+    ...groups,
+    ...palette,
+    TephraGraph: (props: {
+      model: { nodes: { id: string }[] };
+      groupColors: Array<string | null>;
+      selectedId: string | null;
+      onNodeClick: (id: string) => void;
+    }) => {
+      hoisted.instances.push(props);
+      return <div data-testid="tephra-graph-stub" />;
+    },
   };
 });
-
-vi.mock('../src/graph/renderer/renderer', () => ({
-  createGraphRenderer: hoisted.createGraphRenderer,
-}));
-vi.mock('../src/graph/worker/host', () => ({
-  createSimulationHost: hoisted.createSimulationHost,
-}));
 
 // Chain a—b—c—d plus isolated e.
 const chainFixture: GraphResponse = {
@@ -68,20 +70,19 @@ function renderLocal(node: React.ReactElement) {
   return render(<ThemeProvider>{node}</ThemeProvider>);
 }
 
-async function ready() {
-  await waitFor(() => expect(hoisted.createGraphRenderer).toHaveBeenCalled());
-  await waitFor(() => expect(hoisted.rendererStub.setModel).toHaveBeenCalled());
+async function ready(count = 1) {
+  await waitFor(() => expect(hoisted.instances.length).toBeGreaterThanOrEqual(count));
 }
 
 function lastPushedIds(): string[] {
-  const calls = hoisted.rendererStub.setModel.mock.calls;
-  const last = calls[calls.length - 1]![0] as { nodes: { id: string }[] };
-  return last.nodes.map((node) => node.id).sort();
+  const last = hoisted.instances[hoisted.instances.length - 1];
+  return (last?.model.nodes.map((node) => node.id) ?? []).sort();
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.clear();
+  hoisted.instances.length = 0;
+  window.localStorage.clear();
 });
 
 describe('LocalGraph', () => {
@@ -95,7 +96,7 @@ describe('LocalGraph', () => {
   });
 
   it('honours the persisted local depth without touching global settings', async () => {
-    localStorage.setItem(
+    window.localStorage.setItem(
       'tephra:graph:vault-1:local',
       JSON.stringify({ depth: 2, showTags: false }),
     );
@@ -104,7 +105,7 @@ describe('LocalGraph', () => {
     await ready();
     expect(lastPushedIds()).toEqual(['a', 'b', 'c', 'd']);
     expect(screen.getByText('3 neighbours within depth 2')).toBeInTheDocument();
-    expect(localStorage.getItem('tephra:graph:vault-1:global')).toBeNull();
+    expect(window.localStorage.getItem('tephra:graph:vault-1:global')).toBeNull();
   });
 
   it('shows a neighbourless empty state with a retry', async () => {
@@ -112,7 +113,7 @@ describe('LocalGraph', () => {
     vi.mocked(api.graph).mockResolvedValue(chainFixture);
     renderLocal(<LocalGraph vaultId="vault-1" fileId="e" onOpen={vi.fn()} />);
     expect(await screen.findByText('No local graph yet')).toBeInTheDocument();
-    expect(hoisted.rendererStub.setModel).not.toHaveBeenCalled();
+    expect(hoisted.instances).toHaveLength(0);
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(vi.mocked(api.graph)).toHaveBeenCalledTimes(2));
   });
@@ -124,7 +125,7 @@ describe('LocalGraph', () => {
   });
 
   it('applies local groups and opens neighbours but never synthesized nodes', async () => {
-    localStorage.setItem(
+    window.localStorage.setItem(
       'tephra:graph:vault-1:local',
       JSON.stringify({ showTags: true, groups: [{ query: 'tag:#x', color: '#ff0000' }] }),
     );
@@ -141,17 +142,12 @@ describe('LocalGraph', () => {
     renderLocal(<LocalGraph vaultId="vault-1" fileId="b" onOpen={onOpen} />);
     await ready();
     expect(lastPushedIds()).toEqual(['a', 'b', 'c', 'tag:x']);
-    const calls = hoisted.rendererStub.setModel.mock.calls;
-    const colors = calls[calls.length - 1]![1] as Array<string | null>;
-    expect(colors).toContain('#ff0000');
+    const last = hoisted.instances[hoisted.instances.length - 1];
+    expect(last?.groupColors).toContain('#ff0000');
 
-    const rendererCalls = hoisted.createGraphRenderer.mock.calls as unknown[][];
-    const callbacks = rendererCalls[rendererCalls.length - 1]![1] as {
-      onNodeClick: (id: string) => void;
-    };
-    callbacks.onNodeClick('tag:x');
+    last?.onNodeClick('tag:x');
     expect(onOpen).not.toHaveBeenCalled();
-    callbacks.onNodeClick('a');
+    last?.onNodeClick('a');
     expect(onOpen).toHaveBeenCalledWith('a.md');
   });
 
@@ -164,11 +160,8 @@ describe('LocalGraph', () => {
         <LocalGraph vaultId="vault-1" fileId="b" onOpen={vi.fn()} />
       </>,
     );
-    await waitFor(() => expect(hoisted.createGraphRenderer).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(hoisted.rendererStub.setModel.mock.calls.length).toBeGreaterThanOrEqual(2));
-    const sizes = hoisted.rendererStub.setModel.mock.calls.map(
-      (call) => (call[0] as { nodes: unknown[] }).nodes.length,
-    );
+    await ready(2);
+    const sizes = hoisted.instances.map((instance) => instance.model.nodes.length);
     expect(sizes).toContain(5);
     expect(sizes).toContain(3);
     // Changing the global panel persists only under the global key.
@@ -178,8 +171,10 @@ describe('LocalGraph', () => {
     expect(globalPanel).not.toBeNull();
     fireEvent.click(within(globalPanel!).getByLabelText('Tags'));
     await waitFor(() =>
-      expect(localStorage.getItem('tephra:graph:vault-1:global')).toContain('"showTags":true'),
+      expect(window.localStorage.getItem('tephra:graph:vault-1:global')).toContain(
+        '"showTags":true',
+      ),
     );
-    expect(localStorage.getItem('tephra:graph:vault-1:local')).toBeNull();
+    expect(window.localStorage.getItem('tephra:graph:vault-1:local')).toBeNull();
   });
 });

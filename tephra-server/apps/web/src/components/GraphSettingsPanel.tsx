@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  SETTINGS_LIMITS,
-  type ColorGroup,
-  type GraphScope,
-  type GraphSettings,
-} from '../graph/settings';
+import type { ColorGroup, GraphScope, GraphSettings } from '@tephra/graph-renderer/pure';
+import { SETTINGS_LIMITS } from '@tephra/graph-renderer/pure';
 
 /** Debounce before the search text reaches the simulation (the note list is unaffected). */
 export const GRAPH_SEARCH_DEBOUNCE_MS = 250;
@@ -201,16 +197,16 @@ export function GraphSettingsPanel({
               value={group.color}
               onChange={(event) => updateGroup(index, { color: event.target.value })}
             />
-            <button type="button" onClick={() => removeGroup(index)} aria-label={`Remove group ${index + 1}`}>
+            <button
+              type="button"
+              onClick={() => removeGroup(index)}
+              aria-label={`Remove group ${index + 1}`}
+            >
               ×
             </button>
           </div>
         ))}
-        <button
-          type="button"
-          onClick={addGroup}
-          disabled={settings.groups.length >= MAX_GROUPS}
-        >
+        <button type="button" onClick={addGroup} disabled={settings.groups.length >= MAX_GROUPS}>
           Add group
         </button>
       </details>

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGraphModel, nodeRadius } from '../../src/graph/model';
+import { buildGraphModel, nodeRadius } from '../src/model';
 
 describe('buildGraphModel', () => {
   const payload = {
     nodes: [
-      { id: 'a', path: 'a.md', title: 'A', kind: 'note' as const, tags: ['x'], createdAt: 1 },
-      { id: 'b', path: 'b.md', title: null, kind: 'note' as const, tags: [], createdAt: 2 },
-      { id: 'c', path: 'c.md', title: null, kind: 'note' as const, tags: [], createdAt: 3 },
+      { id: 'a', path: 'a.md', title: 'A', kind: 'note' as const, tags: ['x'] },
+      { id: 'b', path: 'b.md', title: null, kind: 'note' as const, tags: [] },
+      { id: 'c', path: 'c.md', title: null, kind: 'note' as const, tags: [] },
     ],
     edges: [
       { s: 0, t: 1, count: 2, embeds: 0 },

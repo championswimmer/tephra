@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyFilters, type FilterState } from '../../src/graph/filter';
-import { buildGraphModel, type GraphModel } from '../../src/graph/model';
+import { applyFilters, type FilterState } from '../src/filter';
+import { buildGraphModel, type GraphModel } from '../src/model';
 
 const baseFilters: FilterState = {
   search: '',
@@ -15,13 +15,13 @@ const baseFilters: FilterState = {
 function fixture(): GraphModel {
   return buildGraphModel({
     nodes: [
-      { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: ['x'], createdAt: 1 },
-      { id: 'b', path: 'b.md', title: 'Beta', kind: 'note', tags: [], createdAt: 2 },
-      { id: 'c', path: 'c.md', title: 'Gamma', kind: 'note', tags: [], createdAt: 3 },
-      { id: 'd', path: 'd.md', title: 'Delta', kind: 'note', tags: [], createdAt: 4 },
-      { id: 'img', path: 'img.png', title: null, kind: 'attachment', tags: [], createdAt: 5 },
-      { id: 'tag:x', path: 'x', title: '#x', kind: 'tag', tags: [], createdAt: 1 },
-      { id: 'unresolved:Missing', path: 'Missing', title: 'Missing', kind: 'unresolved', tags: [], createdAt: 3 },
+      { id: 'a', path: 'a.md', title: 'Alpha', kind: 'note', tags: ['x'] },
+      { id: 'b', path: 'b.md', title: 'Beta', kind: 'note', tags: [] },
+      { id: 'c', path: 'c.md', title: 'Gamma', kind: 'note', tags: [] },
+      { id: 'd', path: 'd.md', title: 'Delta', kind: 'note', tags: [] },
+      { id: 'img', path: 'img.png', title: null, kind: 'attachment', tags: [] },
+      { id: 'tag:x', path: 'x', title: '#x', kind: 'tag', tags: [] },
+      { id: 'unresolved:Missing', path: 'Missing', title: 'Missing', kind: 'unresolved', tags: [] },
     ],
     edges: [
       { s: 0, t: 1, count: 1, embeds: 0 },
@@ -41,8 +41,14 @@ describe('applyFilters', () => {
   });
 
   it('removes tag and attachment nodes when toggled off', () => {
-    const { model } = applyFilters(fixture(), { ...baseFilters, showTags: false, showAttachments: false });
-    expect(model.nodes.every((node) => node.kind === 'note' || node.kind === 'unresolved')).toBe(true);
+    const { model } = applyFilters(fixture(), {
+      ...baseFilters,
+      showTags: false,
+      showAttachments: false,
+    });
+    expect(model.nodes.every((node) => node.kind === 'note' || node.kind === 'unresolved')).toBe(
+      true,
+    );
     expect(model.indexById.has('tag:x')).toBe(false);
     expect(model.indexById.has('img')).toBe(false);
   });
@@ -91,25 +97,5 @@ describe('applyFilters', () => {
       expect(link.source).toBeLessThan(model.nodes.length);
       expect(link.target).toBeLessThan(model.nodes.length);
     }
-  });
-
-  it('applies a time-lapse createdAt cutoff', () => {
-    const { model } = applyFilters(fixture(), baseFilters, { createdAtCutoff: 2 });
-    expect(model.nodes.map((node) => node.id).sort()).toEqual(['a', 'b', 'tag:x']);
-  });
-
-  it('keeps every node created at exactly the cutoff, including ties', () => {
-    const tied = buildGraphModel({
-      nodes: [
-        { id: 'a', path: 'a.md', title: null, kind: 'note', tags: [], createdAt: 5 },
-        { id: 'b', path: 'b.md', title: null, kind: 'note', tags: [], createdAt: 5 },
-        { id: 'c', path: 'c.md', title: null, kind: 'note', tags: [], createdAt: 6 },
-      ],
-      edges: [],
-    });
-    expect(
-      applyFilters(tied, baseFilters, { createdAtCutoff: 5 }).model.nodes.map((node) => node.id),
-    ).toEqual(['a', 'b']);
-    expect(applyFilters(tied, baseFilters, { createdAtCutoff: 4 }).model.nodes).toHaveLength(0);
   });
 });

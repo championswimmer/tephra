@@ -29,8 +29,7 @@ Tag matching is exact on the full tag path: `tag:#area` does not match
 2. The search keeps real files (notes, attachments) that match; tag and
    unresolved nodes survive only while they still touch a visible file.
 3. Existing files only removes unresolved-link nodes.
-4. The time-lapse cutoff hides notes created after it.
-5. Orphan hiding runs last, because every earlier step can create orphans.
+4. Orphan hiding runs last, because every earlier step can create orphans.
 
 ## Local graph
 

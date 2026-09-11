@@ -2,7 +2,13 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GraphSettingsPanel, GRAPH_SEARCH_DEBOUNCE_MS } from '../src/components/GraphSettingsPanel';
-import { DEFAULT_GRAPH_SETTINGS, type GraphSettings } from '../src/graph/settings';
+import type { GraphSettings } from '@tephra/graph-renderer/pure';
+import { DEFAULT_GRAPH_SETTINGS } from '@tephra/graph-renderer/pure';
+
+vi.mock('@tephra/graph-renderer/pure', async () => {
+  const settings = await import('../../../packages/graph-renderer/src/settings');
+  return { ...settings };
+});
 
 function renderPanel(overrides: Partial<GraphSettings> = {}) {
   const onChange = vi.fn();
