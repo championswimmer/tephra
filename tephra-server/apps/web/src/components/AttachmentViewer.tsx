@@ -1,4 +1,5 @@
 import type { VaultFile } from '../api/types';
+import { Download } from 'lucide-react';
 import { api } from '../api/client';
 export function AttachmentViewer({ vaultId, file }: { vaultId: string; file: VaultFile }) {
   const url = api.contentUrl(vaultId, file.fileId);
@@ -12,7 +13,8 @@ export function AttachmentViewer({ vaultId, file }: { vaultId: string; file: Vau
           <p className="eyebrow">Attachment</p>
           <h2>{file.path.split('/').pop()}</h2>
         </div>
-        <a className="button" href={url} download>
+        <a className="button icon-button" href={url} download>
+          <Download size={14} aria-hidden="true" focusable="false" className="icon" />
           Download
         </a>
       </header>

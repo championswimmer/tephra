@@ -1,16 +1,21 @@
+import { ArrowLeftRight, Link2 } from 'lucide-react';
 import type { NoteLink } from '../api/types';
 function LinkList({
   title,
+  icon,
   links,
   onOpen,
 }: {
   title: string;
+  icon: typeof Link2;
   links: NoteLink[];
   onOpen: (id: string) => void;
 }) {
+  const Icon = icon;
   return (
     <section>
       <h3>
+        <Icon size={14} aria-hidden="true" focusable="false" className="icon" />
         {title} <span>{links.length}</span>
       </h3>
       {links.length === 0 ? (
@@ -47,8 +52,13 @@ export function LinksPanel({
 }) {
   return (
     <aside className="links-panel" aria-label="Note relationships">
-      <LinkList title="Links" links={links} onOpen={onOpen} />
-      <LinkList title="Backlinks" links={backlinks} onOpen={(id) => onOpen(id)} />
+      <LinkList title="Links" icon={Link2} links={links} onOpen={onOpen} />
+      <LinkList
+        title="Backlinks"
+        icon={ArrowLeftRight}
+        links={backlinks}
+        onOpen={(id) => onOpen(id)}
+      />
     </aside>
   );
 }

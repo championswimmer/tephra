@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import {
   applyFilters,
   buildGraphModel,
@@ -213,7 +214,7 @@ export function GraphView({
           aria-label="Graph settings"
           onClick={() => setPanelOpen((open) => !open)}
         >
-          ⚙
+          <SlidersHorizontal size={16} aria-hidden="true" focusable="false" className="icon" />
         </button>
       </div>
       {graph.indexPending && <IndexPending />}

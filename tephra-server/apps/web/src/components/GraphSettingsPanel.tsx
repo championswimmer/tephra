@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Plus, RotateCcw, X } from 'lucide-react';
 import type { ColorGroup, GraphScope, GraphSettings } from '@tephra/graph-renderer/pure';
 import { SETTINGS_LIMITS } from '@tephra/graph-renderer/pure';
 
@@ -202,11 +203,17 @@ export function GraphSettingsPanel({
               onClick={() => removeGroup(index)}
               aria-label={`Remove group ${index + 1}`}
             >
-              ×
+              <X size={14} aria-hidden="true" focusable="false" className="icon" />
             </button>
           </div>
         ))}
-        <button type="button" onClick={addGroup} disabled={settings.groups.length >= MAX_GROUPS}>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={addGroup}
+          disabled={settings.groups.length >= MAX_GROUPS}
+        >
+          <Plus size={14} aria-hidden="true" focusable="false" className="icon" />
           Add group
         </button>
       </details>
@@ -285,7 +292,8 @@ export function GraphSettingsPanel({
           onChange={(linkDistance) => update({ linkDistance })}
         />
       </details>
-      <button type="button" onClick={onRestoreDefaults}>
+      <button type="button" className="icon-button" onClick={onRestoreDefaults}>
+        <RotateCcw size={14} aria-hidden="true" focusable="false" className="icon" />
         Restore defaults
       </button>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { Archive } from 'lucide-react';
 import { api } from '../api/client';
 import type { Vault } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/Status';
@@ -72,7 +73,7 @@ export function VaultListPage() {
             <li key={vault.id}>
               <Link to={`/v/${encodeURIComponent(vault.name)}`}>
                 <span className="vault-icon" aria-hidden="true">
-                  ◇
+                  <Archive size={28} aria-hidden="true" focusable="false" className="icon" />
                 </span>
                 <strong>{vault.name}</strong>
                 <span>Revision {vault.latestRevision}</span>

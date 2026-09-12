@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { X } from 'lucide-react';
 import { ThemeSelector } from './ThemeSelector';
 
 interface SettingsModalProps {
@@ -40,7 +41,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         <div className="modal-header">
           <h2 id="settings-modal-title">Settings</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">
-            ✕
+            <X size={16} aria-hidden="true" focusable="false" className="icon" />
           </button>
         </div>
         <section className="modal-section">

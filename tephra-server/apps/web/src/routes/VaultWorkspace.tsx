@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { KeyRound, Menu, Waypoints } from 'lucide-react';
 import { ApiError, api } from '../api/client';
 import type { LinksResponse, ResolveResponse, Vault, VaultFile } from '../api/types';
 import { AttachmentViewer } from '../components/AttachmentViewer';
@@ -155,12 +156,13 @@ export function VaultWorkspace() {
       <header className="vault-header">
         <div>
           <button
-            className="mobile-tree-button"
+            className="mobile-tree-button icon-button"
             type="button"
             aria-expanded={treeOpen}
             onClick={() => setTreeOpen(!treeOpen)}
           >
-            ☰ Files
+            <Menu size={16} aria-hidden="true" focusable="false" className="icon" />
+            Files
           </button>
           <Link to="/vaults">Vaults</Link>
           <span aria-hidden="true">/</span>
@@ -171,12 +173,14 @@ export function VaultWorkspace() {
             className={view.type === 'graph' ? 'active' : ''}
             to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/graph`}
           >
+            <Waypoints size={14} aria-hidden="true" focusable="false" className="icon" />
             Graph
           </Link>
           <Link
             className={view.type === 'tokens' ? 'active' : ''}
             to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/tokens`}
           >
+            <KeyRound size={14} aria-hidden="true" focusable="false" className="icon" />
             Tokens
           </Link>
         </nav>

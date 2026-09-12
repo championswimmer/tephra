@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Code, Eye } from 'lucide-react';
 import { api } from '../api/client';
 import type { RenderedNote } from '../api/types';
 import { ErrorState, IndexPending, Loading } from './Status';
@@ -71,7 +72,17 @@ export function NoteViewer({
     <div className="note-view">
       <header className="note-toolbar">
         <h2>{note.title || 'Note'}</h2>
-        <button type="button" aria-pressed={raw} onClick={() => void toggleRaw()}>
+        <button
+          type="button"
+          className="icon-button"
+          aria-pressed={raw}
+          onClick={() => void toggleRaw()}
+        >
+          {raw ? (
+            <Eye size={14} aria-hidden="true" focusable="false" className="icon" />
+          ) : (
+            <Code size={14} aria-hidden="true" focusable="false" className="icon" />
+          )}
           {raw ? 'Rendered' : 'Raw source'}
         </button>
       </header>

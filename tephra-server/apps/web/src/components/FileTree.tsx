@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, File, FileText, Search } from 'lucide-react';
 import type { VaultFile } from '../api/types';
 import { buildTree, filterTree, type TreeNode } from '../vault/tree';
 
@@ -32,7 +33,11 @@ function Branch({
               aria-current={selectedPath === node.file.path ? 'page' : undefined}
               onClick={() => onSelect(node.file.path)}
             >
-              <span aria-hidden="true">{node.file.kind === 'markdown' ? '▧' : '◫'}</span>
+              {node.file.kind === 'markdown' ? (
+                <FileText size={14} aria-hidden="true" focusable="false" className="icon" />
+              ) : (
+                <File size={14} aria-hidden="true" focusable="false" className="icon" />
+              )}
               <span>{node.name}</span>
             </button>
           </li>
@@ -62,7 +67,11 @@ function Folder({
         aria-expanded={expanded}
         onClick={() => setOpen(!open)}
       >
-        <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+        {expanded ? (
+          <ChevronDown size={14} aria-hidden="true" focusable="false" className="icon" />
+        ) : (
+          <ChevronRight size={14} aria-hidden="true" focusable="false" className="icon" />
+        )}
         {node.name}
       </button>
       {expanded && (
@@ -98,7 +107,7 @@ export function FileTree({
     <div className="file-browser">
       <label className="tree-search">
         <span className="sr-only">Search files</span>
-        <span aria-hidden="true">⌕</span>
+        <Search size={14} aria-hidden="true" focusable="false" className="icon" />
         <input
           type="search"
           placeholder="Search files"

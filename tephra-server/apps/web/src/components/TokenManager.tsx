@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Copy, TriangleAlert } from 'lucide-react';
 import { api } from '../api/client';
 import type { ApiToken, CreatedToken } from '../api/types';
 import { EmptyState, ErrorState, Loading } from './Status';
@@ -60,11 +61,19 @@ export function TokenManager({ vaultId }: { vaultId: string }) {
       </form>
       {created && (
         <div className="token-once" role="status">
-          <strong>Copy this token now</strong>
+          <strong>
+            <TriangleAlert size={14} aria-hidden="true" focusable="false" className="icon" />
+            Copy this token now
+          </strong>
           <p>It will not be shown again.</p>
           <code>{created.token}</code>
           <div>
-            <button type="button" onClick={() => void navigator.clipboard.writeText(created.token)}>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => void navigator.clipboard.writeText(created.token)}
+            >
+              <Copy size={14} aria-hidden="true" focusable="false" className="icon" />
               Copy
             </button>
             <button type="button" onClick={() => setCreated(null)}>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TriangleAlert } from 'lucide-react';
 
 export function Loading({ label = 'Loading…' }: { label?: string }) {
   return (
@@ -12,6 +13,7 @@ export function ErrorState({ error, retry }: { error: unknown; retry?: () => voi
   const message = error instanceof Error ? error.message : 'Something went wrong.';
   return (
     <div className="status error" role="alert">
+      <TriangleAlert size={16} aria-hidden="true" focusable="false" className="icon" />
       <strong>Unable to load</strong>
       <span>{message}</span>
       {retry && (

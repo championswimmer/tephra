@@ -133,6 +133,19 @@ button:disabled {
   border: 0;
 }
 
+/* Lucide icons (decorative; the adjacent text or aria-label carries meaning). */
+.icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -0.125em;
+}
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 /* Top bar (Obsidian title-bar look: secondary background). */
 .topbar {
   height: 62px;
@@ -272,7 +285,12 @@ html.theme-dark .vault-grid a {
 .vault-icon {
   grid-row: span 2;
   color: var(--text-accent);
-  font-size: 1.7rem;
+  display: grid;
+  place-items: center;
+}
+.vault-icon .icon {
+  width: 1.7rem;
+  height: 1.7rem;
 }
 .status {
   min-height: 220px;
@@ -406,6 +424,9 @@ html.theme-dark .vault-grid a {
   font-size: 0.86rem;
 }
 .vault-header nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   text-decoration: none;
   padding: 0.35rem 0.55rem;
   border-radius: 4px;
@@ -446,10 +467,12 @@ html.theme-dark .vault-grid a {
   margin: 0.4rem 0.7rem 0.8rem;
   display: flex;
   align-items: center;
+  gap: 0.4rem;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-modifier-form-field);
   border-radius: 5px;
   padding-left: 0.5rem;
+  color: var(--text-muted);
 }
 .tree-search input {
   min-width: 0;
@@ -506,6 +529,9 @@ html.theme-dark .vault-grid a {
   overflow: auto;
 }
 .links-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -555,6 +581,9 @@ html.theme-dark .vault-grid a {
 .note-toolbar button,
 .graph-selection button,
 .token-once button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   color: var(--text-normal);
@@ -705,8 +734,15 @@ html.theme-dark .vault-grid a {
   display: none;
 }
 .rendered-note details.callout > summary.callout-title::after {
-  content: "▾";
+  content: "";
+  width: 1em;
+  height: 1em;
   margin-left: auto;
+  flex: none;
+  background: currentColor;
+  /* Lucide `chevron-down`, inlined so callouts need no icon runtime. */
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat center / contain;
   transition: transform 0.15s ease;
 }
 .rendered-note details.callout:not([open]) > summary.callout-title::after {
@@ -831,6 +867,13 @@ html.theme-dark .vault-grid a {
   flex: none;
   border-radius: 50%;
   border: 1px solid var(--background-modifier-border);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+.theme-swatch .icon {
+  width: 16px;
+  height: 16px;
 }
 .theme-swatch-light {
   background: linear-gradient(135deg, #ffffff 50%, #f2f3f5 50%);
@@ -903,6 +946,11 @@ html.theme-dark .vault-grid a {
   padding: 1rem;
   margin: 1.25rem 0;
   border-radius: 6px;
+}
+.token-once strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .token-once code {
   display: block;
