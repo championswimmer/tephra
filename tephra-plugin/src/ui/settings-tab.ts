@@ -191,13 +191,16 @@ export class TephraSettingTab extends PluginSettingTab {
       .setName('Current Remote Vault')
       .setDesc(boundDesc);
 
-    if (settings.vaultId && settings.serverUrl) {
+    if ((settings.vaultId || settings.vaultName) && settings.serverUrl) {
       activeSetting.addButton((button) =>
         button.setButtonText('Open Web Mirror').onClick(() => {
           const base = settings.serverUrl.replace(/\/+$/, '');
-          // Web URLs are addressed by the globally-unique vault name.
+          // Web URLs are addressed by the globally-unique vault name;
+          // the workspace also resolves a stale id, so open synchronously
+          // and refresh the cached name in the background for next time.
           const slug = settings.vaultName || settings.vaultId;
           window.open(`${base}/v/${encodeURIComponent(slug)}`, '_blank');
+          void this.refreshBoundVaultName();
         }),
       );
     }
@@ -230,6 +233,9 @@ export class TephraSettingTab extends PluginSettingTab {
             button.setDisabled(true);
             try {
               await this.provisionAndBindVault(this.selectedVaultId);
+            } catch (error) {
+              const msg = error instanceof Error ? error.message : 'Failed to link vault.';
+              new Notice(`Failed to link vault: ${msg}`);
             } finally {
               button.setDisabled(false);
             }
@@ -293,6 +299,29 @@ export class TephraSettingTab extends PluginSettingTab {
             }
           }),
       );
+  }
+
+  /**
+   * Best-effort refresh of the cached vault name (vault-name URLs): keeps
+   * "Open Web Mirror" on the canonical `/v/<name>` slug across
+   * server-side renames. Silent — the next sync canonicalizes anyway.
+   */
+  private async refreshBoundVaultName(): Promise<void> {
+    const { settings } = this.plugin.state;
+    const slug = settings.vaultId || settings.vaultName || '';
+    const token = settings.auth?.sessionToken || settings.uploadToken || undefined;
+    if (!settings.serverUrl || !slug || !token) return;
+    try {
+      const client = new TephraClient(settings.serverUrl);
+      const vault = await client.getVault(slug, token);
+      if (vault.id !== settings.vaultId || vault.name !== settings.vaultName) {
+        settings.vaultId = vault.id;
+        settings.vaultName = vault.name;
+        await this.plugin.persistState();
+      }
+    } catch {
+      // Keep the stored slug; the workspace resolves id-or-name too.
+    }
   }
 
   private async provisionAndBindVault(vaultId: string, vaultName?: string): Promise<void> {
@@ -571,11 +600,19 @@ export class TephraSettingTab extends PluginSettingTab {
       );
 
     new Setting(content)
-      .setName('Manual Vault ID')
-      .setDesc('Override vault identifier directly.')
+      .setName('Manual Vault ID or name')
+      .setDesc(
+        'Override the bound vault directly: paste either the vault ID or its unique name. ' +
+          'The next sync canonicalizes it to both (web links use the name).',
+      )
       .addText((text) =>
         text.setValue(this.plugin.state.settings.vaultId).onChange(async (value) => {
-          this.plugin.state.settings.vaultId = value.trim();
+          const next = value.trim();
+          if (next === this.plugin.state.settings.vaultId) return;
+          this.plugin.state.settings.vaultId = next;
+          // The cached name belonged to the previous binding; the next
+          // sync re-resolves (or clears) it via ensureVaultBinding.
+          this.plugin.state.settings.vaultName = '';
           await this.plugin.settingsChanged(false);
         }),
       );

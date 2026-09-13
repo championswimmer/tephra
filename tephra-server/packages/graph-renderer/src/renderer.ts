@@ -3,8 +3,10 @@
  *
  * Owns a single `<canvas>` inside the given host element. Draw order per
  * frame is links → nodes → arrows → labels. The force simulation ticks in
- * the same rAF loop and the loop idles (0 CPU) once the layout settles;
- * any `setModel` / drag / zoom reheats it.
+ * the same rAF loop and the loop idles (0 CPU) once the layout settles.
+ * The first `setModel` draws the deterministic seeded layout statically
+ * (no ticks) so opening the graph never animates; later `setModel` calls,
+ * drags, and `animate()` reheat the simulation on demand.
  *
  * No sigma / graphology / pixi / d3 imports — hand-rolled on purpose.
  */
@@ -42,6 +44,8 @@ export interface GraphRenderer {
     palette: GraphPalette,
     settings: GraphSettings,
   ): void;
+  /** Reheat the settled simulation and restart the animation loop. */
+  animate(): void;
   setSelected(id: string | null): void;
   destroy(): void;
 }
@@ -251,6 +255,7 @@ export function createGraphRenderer(
       .sort((a, b) => next.nodes[b]!.degree - next.nodes[a]!.degree);
 
     const sig = signatureFor(next);
+    const firstLoad = idSignature === null;
     const sameIds = sig === idSignature;
     idSignature = sig;
 
@@ -283,7 +288,15 @@ export function createGraphRenderer(
       activeSet = new Set<string>();
     }
     readyPending = true;
-    reheatAndKick(1);
+    if (firstLoad) {
+      // First paint draws the seeded layout statically — no animation
+      // until the user presses Animate, drags a node, or retunes.
+      tickCount = MAX_TICKS;
+      settled = true;
+      requestFrame();
+    } else {
+      reheatAndKick(1);
+    }
   }
 
   function draw(visible: Uint8Array): void {
@@ -636,6 +649,9 @@ export function createGraphRenderer(
 
   return {
     setModel,
+    animate(): void {
+      reheatAndKick(1);
+    },
     setSelected(id: string | null): void {
       selectedId = id;
       requestFrame();

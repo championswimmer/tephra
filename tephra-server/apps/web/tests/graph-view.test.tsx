@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
     groupColors: Array<string | null>;
     selectedId: string | null;
     seed: number;
+    animateToken: number;
     onNodeClick: (id: string) => void;
     onNodeHover: (id: string | null) => void;
     onReady: () => void;
@@ -147,6 +148,35 @@ describe('GraphView shell', () => {
     await ready();
     // 3 visible nodes, 2 surviving links (a–b, b–Missing).
     expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
+  });
+
+  it('bumps the animate token when the Animate button is pressed', async () => {
+    const user = userEvent.setup();
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    // First paint is static: no animation requested on mount.
+    expect(hoisted.lastProps?.animateToken).toBe(0);
+    const animate = screen.getByRole('button', { name: 'Animate graph' });
+    await user.click(animate);
+    await waitFor(() => expect(hoisted.lastProps?.animateToken).toBe(1));
+    await user.click(animate);
+    await waitFor(() => expect(hoisted.lastProps?.animateToken).toBe(2));
+    // The canvas is never remounted by animation requests.
+    expect(screen.getByTestId('tephra-graph-canvas')).toBeInTheDocument();
+  });
+
+  it('hides non-markdown files by default and restores them via settings', async () => {
+    const user = userEvent.setup();
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    // The linked attachment and its edge are excluded from the markdown-only default.
+    expect(pushedIds()).toEqual(['a', 'b', 'unresolved:Missing']);
+    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Graph settings' }));
+    await user.click(screen.getByLabelText('Non-markdown files'));
+    await waitFor(() => expect(pushedIds()).toContain('img'));
   });
 
   it('opens notes on node click but ignores synthesized tag nodes', async () => {

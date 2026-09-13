@@ -29,6 +29,7 @@ const MIGRATIONS_URL = new URL('../../../../migrations/sqlite/', import.meta.url
 const MIGRATIONS = [
   { version: 1, file: '001_initial.sql' },
   { version: 2, file: '002_vault_name_unique.sql' },
+  { version: 3, file: '003_vault_files_path_fold.sql' },
 ] as const;
 const TOKEN_SCOPES = new Set<ApiTokenScope>(['vault:read-metadata', 'vault:upload']);
 
@@ -190,7 +191,9 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
       async findByPath(vaultId, path) { const row = first(db, 'SELECT * FROM vault_files WHERE vault_id=? AND path=?', vaultId, path); return row && vaultFile(row); },
       async findByPathFold(vaultId, pathFold) { return all(db, 'SELECT * FROM vault_files WHERE vault_id=? AND path_fold=? ORDER BY path', vaultId, pathFold).map(vaultFile); },
       async listByVault(id) { return all(db, 'SELECT * FROM vault_files WHERE vault_id=? ORDER BY path', id).map(vaultFile); },
-      async upsert(v) { const pathFold = v.path.normalize('NFC').toLowerCase(); db.prepare(`INSERT INTO vault_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(vault_id, file_id) DO UPDATE SET path=excluded.path,path_fold=excluded.path_fold,blob_hash=excluded.blob_hash,size=excluded.size,mtime=excluded.mtime,mime_type=excluded.mime_type,kind=excluded.kind,updated_revision=excluded.updated_revision`).run(v.fileId, v.vaultId, v.path, pathFold, v.blobHash, v.size, v.mtime, v.mimeType ?? null, v.kind, v.updatedRevision); },
+      // Explicit column list: migration 003 appends path_fold last on legacy databases while fresh
+      // databases define it mid-table, so a positional VALUES would misalign on one of the two.
+      async upsert(v) { const pathFold = v.path.normalize('NFC').toLowerCase(); db.prepare(`INSERT INTO vault_files (file_id, vault_id, path, path_fold, blob_hash, size, mtime, mime_type, kind, updated_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(vault_id, file_id) DO UPDATE SET path=excluded.path,path_fold=excluded.path_fold,blob_hash=excluded.blob_hash,size=excluded.size,mtime=excluded.mtime,mime_type=excluded.mime_type,kind=excluded.kind,updated_revision=excluded.updated_revision`).run(v.fileId, v.vaultId, v.path, pathFold, v.blobHash, v.size, v.mtime, v.mimeType ?? null, v.kind, v.updatedRevision); },
       async delete(vaultId, fileId) { db.prepare('DELETE FROM vault_files WHERE vault_id=? AND file_id=?').run(vaultId, fileId); },
     },
     vaultRevisions: {

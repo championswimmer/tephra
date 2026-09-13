@@ -204,4 +204,32 @@ describe('SQLite database adapter', () => {
     expect(await db.fileVersions.findLatestByPath('vault-1', 'Old.md')).toMatchObject({ id: 'version-2', revision: 2 });
     expect(await db.fileVersions.findLatestByPath('vault-1', 'Missing.md')).toBeNull();
   });
+
+  it('upgrades a pre-path_fold v2 database so sync commits stop crashing', async () => {
+    // Production regression: databases live at user_version 1/2 were
+    // created before path_fold existed, so sync commit crashed with
+    // `table vault_files has 9 columns but 10 values were supplied`.
+    // Simulate that state by dropping the column and re-stamping v2.
+    const { db, filename } = await database();
+    await seed(db);
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Notes/Hello.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    db.close();
+    databases.splice(databases.indexOf(db), 1);
+    const { DatabaseSync } = await import('node:sqlite');
+    const raw = new DatabaseSync(filename);
+    raw.exec('DROP INDEX IF EXISTS vault_files_path_fold_idx');
+    raw.exec('ALTER TABLE vault_files DROP COLUMN path_fold');
+    raw.exec('PRAGMA user_version = 2');
+    const legacy = raw.prepare('PRAGMA table_info(vault_files)').all() as Array<{ name: string }>;
+    expect(legacy.map((column) => column.name)).not.toContain('path_fold');
+    raw.close();
+
+    const upgraded = openSqliteDatabase(filename);
+    databases.push(upgraded);
+    // The previously crashing upsert now works and the fold is backfilled.
+    await upgraded.vaultFiles.upsert({ fileId: 'file-2', vaultId: 'vault-1', path: 'Notes/World.md', blobHash: 'a'.repeat(64), size: 5, mtime: 2, kind: 'markdown', updatedRevision: 2 });
+    expect(await upgraded.vaultFiles.findByPath('vault-1', 'Notes/Hello.md')).toMatchObject({ fileId: 'file-1' });
+    expect((await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/hello.md')).map((file) => file.fileId)).toEqual(['file-1']);
+    expect((await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/world.md')).map((file) => file.fileId)).toEqual(['file-2']);
+  });
 });

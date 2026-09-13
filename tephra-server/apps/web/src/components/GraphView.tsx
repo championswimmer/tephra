@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { Play, SlidersHorizontal } from 'lucide-react';
 import { TephraGraph } from '@tephra/graph-renderer';
 import {
   applyFilters,
@@ -59,10 +59,12 @@ export function GraphView({
   // re-filters the model shown in the canvas below.
   // Obsidian defaults hide tags/attachments.
   const [settings, setSettings] = useState(() => loadGraphSettings(vaultId, scope));
+  const [animateToken, setAnimateToken] = useState(0);
   useEffect(() => {
     setSettings(loadGraphSettings(vaultId, scope));
     setPanelOpen(false);
     setHoveredId(null);
+    setAnimateToken(0);
   }, [vaultId, scope]);
   const handleSettingsChange = (next: typeof settings) => {
     setSettings(next);
@@ -185,6 +187,14 @@ export function GraphView({
             : `${neighbourCount} neighbour${neighbourCount === 1 ? '' : 's'} within depth ${settings.depth}`}
         </p>
         <button
+          type="button"
+          aria-label="Animate graph"
+          title="Animate graph"
+          onClick={() => setAnimateToken((token) => token + 1)}
+        >
+          <Play size={16} aria-hidden="true" focusable="false" className="icon" />
+        </button>
+        <button
           ref={cogRef}
           type="button"
           aria-expanded={panelOpen}
@@ -228,6 +238,7 @@ export function GraphView({
             palette={palette}
             selectedId={selectedId ?? null}
             seed={graph.revision}
+            animateToken={animateToken}
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
             onReady={handleReady}

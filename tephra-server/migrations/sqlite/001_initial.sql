@@ -58,11 +58,12 @@ CREATE TABLE blobs (
   created_at INTEGER NOT NULL
 );
 
+-- NOTE: vault_files.path_fold lives in 003, not here. 001 must match what
+-- existing databases actually applied; see 003_vault_files_path_fold.sql.
 CREATE TABLE vault_files (
   file_id TEXT NOT NULL,
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
   path TEXT NOT NULL,
-  path_fold TEXT NOT NULL,
   blob_hash TEXT NOT NULL REFERENCES blobs(hash),
   size INTEGER NOT NULL CHECK(size >= 0),
   mtime INTEGER NOT NULL,
@@ -75,7 +76,6 @@ CREATE TABLE vault_files (
 CREATE INDEX vault_files_vault_idx ON vault_files(vault_id);
 CREATE INDEX vault_files_kind_idx ON vault_files(vault_id, kind);
 CREATE INDEX vault_files_blob_idx ON vault_files(vault_id, blob_hash);
-CREATE INDEX vault_files_path_fold_idx ON vault_files(vault_id, path_fold);
 
 CREATE TABLE vault_revisions (
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,

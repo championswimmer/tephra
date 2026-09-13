@@ -146,7 +146,7 @@ export function GraphSettingsPanel({
         />
         <Toggle
           id={`${prefix}-show-attachments`}
-          label="Attachments"
+          label="Non-markdown files"
           checked={settings.showAttachments}
           onChange={(checked) => update({ showAttachments: checked })}
         />

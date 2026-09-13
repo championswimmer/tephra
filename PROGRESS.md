@@ -161,3 +161,20 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
 - [x] Web URLs use `/v/:vaultName` end-to-end (list, workspace, graph,
       tokens views); Playwright specs updated; plugin "Open Web Mirror"
       opens `/v/<name>`
+- [x] Plugin binds by name-or-id: `ensureVaultBinding` canonicalizes the
+      stored binding through `GET /vaults/:idOrName` (session token
+      preferred, upload token fallback) at the start of every manual,
+      startup, and interval sync; a changed id reloads the sidecar so the
+      standard server repair runs instead of churning identities; names
+      pasted into the manual vault-ID override resolve to the canonical id
+- [x] Plugin linking hardened: Link Vault surfaces provision failures as a
+      Notice (was a silent rejection); Open Web Mirror opens synchronously
+      with the cached slug and refreshes the name in the background; 8 new
+      `vault-binding` unit tests, full `npm run check` green
+- [x] Fixed sync commit 500 (`table vault_files has 9 columns but 10 values
+      were supplied`): `path_fold` was added to 001 after live DBs were
+      created, so they never received it. 001 no longer defines the column;
+      new `003_vault_files_path_fold.sql` adds + backfills it (v1/v2 → v3
+      verified on copies of real DBs); `vaultFiles.upsert` now names columns
+      explicitly so both physical orders work. Deployed to production and
+      verified live — Main vault committed revision 3, plugin sync healthy

@@ -5,8 +5,10 @@ import {
   saveIdentityStore,
   type IdentityStoreAdapter,
 } from './state/identity-store';
+import { TephraClient } from './api/client';
 import { EventBuffer, type VaultEvent } from './sync/event-buffer';
 import { SyncCoordinator, type SyncStatus } from './sync/coordinator';
+import { ensureVaultBinding } from './sync/vault-binding';
 import { FILE_ID_PROPERTY, VaultScanner, shouldSyncPath } from './sync/scanner';
 import { mintFileId, randomFileId } from './sync/identity/id-mint';
 import {
@@ -102,6 +104,7 @@ export default class TephraPlugin extends Plugin {
     }
     if (!this.coordinator) return;
     try {
+      await this.resolveVaultBinding();
       await this.coordinator.requestSync();
       if (showNotice && this.status.get().phase === 'success')
         new Notice(this.status.get().message);
@@ -255,6 +258,24 @@ export default class TephraPlugin extends Plugin {
       // "Harvest then remove" sequence (§10.4): removal runs after harvest.
       await this.removeFileIdsFromAllNotes({ harvested: true });
     }
+  }
+
+  /**
+   * Canonicalize the stored vault binding before syncing (vault-name URLs):
+   * the id field may hold a name (manual entry) and the cached name may be
+   * stale after a server-side rename. Best-effort — resolution failure keeps
+   * the stored binding and the sync proceeds against it. When the canonical
+   * id changed, the sidecar (keyed by vault id) is reloaded; its miss queues
+   * the standard server repair instead of churning identities.
+   */
+  private async resolveVaultBinding(): Promise<void> {
+    const binding = await ensureVaultBinding(
+      this.state.settings,
+      (serverUrl) => new TephraClient(serverUrl),
+    );
+    if (!binding.changed) return;
+    if (binding.idChanged) await this.refreshIdentityStore();
+    await this.persistState();
   }
 
   /** Load the sidecar cache through the vault adapter, in place so the scanner's reference stays live. */

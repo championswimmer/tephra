@@ -20,6 +20,8 @@ export interface TephraGraphProps {
   palette: GraphPalette;
   selectedId: string | null;
   seed: number;
+  /** Bumping this reheats the settled simulation (Animate button). Starts at 0 = never. */
+  animateToken?: number | undefined;
   onNodeClick?: ((id: string) => void) | undefined;
   onNodeHover?: ((id: string | null) => void) | undefined;
   onReady?: (() => void) | undefined;
@@ -32,6 +34,7 @@ export function TephraGraph({
   palette,
   selectedId,
   seed,
+  animateToken = 0,
   onNodeClick,
   onNodeHover,
   onReady,
@@ -77,6 +80,12 @@ export function TephraGraph({
   useEffect(() => {
     rendererRef.current?.setSelected(selectedId);
   }, [selectedId]);
+
+  // On-demand animation: the mount effect's initial setModel draws
+  // statically, so ignore the initial token and only animate on bumps.
+  useEffect(() => {
+    if (animateToken > 0) rendererRef.current?.animate();
+  }, [animateToken]);
 
   return <div ref={hostRef} style={{ width: '100%', height: '100%' }} />;
 }
