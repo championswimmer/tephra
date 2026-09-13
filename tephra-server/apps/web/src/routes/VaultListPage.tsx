@@ -136,12 +136,7 @@ export function VaultListPage() {
         </ul>
       )}
       {deletingVault && (
-        <div
-          className="modal-backdrop"
-          onClick={closeDeleteModal}
-          role="presentation"
-          aria-hidden={false}
-        >
+        <div className="modal-backdrop" onClick={closeDeleteModal} role="presentation">
           <div
             className="modal"
             role="dialog"

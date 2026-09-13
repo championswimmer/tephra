@@ -100,13 +100,13 @@ export class ApiClient {
     this.request<{ vault: Vault }>(`/vaults/${encodeURIComponent(idOrName)}`);
   createVault = (name: string) =>
     this.request<{ vault: Vault }>('/vaults', { method: 'POST', body: JSON.stringify({ name }) });
-  deleteVault = async (idOrName: string, confirmation: string) => {
+  deleteVault = async (idOrName: string, vaultName: string) => {
     await this.request<void>(`/vaults/${encodeURIComponent(idOrName)}`, {
       method: 'DELETE',
-      body: JSON.stringify({ confirmation }),
+      body: JSON.stringify({ confirmation: vaultName }),
     });
     this.graphCache.delete(idOrName);
-    this.graphCache.delete(confirmation);
+    this.graphCache.delete(vaultName);
   };
   files = (vaultIdOrName: string) =>
     this.request<FilesResponse>(`/vaults/${encodeURIComponent(vaultIdOrName)}/files`);
