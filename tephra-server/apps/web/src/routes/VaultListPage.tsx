@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive } from 'lucide-react';
 import { api } from '../api/client';
@@ -52,12 +52,12 @@ export function VaultListPage() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [deletingVault, deleting]);
-  function resetDeleteModal() {
+  }, [deletingVault, deleting, resetDeleteModal]);
+  const resetDeleteModal = useCallback(() => {
     setDeletingVault(null);
     setDeleteConfirmation('');
     setDeleteError(undefined);
-  }
+  }, []);
   function closeDeleteModal() {
     if (deleting) return;
     resetDeleteModal();
