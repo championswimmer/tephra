@@ -205,6 +205,20 @@ describe('SQLite database adapter', () => {
     expect(await db.fileVersions.findLatestByPath('vault-1', 'Missing.md')).toBeNull();
   });
 
+  it('round-trips the materialized graph cache row per vault', async () => {
+    const { db } = await database();
+    await seed(db);
+    expect(await db.graphCache.find('vault-1')).toBeNull();
+    const entry = { vaultId: 'vault-1', revision: 1, indexedRevision: 1, etag: 'W/"1-1-graph-v2"', payloadJson: '{"revision":1}', updatedAt: 9 };
+    await db.graphCache.upsert(entry);
+    expect(await db.graphCache.find('vault-1')).toEqual(entry);
+    // A rebuild for a newer revision overwrites the row.
+    await db.graphCache.upsert({ ...entry, revision: 2, indexedRevision: 2, etag: 'W/"2-2-graph-v2"' });
+    expect(await db.graphCache.find('vault-1')).toMatchObject({ revision: 2, indexedRevision: 2 });
+    await db.graphCache.deleteByVault('vault-1');
+    expect(await db.graphCache.find('vault-1')).toBeNull();
+  });
+
   it('upgrades a pre-path_fold v2 database so sync commits stop crashing', async () => {
     // Production regression: databases live at user_version 1/2 were
     // created before path_fold existed, so sync commit crashed with

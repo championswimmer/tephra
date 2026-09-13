@@ -109,6 +109,21 @@ export interface NoteIndexRepository {
   setState(state: VaultIndexState): Promise<void>;
 }
 
+export interface GraphCacheEntry {
+  vaultId: string;
+  revision: number;
+  indexedRevision: number;
+  etag: string;
+  payloadJson: string;
+  updatedAt: number;
+}
+
+export interface GraphCacheRepository {
+  find(vaultId: string): Promise<GraphCacheEntry | null>;
+  upsert(entry: GraphCacheEntry): Promise<void>;
+  deleteByVault(vaultId: string): Promise<void>;
+}
+
 export interface Repositories {
   users: UserRepository;
   sessions: SessionRepository;
@@ -120,6 +135,7 @@ export interface Repositories {
   vaultRevisions: VaultRevisionRepository;
   fileVersions: FileVersionRepository;
   noteIndex: NoteIndexRepository;
+  graphCache: GraphCacheRepository;
 }
 
 export interface TransactionRepositories extends Repositories {

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import type {
   Database,
+  GraphCacheEntry,
   Repositories,
   TransactionRepositories,
 } from '@tephra/database-core';
@@ -30,6 +31,7 @@ const MIGRATIONS = [
   { version: 1, file: '001_initial.sql' },
   { version: 2, file: '002_vault_name_unique.sql' },
   { version: 3, file: '003_vault_files_path_fold.sql' },
+  { version: 4, file: '004_graph_cache.sql' },
 ] as const;
 const TOKEN_SCOPES = new Set<ApiTokenScope>(['vault:read-metadata', 'vault:upload']);
 
@@ -128,6 +130,9 @@ function fileVersion(row: Row): FileVersion {
 function noteMetadata(row: Row): NoteMetadata {
   return { fileId: requiredString(row, 'file_id'), vaultId: requiredString(row, 'vault_id'), indexedBlobHash: requiredString(row, 'indexed_blob_hash'), title: nullableString(row, 'title'), frontmatter: metadataJson<Record<string, unknown>>(row, 'frontmatter_json', (v) => typeof v === 'object' && v !== null && !Array.isArray(v)), headings: metadataJson<unknown[]>(row, 'headings_json', Array.isArray), tags: metadataJson<string[]>(row, 'tags_json', (v) => Array.isArray(v) && v.every((x) => typeof x === 'string')), blocks: metadataJson<unknown[]>(row, 'blocks_json', Array.isArray), indexedAt: requiredNumber(row, 'indexed_at') };
 }
+function graphCache(row: Row): GraphCacheEntry {
+  return { vaultId: requiredString(row, 'vault_id'), revision: requiredNumber(row, 'revision'), indexedRevision: requiredNumber(row, 'indexed_revision'), etag: requiredString(row, 'etag'), payloadJson: requiredString(row, 'payload_json'), updatedAt: requiredNumber(row, 'updated_at') };
+}
 function noteLink(row: Row): NoteLink {
   return { id: requiredString(row, 'id'), vaultId: requiredString(row, 'vault_id'), sourceFileId: requiredString(row, 'source_file_id'), rawText: requiredString(row, 'raw_text'), linkPath: requiredString(row, 'link_path'), subpath: nullableString(row, 'subpath'), displayText: nullableString(row, 'display_text'), isEmbed: requiredNumber(row, 'is_embed') === 1, targetFileId: nullableString(row, 'target_file_id'), createdAt: requiredNumber(row, 'created_at') };
 }
@@ -220,6 +225,11 @@ function makeRepositories(db: DatabaseSync): TransactionRepositories {
       async replaceLinksForSource(vaultId, sourceFileId, links) { if (links.some((v) => v.vaultId !== vaultId || v.sourceFileId !== sourceFileId)) throw new Error('Link does not belong to requested source'); db.prepare('DELETE FROM note_links WHERE vault_id=? AND source_file_id=?').run(vaultId, sourceFileId); const statement = db.prepare('INSERT INTO note_links VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'); for (const v of links) statement.run(v.id, v.vaultId, v.sourceFileId, v.rawText, v.linkPath, v.subpath, v.displayText, v.isEmbed ? 1 : 0, v.targetFileId, v.createdAt); },
       async getState(id) { const row = first(db, 'SELECT * FROM vault_index_state WHERE vault_id=?', id); return row && { vaultId: requiredString(row, 'vault_id'), indexedRevision: requiredNumber(row, 'indexed_revision'), lastError: nullableString(row, 'last_error') }; },
       async setState(v: VaultIndexState) { db.prepare('INSERT INTO vault_index_state VALUES (?, ?, ?) ON CONFLICT(vault_id) DO UPDATE SET indexed_revision=excluded.indexed_revision,last_error=excluded.last_error').run(v.vaultId, v.indexedRevision, v.lastError); },
+    },
+    graphCache: {
+      async find(vaultId) { const row = first(db, 'SELECT * FROM vault_graph_cache WHERE vault_id=?', vaultId); return row && graphCache(row); },
+      async upsert(v) { db.prepare('INSERT INTO vault_graph_cache VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(vault_id) DO UPDATE SET revision=excluded.revision,indexed_revision=excluded.indexed_revision,etag=excluded.etag,payload_json=excluded.payload_json,updated_at=excluded.updated_at').run(v.vaultId, v.revision, v.indexedRevision, v.etag, v.payloadJson, v.updatedAt); },
+      async deleteByVault(vaultId) { db.prepare('DELETE FROM vault_graph_cache WHERE vault_id=?').run(vaultId); },
     },
     async lockVault(vaultId) { const row = first(db, 'SELECT id FROM vaults WHERE id=?', vaultId); if (row === null) throw new Error(`Vault not found: ${vaultId}`); },
   };

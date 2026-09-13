@@ -15,6 +15,7 @@ import {
   type GraphScope,
 } from '@tephra/graph-renderer/pure';
 import { api } from '../api/client';
+import { loadGraphCache } from '../api/graphCache';
 import type { GraphResponse } from '../api/types';
 import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
@@ -95,19 +96,29 @@ export function GraphView({
   // variables, so depending on `theme` re-tints without re-init.
   const palette = useMemo(() => readGraphPalette(), [theme]);
 
+  // Stale-while-revalidate (plan 016, Lane B): paint the IndexedDB snapshot
+  // instantly when present, then revalidate in the background. When the
+  // server answers with an unchanged revision the second setGraph is skipped
+  // to avoid a redundant buildGraphModel + canvas pass.
   useEffect(() => {
     let cancelled = false;
     setGraph(null);
     setError(undefined);
     setHoveredId(null);
-    void api.graph(vaultId).then(
-      (result) => {
-        if (!cancelled) setGraph(result);
-      },
-      (caught) => {
+    void (async () => {
+      let staleRevision: number | undefined;
+      const stale = await loadGraphCache(vaultId);
+      if (!cancelled && stale) {
+        staleRevision = stale.body.revision;
+        setGraph(stale.body);
+      }
+      try {
+        const result = await api.graph(vaultId);
+        if (!cancelled && result.revision !== staleRevision) setGraph(result);
+      } catch (caught) {
         if (!cancelled) setError(caught);
-      },
-    );
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -267,21 +278,28 @@ export function GraphView({
           nodes.
         </p>
       )}
-      <ul className="graph-fallback-list" aria-label="Notes in graph">
-        {graph.nodes
-          .filter((node) => node.kind === 'note')
-          .map((node) => (
-            <li key={node.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(node.path)}
-                aria-current={node.id === selectedId ? 'true' : undefined}
-              >
-                {node.title ?? node.path}
-              </button>
-            </li>
-          ))}
-      </ul>
+      {(() => {
+        const FALLBACK_LIST_LIMIT = 200;
+        const noteNodes = graph.nodes.filter((node) => node.kind === 'note');
+        const shown = noteNodes.slice(0, FALLBACK_LIST_LIMIT);
+        const hidden = noteNodes.length - shown.length;
+        return (
+          <ul className="graph-fallback-list" aria-label="Notes in graph">
+            {shown.map((node) => (
+              <li key={node.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(node.path)}
+                  aria-current={node.id === selectedId ? 'true' : undefined}
+                >
+                  {node.title ?? node.path}
+                </button>
+              </li>
+            ))}
+            {hidden > 0 && <li>…and {hidden} more — use search to open a note</li>}
+          </ul>
+        );
+      })()}
     </section>
   );
 }

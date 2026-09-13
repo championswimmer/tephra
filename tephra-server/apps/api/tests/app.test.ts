@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Database, NoteIndexRepository, Repositories, TransactionRepositories } from '@tephra/database-core';
+import type { Database, GraphCacheEntry, NoteIndexRepository, Repositories, TransactionRepositories } from '@tephra/database-core';
 import type { BlobStore } from '@tephra/blob-store-core';
 import {
   hashManifest,
@@ -10,6 +10,7 @@ import {
 } from '@tephra/protocol';
 import type { ApiToken, BlobMetadata, CurrentVaultFile, Device, FileVersion, NoteLink, NoteMetadata, Session, User, Vault, VaultRevision } from '@tephra/vault-model';
 import { createApp } from '../src/app.js';
+import { createRuntimeIndexService } from '../src/runtime-index.js';
 
 class MemoryBlobStore implements BlobStore {
   readonly values = new Map<string, Uint8Array>();
@@ -115,13 +116,22 @@ class MemoryDatabase implements Database {
     deleteMetadata: async () => undefined, listLinksBySource: async () => [], listLinksByTarget: async () => [],
     listLinks: async () => [], replaceLinksForSource: async () => undefined, getState: async () => null, setState: async () => undefined,
   };
+  graphCache = {
+    entries: new Map<string, GraphCacheEntry>(),
+    find: async (vaultId: string) => this.graphCacheEntries(vaultId),
+    upsert: async (entry: GraphCacheEntry) => { this.graphCache.entries.set(entry.vaultId, entry); },
+    deleteByVault: async (vaultId: string) => { this.graphCache.entries.delete(vaultId); },
+  };
+  private graphCacheEntries(vaultId: string): GraphCacheEntry | null {
+    return this.graphCache.entries.get(vaultId) ?? null;
+  }
   async transaction<T>(operation: (repositories: TransactionRepositories) => Promise<T>): Promise<T> {
     const snapshot = structuredClone(this.state);
     try { return await operation({ ...this.repositories(), lockVault: async () => undefined }); }
     catch (error) { Object.assign(this.state, snapshot); throw error; }
   }
   private repositories(): Repositories {
-    return { users: this.users, sessions: this.sessions, vaults: this.vaults, devices: this.devices, apiTokens: this.apiTokens, blobs: this.blobs, vaultFiles: this.vaultFiles, vaultRevisions: this.vaultRevisions, fileVersions: this.fileVersions, noteIndex: this.noteIndex };
+    return { users: this.users, sessions: this.sessions, vaults: this.vaults, devices: this.devices, apiTokens: this.apiTokens, blobs: this.blobs, vaultFiles: this.vaultFiles, vaultRevisions: this.vaultRevisions, fileVersions: this.fileVersions, noteIndex: this.noteIndex, graphCache: this.graphCache };
   }
 }
 
@@ -651,7 +661,7 @@ describe('path resolver', () => {
 
 describe('graph payload v2', () => {
   async function seedGraphFixture() {
-    const { app, token, vault, database } = await setup();
+    const { app, token, vault, database, blobStore } = await setup();
     const entries = [
       { fileId: 'file-a', path: 'A.md', content: '[[B]] ![[img.png]] [[Missing Note]] #foo', kind: 'markdown' as const },
       { fileId: 'file-b', path: 'B.md', content: '# B', kind: 'markdown' as const },
@@ -693,7 +703,7 @@ describe('graph payload v2', () => {
       link({ id: 'l4', linkPath: 'Missing Note', sourceFileId: 'file-b' }),
     ];
     noteIndex.getState = async () => ({ vaultId: vault.id, indexedRevision: 1, lastError: null });
-    return { app, token, vault };
+    return { app, token, vault, database, blobStore };
   }
 
   it('synthesizes attachment, tag, and unresolved nodes with index-based edges', async () => {
@@ -743,5 +753,59 @@ describe('graph payload v2', () => {
       headers: { authorization: `Bearer ${token}`, 'if-none-match': 'W/"1-0-graph-v2"' },
     });
     expect(third.status).toBe(200);
+  });
+
+  it('serves the cached payload without touching the index tables on a hit', async () => {
+    const { app, token, vault, database } = await seedGraphFixture();
+    const url = `/api/v1/vaults/${vault.id}/graph`;
+    const first = await app.request(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(first.status).toBe(200);
+    expect(first.headers.get('etag')).toBe('W/"1-1-graph-v2"');
+    const firstBody = await first.json();
+    expect(await database.graphCache.find(vault.id)).toMatchObject({ revision: 1, indexedRevision: 1 });
+    // Break the underlying reads: any index fan-out now fails the request,
+    // so a 200 with an identical body proves the cache served it.
+    const noteIndex = database.noteIndex as NoteIndexRepository;
+    noteIndex.listMetadata = async () => { throw new Error('must not query note_metadata on a hit'); };
+    noteIndex.listLinks = async () => { throw new Error('must not query note_links on a hit'); };
+    const second = await app.request(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(second.status).toBe(200);
+    expect(second.headers.get('etag')).toBe('W/"1-1-graph-v2"');
+    expect(await second.json()).toEqual(firstBody);
+  });
+
+  it('rewrites the cache after indexVault and drops it when indexing fails', async () => {
+    const { app, token, vault, database, blobStore } = await seedGraphFixture();
+    const url = `/api/v1/vaults/${vault.id}/graph`;
+    const first = await app.request(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(first.status).toBe(200);
+    expect(await first.json()).not.toEqual(expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ id: 'tag:bar' })]) }));
+
+    let nextId = 0;
+    const indexService = createRuntimeIndexService({
+      database, blobStore, clock: { now: () => 1_700_000_000_001 }, ids: { generate: () => `link-${++nextId}` },
+    });
+    const indexVault = indexService.indexVault;
+    expect(indexVault).toBeDefined();
+    const noteIndex = database.noteIndex as NoteIndexRepository;
+    const meta = (fileId: string, title: string, tags: string[] = []): NoteMetadata => ({
+      fileId, vaultId: vault.id, indexedBlobHash: 'h', title, frontmatter: {}, headings: [], tags, blocks: [], indexedAt: 1,
+    });
+    // Evolve the indexed metadata, then reindex: the served graph follows.
+    noteIndex.listMetadata = async () => [meta('file-a', 'Alpha', ['foo', 'bar']), meta('file-b', 'Beta')];
+    await indexVault!(vault.id, 1);
+    const second = await app.request(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(second.status).toBe(200);
+    const secondBody = await second.json() as { nodes: { id: string }[] };
+    expect(secondBody.nodes.map((node) => node.id)).toContain('tag:bar');
+
+    // Drop every blob so indexing fails: the stale row must be deleted and
+    // the next request must rebuild from the index tables instead.
+    blobStore.values.clear();
+    await expect(indexVault!(vault.id, 1)).rejects.toThrow();
+    expect(await database.graphCache.find(vault.id)).toBeNull();
+    const third = await app.request(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(third.status).toBe(200);
+    expect(await database.graphCache.find(vault.id)).toMatchObject({ revision: 1, indexedRevision: 1 });
   });
 });
