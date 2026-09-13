@@ -115,6 +115,10 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   );
   expect(hookCount, 'debug hook nodeCount matches the DOM note buttons').toBe(3);
 
+  // Render-budget notice (plan 015 lane B): absent on the small fixture
+  // vault — the canvas draws the full model, no zoom-to-reveal needed.
+  await expect(graph.getByTestId('graph-budget-notice')).toHaveCount(0);
+
   // The settings search filters the model, the hook, and the header counts
   // live (the accessible fallback list always keeps every note).
   await graph.getByRole('button', { name: 'Graph settings' }).click();

@@ -66,3 +66,5 @@ export type {
 } from './camera';
 export { createNodePicker, isNodeInViewport } from './picking';
 export type { NodePicker, PickableNode, PickerOptions } from './picking';
+export { MAX_VISIBLE_NODES, visibleNodeBudget } from './visibility';
+export type { VisibleNodeBudget } from './visibility';

@@ -5,6 +5,7 @@ import {
   applyFilters,
   buildGraphModel,
   loadGraphSettings,
+  MAX_VISIBLE_NODES,
   nodesWithinDepth,
   readGraphPalette,
   resolveGroupColors,
@@ -247,6 +248,12 @@ export function GraphView({
         <p className="notice" role="status">
           Showing the first {graph.nodes.length} nodes — the vault graph is larger than the 10 000
           node limit.
+        </p>
+      )}
+      {filtered && filtered.model.nodes.length > MAX_VISIBLE_NODES && (
+        <p className="notice" role="status" data-testid="graph-budget-notice">
+          Showing {MAX_VISIBLE_NODES} of {filtered.model.nodes.length} — zoom in to reveal smaller
+          nodes.
         </p>
       )}
       <ul className="graph-fallback-list" aria-label="Notes in graph">

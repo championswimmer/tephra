@@ -85,6 +85,23 @@ function mockGraph(graph: GraphResponse) {
   vi.mocked(api.graph).mockResolvedValue(graph);
 }
 
+// Chained notes (each linked to the next) so none are filtered as orphans.
+function bigGraphFixture(count: number): GraphResponse {
+  return {
+    revision: 9,
+    truncated: false,
+    nodes: Array.from({ length: count }, (_, i) => ({
+      id: `n${i}`,
+      path: `n${i}.md`,
+      title: null,
+      kind: 'note',
+      tags: [],
+      createdAt: i,
+    })),
+    edges: Array.from({ length: count - 1 }, (_, i) => ({ s: i, t: i + 1, count: 1, embeds: 0 })),
+  };
+}
+
 function renderGraph(node: React.ReactElement) {
   return render(<ThemeProvider>{node}</ThemeProvider>);
 }
@@ -264,5 +281,19 @@ describe('GraphView shell', () => {
     mockGraph({ ...graphFixture, truncated: true });
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     expect(await screen.findByText(/larger than the 10 000/)).toBeInTheDocument();
+  });
+
+  it('shows the budget notice only when the model exceeds 500 nodes', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    expect(screen.queryByTestId('graph-budget-notice')).toBeNull();
+  });
+
+  it('shows the budget notice for a 501-node model', async () => {
+    mockGraph(bigGraphFixture(501));
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    const notice = await screen.findByTestId('graph-budget-notice');
+    expect(notice).toHaveTextContent('Showing 500 of 501 — zoom in to reveal smaller nodes.');
   });
 });

@@ -22,6 +22,7 @@ import {
 } from './camera';
 import { nodeRadius, type GraphModel } from './model';
 import { createNodePicker, isNodeInViewport } from './picking';
+import { MAX_VISIBLE_NODES, visibleNodeBudget } from './visibility';
 import { createSimulation, type Simulation } from './simulation';
 import type { GraphPalette } from './palette';
 import type { GraphSettings } from './settings';
@@ -147,11 +148,58 @@ export function createGraphRenderer(
     return `${m.nodes.length}:${m.nodes.map((n) => n.id).join('\n')}`;
   }
 
-  function rebuildPicker(): void {
+  /**
+   * Rebuild the hit-test index from the frame's visible nodes only, so the
+   * picker agrees with the canvas (plan 015): invisible nodes are neither
+   * drawn nor clickable. `visible` must be the same set `draw` uses.
+   */
+  function rebuildPicker(visible: Uint8Array | null): void {
     if (!sim) return;
-    picker.rebuild(
-      sim.nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, r: n.r })),
-    );
+    const all = sim.nodes;
+    if (!visible) {
+      picker.rebuild(all.map((n) => ({ id: n.id, x: n.x, y: n.y, r: n.r })));
+      return;
+    }
+    const kept: Array<{ id: string; x: number; y: number; r: number }> = [];
+    for (let i = 0; i < all.length; i += 1) {
+      if (visible[i] !== 1) continue;
+      const n = all[i]!;
+      kept.push({ id: n.id, x: n.x, y: n.y, r: n.r });
+    }
+    picker.rebuild(kept);
+  }
+
+  /**
+   * Per-frame visible set: viewport predicate (same bounds as the node
+   * pass) applied in degree-desc `labelOrder`, capped at
+   * `MAX_VISIBLE_NODES`, with selected + hovered force-included.
+   * Render-only: simulation, counts, and model are untouched.
+   */
+  function computeVisible(): Uint8Array | null {
+    if (!model || !sim) return null;
+    const nodes = sim.nodes;
+    const force = new Set<number>();
+    if (selectedId !== null) {
+      const si = model.indexById.get(selectedId);
+      if (si !== undefined) force.add(si);
+    }
+    if (hoveredId !== null) {
+      const hi = model.indexById.get(hoveredId);
+      if (hi !== undefined) force.add(hi);
+    }
+    const isInView = (index: number): boolean => {
+      const n = nodes[index]!;
+      const p = worldToScreen(n.x, n.y, camera);
+      const sr = Math.max(1, radii[index]! * camera.k);
+      return !(
+        p.x + sr < 0 ||
+        p.x - sr > viewport.width ||
+        p.y + sr < 0 ||
+        p.y - sr > viewport.height
+      );
+    };
+    return visibleNodeBudget(model, isInView, MAX_VISIBLE_NODES, force, labelOrder)
+      .visible;
   }
 
   function setHovered(next: string | null): void {
@@ -238,7 +286,7 @@ export function createGraphRenderer(
     reheatAndKick(1);
   }
 
-  function draw(): void {
+  function draw(visible: Uint8Array): void {
     if (!ctx || !model || !palette || !settings) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, viewport.width, viewport.height);
@@ -249,6 +297,7 @@ export function createGraphRenderer(
     // — Links —
     ctx.lineCap = 'round';
     for (const link of model.links) {
+      if (visible[link.source] !== 1 || visible[link.target] !== 1) continue;
       if (hovering) {
         const s = model.nodes[link.source]!.id;
         const t = model.nodes[link.target]!.id;
@@ -277,19 +326,14 @@ export function createGraphRenderer(
     }
 
     // — Nodes —
+    // The `visible` set already encodes the viewport predicate (same bounds
+    // as the old cull here), plus budget + force-include — one gate only.
     for (let i = 0; i < nodes.length; i += 1) {
+      if (visible[i] !== 1) continue;
       const n = nodes[i]!;
       const m = model.nodes[i]!;
       const p = worldToScreen(n.x, n.y, camera);
       const sr = Math.max(1, radii[i]! * camera.k);
-      if (
-        p.x + sr < 0 ||
-        p.x - sr > viewport.width ||
-        p.y + sr < 0 ||
-        p.y - sr > viewport.height
-      ) {
-        continue;
-      }
       ctx.globalAlpha = hovering && !activeSet.has(m.id) ? HOVER_DIM : 1;
       ctx.fillStyle = groupColors[i] ?? baseNodeColor(m.kind, palette);
       ctx.beginPath();
@@ -311,6 +355,7 @@ export function createGraphRenderer(
       ctx.fillStyle = palette.line;
       for (const link of model.links) {
         if (link.source === link.target) continue;
+        if (visible[link.source] !== 1 || visible[link.target] !== 1) continue;
         if (hovering) {
           const s = model.nodes[link.source]!.id;
           const t = model.nodes[link.target]!.id;
@@ -356,6 +401,7 @@ export function createGraphRenderer(
       threshold > 0 && camera.k >= threshold * 4;
     let drawn = 0;
     const drawLabel = (index: number): void => {
+      if (visible[index] !== 1) return;
       const n = nodes[index]!;
       const m = model!.nodes[index]!;
       if (
@@ -406,8 +452,11 @@ export function createGraphRenderer(
     } else {
       settled = true;
     }
-    rebuildPicker();
-    draw();
+    // One visible set per frame, shared by picker + canvas so hit-testing
+    // agrees with what is drawn (plan 015).
+    const visible = computeVisible();
+    rebuildPicker(visible);
+    if (visible) draw(visible);
     dirty = false;
     if (readyPending) {
       readyPending = false;

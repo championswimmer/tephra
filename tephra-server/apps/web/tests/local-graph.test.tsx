@@ -161,7 +161,8 @@ describe('LocalGraph', () => {
     );
     await ready(2);
     const sizes = hoisted.instances.map((instance) => instance.model.nodes.length);
-    expect(sizes).toContain(5);
+    // Global hides the isolated `e` by default; local shows b's depth-1 hood.
+    expect(sizes).toContain(4);
     expect(sizes).toContain(3);
     // Changing the global panel persists only under the global key.
     const toggles = screen.getAllByRole('button', { name: 'Graph settings' });
