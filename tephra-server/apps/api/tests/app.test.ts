@@ -57,7 +57,17 @@ class MemoryDatabase implements Database {
       this.state.vaults.set(item.id, item);
     },
     update: async (item: Vault) => { this.state.vaults.set(item.id, item); },
-    delete: async (id: string) => { this.state.vaults.delete(id); },
+    delete: async (id: string) => {
+      this.state.vaults.delete(id);
+      for (const [tokenId, token] of this.state.tokens) {
+        if (token.vaultId === id) this.state.tokens.delete(tokenId);
+      }
+      for (const [fileKey, file] of this.state.files) {
+        if (file.vaultId === id) this.state.files.delete(fileKey);
+      }
+      this.state.revisions = this.state.revisions.filter((item) => item.vaultId !== id);
+      this.state.versions = this.state.versions.filter((item) => item.vaultId !== id);
+    },
   };
   devices = {
     findById: async (id: string) => this.state.devices.get(id) ?? null,
@@ -178,6 +188,29 @@ describe('Tephra API', () => {
     expect(byId.status).toBe(200);
     const filesByName = await app.request(`/api/v1/vaults/${encodeURIComponent(vault.name)}/files`, { headers: browserHeaders });
     expect(filesByName.status).toBe(200);
+  });
+
+  it('deletes vaults only after exact name confirmation', async () => {
+    const { app, vault, browserHeaders, database } = await setup();
+    const mismatch = await app.request(`/api/v1/vaults/${vault.id}`, {
+      method: 'DELETE',
+      headers: browserHeaders,
+      body: JSON.stringify({ confirmation: 'test vault' }),
+    });
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toEqual({
+      error: { code: 'COMMIT_FAILED', message: 'Vault name confirmation does not match.' },
+    });
+    expect(database.state.vaults.get(vault.id)).toMatchObject({ name: 'Test Vault' });
+
+    const deleted = await app.request(`/api/v1/vaults/${vault.id}`, {
+      method: 'DELETE',
+      headers: browserHeaders,
+      body: JSON.stringify({ confirmation: vault.name }),
+    });
+    expect(deleted.status).toBe(204);
+    expect(database.state.vaults.has(vault.id)).toBe(false);
+    expect([...database.state.tokens.values()].some((token) => token.vaultId === vault.id)).toBe(false);
   });
 
   it('creates tokens by vault name and syncs through the name address', async () => {

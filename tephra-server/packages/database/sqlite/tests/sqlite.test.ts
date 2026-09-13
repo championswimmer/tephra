@@ -109,6 +109,30 @@ describe('SQLite database adapter', () => {
     expect(await db.vaults.findByName('vault')).toMatchObject({ id: 'vault-3' });
   });
 
+  it('cascades vault deletion to vault-scoped rows', async () => {
+    const { db } = await database();
+    await seed(db);
+    await db.apiTokens.insert({ id: 'token-1', userId: 'user-1', vaultId: 'vault-1', deviceId: 'device-1', tokenHash: 'secret-hash', name: 'Sync', scopes: ['vault:upload'], createdAt: 5, lastUsedAt: null, expiresAt: null, revokedAt: null });
+    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 6 });
+    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 7, mimeType: 'text/markdown', kind: 'markdown', updatedRevision: 1 });
+    await db.fileVersions.insertMany([{ id: 'version-1', vaultId: 'vault-1', fileId: 'file-1', revision: 1, path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 7, changeType: 'create', createdAt: 6 }]);
+    await db.noteIndex.upsertMetadata({ fileId: 'file-1', vaultId: 'vault-1', indexedBlobHash: 'a'.repeat(64), title: 'Note', frontmatter: {}, headings: [], tags: [], blocks: [], indexedAt: 8 });
+    await db.noteIndex.replaceLinksForSource('vault-1', 'file-1', [{ id: 'link-1', vaultId: 'vault-1', sourceFileId: 'file-1', rawText: '[[Note]]', linkPath: 'Note', subpath: null, displayText: null, isEmbed: false, targetFileId: 'file-1', createdAt: 8 }]);
+    await db.noteIndex.setState({ vaultId: 'vault-1', indexedRevision: 1, lastError: null });
+
+    await db.vaults.delete('vault-1');
+
+    expect(await db.vaults.findById('vault-1')).toBeNull();
+    expect(await db.apiTokens.findById('token-1')).toBeNull();
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toBeNull();
+    expect(await db.vaultRevisions.findLatest('vault-1')).toBeNull();
+    expect(await db.fileVersions.listByFile('vault-1', 'file-1')).toEqual([]);
+    expect(await db.noteIndex.findMetadata('file-1')).toBeNull();
+    expect(await db.noteIndex.listLinksBySource('vault-1', 'file-1')).toEqual([]);
+    expect(await db.noteIndex.getState('vault-1')).toBeNull();
+    expect(await db.blobs.findByHash('a'.repeat(64))).not.toBeNull();
+  });
+
   it('serializes vault transactions', async () => {
     const { db } = await database();
     await seed(db);

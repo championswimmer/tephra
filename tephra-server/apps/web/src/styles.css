@@ -259,6 +259,10 @@ input {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1rem;
 }
+.vault-card {
+  display: grid;
+  gap: 0.75rem;
+}
 .vault-grid a {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -291,6 +295,9 @@ html.theme-dark .vault-grid a {
 .vault-icon .icon {
   width: 1.7rem;
   height: 1.7rem;
+}
+.vault-delete-button {
+  justify-self: end;
 }
 .status {
   min-height: 220px;
@@ -846,6 +853,20 @@ html.theme-dark .vault-grid a {
 .modal-section p {
   margin-top: 0;
   font-size: 0.88rem;
+}
+.modal-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.modal-form label {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 /* Theme selector */
