@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive } from 'lucide-react';
+import { Archive, X } from 'lucide-react';
 import { api } from '../api/client';
 import type { Vault } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/Status';
@@ -18,6 +18,7 @@ export function VaultListPage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState<unknown>();
   const [deleting, setDeleting] = useState(false);
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
   async function load() {
     setError(undefined);
     try {
@@ -45,7 +46,15 @@ export function VaultListPage() {
       setCreating(false);
     }
   }
-  const resetDeleteModal = useCallback(() => {
+  const resetDeleteModal = useCallback((options?: { restoreFocus?: boolean }) => {
+    if (
+      options?.restoreFocus !== false &&
+      deleteTriggerRef.current &&
+      document.contains(deleteTriggerRef.current)
+    ) {
+      deleteTriggerRef.current.focus();
+    }
+    if (options?.restoreFocus === false) deleteTriggerRef.current = null;
     setDeletingVault(null);
     setDeleteConfirmation('');
     setDeleteError(undefined);
@@ -70,7 +79,7 @@ export function VaultListPage() {
     try {
       await api.deleteVault(deletingVault.id, deletingVault.name);
       setVaults((current) => current?.filter((vault) => vault.id !== deletingVault.id) ?? []);
-      resetDeleteModal();
+      resetDeleteModal({ restoreFocus: false });
     } catch (caught) {
       setDeleteError(caught);
     } finally {
@@ -122,7 +131,8 @@ export function VaultListPage() {
                 <button
                   type="button"
                   className="danger subtle vault-delete-button"
-                  onClick={() => {
+                  onClick={(event) => {
+                    deleteTriggerRef.current = event.currentTarget;
                     setDeletingVault(vault);
                     setDeleteConfirmation('');
                     setDeleteError(undefined);
@@ -146,6 +156,15 @@ export function VaultListPage() {
           >
             <div className="modal-header">
               <h2 id="delete-vault-title">Delete vault</h2>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeDeleteModal}
+                disabled={deleting}
+                aria-label="Close delete vault dialog"
+              >
+                <X size={16} aria-hidden="true" focusable="false" className="icon" />
+              </button>
             </div>
             <section className="modal-section">
               <p>

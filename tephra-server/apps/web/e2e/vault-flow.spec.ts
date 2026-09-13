@@ -173,6 +173,7 @@ test('vault deletion requires re-entering the exact vault name', async ({ page, 
   await expect(confirmDelete).toBeDisabled();
   await dialog.getByLabel('Vault name').fill('e2e-delete-vault ');
   await expect(confirmDelete).toBeDisabled();
+  await dialog.getByLabel('Vault name').clear();
   await dialog.getByLabel('Vault name').fill(DELETE_VAULT_NAME);
   await expect(confirmDelete).toBeEnabled();
   await confirmDelete.click();
