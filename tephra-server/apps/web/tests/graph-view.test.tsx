@@ -179,17 +179,16 @@ describe('GraphView shell', () => {
     expect(hoisted.lastKey).toBe('+');
   });
 
-  it('hides orphan notes when the orphan toggle is off', async () => {
+  it('shows orphan notes when the orphan toggle is on', async () => {
     const user = userEvent.setup();
     mockGraph(orphanFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
-    // Orphans shown by default: the isolated solo note survives.
-    expect(pushedIds()).toContain('solo');
+    // Orphans hidden by default: the isolated solo note is filtered out.
+    expect(pushedIds()).not.toContain('solo');
     await user.click(screen.getByRole('button', { name: 'Graph settings' }));
     await user.click(screen.getByLabelText('Orphans'));
-    await waitFor(() => expect(pushedIds()).not.toContain('solo'));
-    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
+    await waitFor(() => expect(pushedIds()).toContain('solo'));
   });
 
   it('shows the selection bar for the hovered node', async () => {

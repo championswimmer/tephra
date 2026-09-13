@@ -37,13 +37,13 @@ export interface GraphSettings {
 
 export type GraphScope = 'global' | 'local';
 
-/** Obsidian's defaults: tags/attachments off, everything else visible. */
+/** Tephra defaults: tags/attachments/orphans off, everything else visible. */
 export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   search: '',
   showTags: false,
   showAttachments: false,
   existingOnly: false,
-  showOrphans: true,
+  showOrphans: false,
   groups: [],
   showArrows: false,
   textFadeThreshold: 0.3,

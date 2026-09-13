@@ -128,10 +128,10 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
 
   // Orphan toggle: the fixture vault has no orphans, so the counts hold
-  // steady and the choice persists per vault.
-  await graph.getByLabel('Orphans').uncheck();
-  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+  // steady and the choice persists per vault. Orphans start hidden.
   await graph.getByLabel('Orphans').check();
+  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+  await graph.getByLabel('Orphans').uncheck();
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
 
   // Keyboard pan/zoom on the focused canvas keeps the renderer alive and
