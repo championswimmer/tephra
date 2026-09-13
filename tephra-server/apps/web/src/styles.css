@@ -447,10 +447,33 @@ html.theme-dark .vault-grid a {
   min-height: 0;
   flex: 1;
 }
+.workspace-grid.hide-left {
+  grid-template-columns: minmax(0, 1fr) 240px;
+}
+.workspace-grid.hide-right {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.workspace-grid.hide-left.hide-right {
+  grid-template-columns: minmax(0, 1fr);
+}
 .tree-pane {
   background: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
   overflow: auto;
+}
+.tree-pane.collapsed {
+  display: none;
+}
+.sidebar-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 0.35rem 0.45rem;
+}
+.sidebar-toggle:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
 .pane-title {
   display: flex;
@@ -989,6 +1012,10 @@ html.theme-dark .vault-grid a {
   .workspace-grid {
     grid-template-columns: 220px minmax(0, 1fr);
   }
+  .workspace-grid.hide-left,
+  .workspace-grid.hide-left.hide-right {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .links-panel {
     display: none;
   }
@@ -1036,6 +1063,9 @@ html.theme-dark .vault-grid a {
     border: 0;
     background: transparent;
     font-weight: 700;
+  }
+  .sidebar-toggle {
+    display: none;
   }
   .vault-header > div > a,
   .vault-header > div > span {

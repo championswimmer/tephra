@@ -1,52 +1,42 @@
-import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, File, FileText, Search } from 'lucide-react';
+import { memo, useState } from 'react';
+import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import type { VaultFile } from '../api/types';
-import { buildTree, filterTree, type TreeNode } from '../vault/tree';
+import type { TreeNode } from '../vault/tree';
+import { FileIcon } from './FileIcon';
 
-function Branch({
-  nodes,
-  selectedPath,
-  onSelect,
-  forceOpen,
-}: {
+export interface FileTreeProps {
+  files: readonly VaultFile[];
   nodes: readonly TreeNode[];
   selectedPath: string | undefined;
   onSelect: (path: string) => void;
   forceOpen: boolean;
+}
+
+const FileRow = memo(function FileRow({
+  node,
+  selected,
+  onSelect,
+}: {
+  node: Extract<TreeNode, { type: 'file' }>;
+  selected: boolean;
+  onSelect: (path: string) => void;
 }) {
   return (
-    <ul className="tree-list">
-      {nodes.map((node) =>
-        node.type === 'folder' ? (
-          <Folder
-            key={node.path}
-            node={node}
-            selectedPath={selectedPath}
-            onSelect={onSelect}
-            forceOpen={forceOpen}
-          />
-        ) : (
-          <li key={node.file.fileId}>
-            <button
-              type="button"
-              className={`tree-file ${selectedPath === node.file.path ? 'selected' : ''}`}
-              aria-current={selectedPath === node.file.path ? 'page' : undefined}
-              onClick={() => onSelect(node.file.path)}
-            >
-              {node.file.kind === 'markdown' ? (
-                <FileText size={14} aria-hidden="true" focusable="false" className="icon" />
-              ) : (
-                <File size={14} aria-hidden="true" focusable="false" className="icon" />
-              )}
-              <span>{node.name}</span>
-            </button>
-          </li>
-        ),
-      )}
-    </ul>
+    <li>
+      <button
+        type="button"
+        className={`tree-file ${selected ? 'selected' : ''}`}
+        aria-current={selected ? 'page' : undefined}
+        onClick={() => onSelect(node.file.path)}
+      >
+        <FileIcon file={node.file} />
+        <span>{node.name}</span>
+      </button>
+    </li>
   );
-}
-function Folder({
+});
+
+const FolderRow = memo(function FolderRow({
   node,
   selectedPath,
   onSelect,
@@ -72,10 +62,15 @@ function Folder({
         ) : (
           <ChevronRight size={14} aria-hidden="true" focusable="false" className="icon" />
         )}
-        {node.name}
+        {expanded ? (
+          <FolderOpen size={14} aria-hidden="true" focusable="false" className="icon" />
+        ) : (
+          <Folder size={14} aria-hidden="true" focusable="false" className="icon" />
+        )}
+        <span>{node.name}</span>
       </button>
       {expanded && (
-        <Branch
+        <TreeBranch
           nodes={node.children}
           selectedPath={selectedPath}
           onSelect={onSelect}
@@ -84,47 +79,55 @@ function Folder({
       )}
     </li>
   );
-}
-export function FileTree({
-  files,
+});
+
+/**
+ * Pure presentational tree: renders pre-built {@link TreeNode}s with
+ * memoized rows so re-renders only touch changed subtrees. Tree building
+ * and search filtering live in {@link FileBrowser}.
+ */
+export const TreeBranch = memo(function TreeBranch({
+  nodes,
   selectedPath,
   onSelect,
-}: {
-  files: readonly VaultFile[];
-  selectedPath?: string;
-  onSelect: (path: string) => void;
-}) {
-  const [query, setQuery] = useState('');
-  const nodes = useMemo(
-    () =>
-      filterTree(
-        buildTree(files.filter((file) => !file.path.split('/').includes('.obsidian'))),
-        query,
-      ),
-    [files, query],
-  );
+  forceOpen,
+}: Omit<FileTreeProps, 'files'>) {
   return (
-    <div className="file-browser">
-      <label className="tree-search">
-        <span className="sr-only">Search files</span>
-        <Search size={14} aria-hidden="true" focusable="false" className="icon" />
-        <input
-          type="search"
-          placeholder="Search files"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      {nodes.length ? (
-        <Branch
-          nodes={nodes}
-          selectedPath={selectedPath}
-          onSelect={onSelect}
-          forceOpen={query.trim().length > 0}
-        />
-      ) : (
-        <p className="tree-empty">No files match “{query}”.</p>
+    <ul className="tree-list">
+      {nodes.map((node) =>
+        node.type === 'folder' ? (
+          <FolderRow
+            key={node.path}
+            node={node}
+            selectedPath={selectedPath}
+            onSelect={onSelect}
+            forceOpen={forceOpen}
+          />
+        ) : (
+          <FileRow
+            key={node.file.fileId}
+            node={node}
+            selected={selectedPath === node.file.path}
+            onSelect={onSelect}
+          />
+        ),
       )}
-    </div>
+    </ul>
   );
-}
+});
+
+export const FileTree = memo(function FileTree({
+  nodes,
+  selectedPath,
+  onSelect,
+  forceOpen,
+}: Omit<FileTreeProps, 'files'>) {
+  return (
+    <TreeBranch
+      nodes={nodes}
+      selectedPath={selectedPath}
+      onSelect={onSelect}
+      forceOpen={forceOpen}
+    />
+  );
+});

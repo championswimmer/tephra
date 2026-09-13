@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { KeyRound, Menu, Waypoints } from 'lucide-react';
+import {
+  KeyRound,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Waypoints,
+} from 'lucide-react';
 import { ApiError, api } from '../api/client';
 import type { LinksResponse, ResolveResponse, Vault, VaultFile } from '../api/types';
 import { AttachmentViewer } from '../components/AttachmentViewer';
-import { FileTree } from '../components/FileTree';
+import { FileBrowser } from '../components/FileBrowser';
 import { GraphView } from '../components/GraphView';
 import { LocalGraph } from '../components/LocalGraph';
 import { LinksPanel } from '../components/LinksPanel';
@@ -41,6 +49,8 @@ export function VaultWorkspace() {
   const [links, setLinks] = useState<LinksResponse>();
   const [resolveState, setResolveState] = useState<ResolveState>({ status: 'idle' });
   const [treeOpen, setTreeOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(() => readSidebarPref('tephra:sidebar-left', true));
+  const [rightOpen, setRightOpen] = useState(() => readSidebarPref('tephra:sidebar-right', true));
   async function load() {
     setError(undefined);
     try {
@@ -121,6 +131,8 @@ export function VaultWorkspace() {
     );
   }, [files, resolvedFile]);
 
+  const showLinksPanel = view.type === 'file' && selected?.kind === 'markdown';
+
   const movedFrom =
     resolveState.status === 'ready' &&
     resolveState.response.match !== 'exact' &&
@@ -128,13 +140,28 @@ export function VaultWorkspace() {
       ? (resolveState.response.movedFromPath ?? resolveState.response.requestedPath)
       : undefined;
 
-  const open = (path: string) => {
-    navigate({
-      pathname: `/v/${encodeURIComponent(vault?.name ?? vaultId)}/`,
-      hash: `#/${encodePathForHash(path)}`,
+  const open = useCallback(
+    (path: string) => {
+      navigate({
+        pathname: `/v/${encodeURIComponent(vault?.name ?? vaultId)}/`,
+        hash: `#/${encodePathForHash(path)}`,
+      });
+      setTreeOpen(false);
+    },
+    [navigate, vault?.name, vaultId],
+  );
+  const toggleLeft = useCallback(() => {
+    setLeftOpen((prev) => {
+      writeSidebarPref('tephra:sidebar-left', !prev);
+      return !prev;
     });
-    setTreeOpen(false);
-  };
+  }, []);
+  const toggleRight = useCallback(() => {
+    setRightOpen((prev) => {
+      writeSidebarPref('tephra:sidebar-right', !prev);
+      return !prev;
+    });
+  }, []);
   const openFileId = (fileId: string) => {
     const path = pathByFileId.get(fileId);
     if (path !== undefined) open(path);
@@ -164,6 +191,21 @@ export function VaultWorkspace() {
             <Menu size={16} aria-hidden="true" focusable="false" className="icon" />
             Files
           </button>
+          <button
+            className="sidebar-toggle icon-button"
+            type="button"
+            aria-expanded={leftOpen}
+            aria-controls="vault-files-pane"
+            aria-label={leftOpen ? 'Hide file browser' : 'Show file browser'}
+            title={leftOpen ? 'Hide file browser' : 'Show file browser'}
+            onClick={toggleLeft}
+          >
+            {leftOpen ? (
+              <PanelLeftClose size={16} aria-hidden="true" focusable="false" className="icon" />
+            ) : (
+              <PanelLeftOpen size={16} aria-hidden="true" focusable="false" className="icon" />
+            )}
+          </button>
           <Link to="/vaults">Vaults</Link>
           <span aria-hidden="true">/</span>
           <strong>{vault.name}</strong>
@@ -183,15 +225,38 @@ export function VaultWorkspace() {
             <KeyRound size={14} aria-hidden="true" focusable="false" className="icon" />
             Tokens
           </Link>
+          {showLinksPanel && (
+            <button
+              className="sidebar-toggle icon-button"
+              type="button"
+              aria-expanded={rightOpen}
+              aria-controls="vault-links-pane"
+              aria-label={rightOpen ? 'Hide links panel' : 'Show links panel'}
+              title={rightOpen ? 'Hide links panel' : 'Show links panel'}
+              onClick={toggleRight}
+            >
+              {rightOpen ? (
+                <PanelRightClose size={16} aria-hidden="true" focusable="false" className="icon" />
+              ) : (
+                <PanelRightOpen size={16} aria-hidden="true" focusable="false" className="icon" />
+              )}
+            </button>
+          )}
         </nav>
       </header>
-      <div className="workspace-grid">
-        <aside className={`tree-pane ${treeOpen ? 'open' : ''}`} aria-label="Vault files">
+      <div
+        className={`workspace-grid ${leftOpen ? '' : 'hide-left'} ${showLinksPanel && rightOpen ? '' : 'hide-right'}`}
+      >
+        <aside
+          id="vault-files-pane"
+          className={`tree-pane ${treeOpen ? 'open' : ''} ${leftOpen ? '' : 'collapsed'}`}
+          aria-label="Vault files"
+        >
           <div className="pane-title">
             <strong>Files</strong>
             <span>{files.length}</span>
           </div>
-          <FileTree
+          <FileBrowser
             files={files}
             {...(selected === undefined ? {} : { selectedPath: selected.path })}
             onSelect={open}
@@ -256,8 +321,9 @@ export function VaultWorkspace() {
               </>
             ))}
         </section>
-        {view.type === 'file' && selected?.kind === 'markdown' && (
+        {showLinksPanel && rightOpen && (
           <LinksPanel
+            id="vault-links-pane"
             links={links?.links ?? []}
             backlinks={links?.backlinks ?? []}
             onOpen={openFileId}
@@ -266,6 +332,24 @@ export function VaultWorkspace() {
       </div>
     </main>
   );
+}
+
+function readSidebarPref(key: string, fallback: boolean): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return fallback;
+    const stored = window.localStorage.getItem(key);
+    return stored === null ? fallback : stored !== 'false';
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSidebarPref(key: string, open: boolean): void {
+  try {
+    window.localStorage?.setItem(key, String(open));
+  } catch {
+    // UI preference only; ignore persistence failures (private mode, etc.).
+  }
 }
 
 function isGone(error: unknown): boolean {

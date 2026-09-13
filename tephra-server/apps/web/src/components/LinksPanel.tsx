@@ -45,13 +45,15 @@ export function LinksPanel({
   links,
   backlinks,
   onOpen,
+  id,
 }: {
   links: NoteLink[];
   backlinks: NoteLink[];
   onOpen: (id: string) => void;
+  id?: string;
 }) {
   return (
-    <aside className="links-panel" aria-label="Note relationships">
+    <aside className="links-panel" aria-label="Note relationships" {...(id ? { id } : {})}>
       <LinkList title="Links" icon={Link2} links={links} onOpen={onOpen} />
       <LinkList
         title="Backlinks"

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { FileTree } from '../src/components/FileTree';
+import { FileBrowser } from '../src/components/FileBrowser';
 import { SettingsModal } from '../src/components/SettingsModal';
 import { ThemeSelector } from '../src/components/ThemeSelector';
 import { LinksPanel } from '../src/components/LinksPanel';
@@ -34,10 +34,10 @@ describe('Lucide icon pack', () => {
         mtime: 1,
       },
     ];
-    const { container } = render(<FileTree files={files} onSelect={vi.fn()} />);
+    const { container } = render(<FileBrowser files={files} onSelect={vi.fn()} />);
     const icons = container.querySelectorAll('svg.lucide[aria-hidden="true"]');
-    // Search + folder chevron + markdown file + attachment file.
-    expect(icons.length).toBeGreaterThanOrEqual(4);
+    // Search + folder chevron + folder state + markdown file + attachment file.
+    expect(icons.length).toBeGreaterThanOrEqual(5);
     for (const icon of icons) {
       expect(icon.getAttribute('aria-hidden')).toBe('true');
     }
