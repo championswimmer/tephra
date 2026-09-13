@@ -169,7 +169,7 @@ test('vault deletion requires re-entering the exact vault name', async ({ page, 
   });
   await vaultCard.getByRole('button', { name: 'Delete vault' }).click();
   const dialog = page.getByRole('dialog', { name: 'Delete vault' });
-  const confirmDelete = dialog.getByRole('button', { name: 'Delete vault' });
+  const confirmDelete = dialog.getByRole('button', { name: 'Delete vault', exact: true });
   await expect(confirmDelete).toBeDisabled();
   await dialog.getByLabel('Vault name').fill('e2e-delete-vault ');
   await expect(confirmDelete).toBeDisabled();
