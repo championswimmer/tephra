@@ -45,6 +45,11 @@ export function VaultListPage() {
       setCreating(false);
     }
   }
+  const resetDeleteModal = useCallback(() => {
+    setDeletingVault(null);
+    setDeleteConfirmation('');
+    setDeleteError(undefined);
+  }, []);
   useEffect(() => {
     if (!deletingVault || deleting) return;
     const onKey = (event: KeyboardEvent) => {
@@ -53,11 +58,6 @@ export function VaultListPage() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [deletingVault, deleting, resetDeleteModal]);
-  const resetDeleteModal = useCallback(() => {
-    setDeletingVault(null);
-    setDeleteConfirmation('');
-    setDeleteError(undefined);
-  }, []);
   function closeDeleteModal() {
     if (deleting) return;
     resetDeleteModal();
