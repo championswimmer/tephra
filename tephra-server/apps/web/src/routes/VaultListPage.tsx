@@ -5,6 +5,10 @@ import { api } from '../api/client';
 import type { Vault } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/Status';
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
 export function VaultListPage() {
   const [vaults, setVaults] = useState<Vault[] | null>(null);
   const [error, setError] = useState<unknown>();
@@ -44,11 +48,7 @@ export function VaultListPage() {
   useEffect(() => {
     if (!deletingVault || deleting) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setDeletingVault(null);
-        setDeleteConfirmation('');
-        setDeleteError(undefined);
-      }
+      if (event.key === 'Escape') resetDeleteModal();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -168,7 +168,9 @@ export function VaultListPage() {
                   autoFocus
                   onChange={(event) => setDeleteConfirmation(event.target.value)}
                 />
-                {deleteError && <ErrorState error={deleteError} />}
+                {deleteError !== undefined && (
+                  <p className="form-error">{errorMessage(deleteError)}</p>
+                )}
                 <div className="modal-actions">
                   <button
                     type="button"

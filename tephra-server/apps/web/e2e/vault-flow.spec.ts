@@ -178,7 +178,6 @@ test('vault deletion requires re-entering the exact vault name', async ({ page, 
   await confirmDelete.click();
   await expect(page.getByRole('dialog', { name: 'Delete vault' })).toBeHidden();
   await expect(page.getByRole('link', { name: new RegExp(DELETE_VAULT_NAME) })).toBeHidden();
-  await expect(page.getByRole('link', { name: new RegExp(DELETE_VAULT_NAME) })).toBeHidden();
 });
 
 /**
