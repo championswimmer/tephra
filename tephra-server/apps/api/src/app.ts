@@ -518,7 +518,7 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const body = await jsonBody(c, deleteVaultSchema);
     if (body.confirmation !== vault.name)
-      fail(409, 'COMMIT_FAILED', 'Vault name confirmation does not match.');
+      fail(400, 'VAULT_NAME_MISMATCH', 'Vault name confirmation does not match.');
     await dependencies.database.vaults.delete(vault.id);
     return c.body(null, 204);
   });

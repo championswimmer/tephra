@@ -389,9 +389,12 @@ describe('Tephra API', () => {
       headers: browserHeaders,
       body: JSON.stringify({ confirmation: 'test vault' }),
     });
-    expect(mismatch.status).toBe(409);
+    expect(mismatch.status).toBe(400);
     expect(await mismatch.json()).toEqual({
-      error: { code: 'COMMIT_FAILED', message: 'Vault name confirmation does not match.' },
+      error: {
+        code: 'VAULT_NAME_MISMATCH',
+        message: 'Vault name confirmation does not match.',
+      },
     });
     expect(database.state.vaults.get(vault.id)).toMatchObject({ name: 'Test Vault' });
 
