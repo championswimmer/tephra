@@ -1,8 +1,8 @@
 /**
- * Sigma-free entrypoint: pure graph core (model/query/filter/depth/
- * settings/groups/palette) plus the graphology adapter and FA2 settings
- * mapping. Import from `@tephra/graph-renderer/pure` when the Sigma
- * component must stay out of the bundle (lazy-loaded separately).
+ * Renderer-free entrypoint: pure graph core (model/query/filter/depth/
+ * settings/groups/palette/simulation/camera/picking). Import from
+ * `@tephra/graph-renderer/pure` when the canvas component must stay out
+ * of the bundle.
  */
 export { buildGraphModel, nodeRadius } from './model';
 export type {
@@ -31,11 +31,38 @@ export type { ColorGroup, GraphScope, GraphSettings } from './settings';
 export { resolveGroupColors } from './groups';
 export { FALLBACK_GRAPH_PALETTE, readGraphPalette } from './palette';
 export type { GraphPalette } from './palette';
-export { buildGraphologyGraph, mulberry32, SIGMA_SIZE_SCALE } from './graphology';
+export { createSimulation, mulberry32, DEFAULT_SIM_FORCES } from './simulation';
 export type {
-  GraphologyBuildOptions,
-  GraphologyEdgeAttributes,
-  GraphologyNodeAttributes,
-} from './graphology';
-export { forcesToFA2Settings } from './layout';
-export type { ForceAtlas2Settings } from './layout';
+  SimEdge,
+  SimEdgeInput,
+  SimNode,
+  SimNodeInput,
+  Simulation,
+  SimulationForces,
+  SimulationOptions,
+} from './simulation';
+export {
+  createCamera,
+  clampZoom,
+  fitView,
+  keyboardPan,
+  keyboardZoom,
+  pan,
+  screenToWorld,
+  worldToScreen,
+  zoomAt,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  KEYBOARD_PAN_STEP,
+  KEYBOARD_PAN_STEP_SHIFT,
+  KEYBOARD_ZOOM_FACTOR,
+} from './camera';
+export type {
+  CameraState,
+  FitViewOptions,
+  ViewportSize,
+  WorldPoint,
+  ZoomOptions,
+} from './camera';
+export { createNodePicker, isNodeInViewport } from './picking';
+export type { NodePicker, PickableNode, PickerOptions } from './picking';

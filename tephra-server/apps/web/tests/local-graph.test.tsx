@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,38 +16,33 @@ const hoisted = vi.hoisted(() => ({
     model: { nodes: { id: string }[] };
     groupColors: Array<string | null>;
     selectedId: string | null;
+    seed: number;
     onNodeClick: (id: string) => void;
+    onNodeHover: (id: string | null) => void;
+    onReady: () => void;
   }[],
 }));
 
-// The package barrel pulls in Sigma (WebGL) which cannot load under jsdom,
-// so the mock re-exports the pure source modules (none touch Sigma) plus a
-// TephraGraph stub that records every mounted instance's props.
-vi.mock('@tephra/graph-renderer', async () => {
-  const model = await import('../../../packages/graph-renderer/src/model');
-  const filter = await import('../../../packages/graph-renderer/src/filter');
-  const depth = await import('../../../packages/graph-renderer/src/depth');
-  const settings = await import('../../../packages/graph-renderer/src/settings');
-  const groups = await import('../../../packages/graph-renderer/src/groups');
-  const palette = await import('../../../packages/graph-renderer/src/palette');
-  return {
-    ...model,
-    ...filter,
-    ...depth,
-    ...settings,
-    ...groups,
-    ...palette,
-    TephraGraph: (props: {
-      model: { nodes: { id: string }[] };
-      groupColors: Array<string | null>;
-      selectedId: string | null;
-      onNodeClick: (id: string) => void;
-    }) => {
-      hoisted.instances.push(props);
-      return <div data-testid="tephra-graph-stub" />;
-    },
-  };
-});
+// The canvas renderer needs a real 2D context + ResizeObserver, neither of
+// which exists under jsdom — so the stub renders a focusable <canvas> per
+// instance and records every mounted instance's props.
+vi.mock('@tephra/graph-renderer', () => ({
+  TephraGraph: (props: {
+    model: { nodes: { id: string }[] };
+    groupColors: Array<string | null>;
+    selectedId: string | null;
+    seed: number;
+    onNodeClick: (id: string) => void;
+    onNodeHover: (id: string | null) => void;
+    onReady: () => void;
+  }) => {
+    hoisted.instances.push(props);
+    React.useEffect(() => {
+      props.onReady?.();
+    }, []);
+    return <canvas data-testid="tephra-graph-canvas" tabIndex={0} />;
+  },
+}));
 
 // Chain a—b—c—d plus isolated e.
 const chainFixture: GraphResponse = {
@@ -93,6 +89,9 @@ describe('LocalGraph', () => {
     expect(lastPushedIds()).toEqual(['a', 'b', 'c']);
     expect(screen.getByText('2 neighbours within depth 1')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Local graph' })).toBeInTheDocument();
+    // The hand-rolled renderer mounts a focusable canvas per instance.
+    expect(screen.getByTestId('tephra-graph-canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('tephra-graph-canvas')).toHaveAttribute('tabindex', '0');
   });
 
   it('honours the persisted local depth without touching global settings', async () => {

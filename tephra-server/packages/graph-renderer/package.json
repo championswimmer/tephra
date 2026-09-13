@@ -24,12 +24,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@react-sigma/core": "5.0.6",
-    "@react-sigma/layout-forceatlas2": "5.0.6",
-    "@tephra/protocol": "0.1.0",
-    "graphology": "0.26.0",
-    "graphology-layout-forceatlas2": "0.10.1",
-    "sigma": "3.0.3"
+    "@tephra/protocol": "0.1.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

@@ -26,7 +26,7 @@ export interface GraphSettings {
   nodeSize: number;
   /** Multiplier for link width. */
   linkThickness: number;
-  // Forces (slider values; mapped onto the ForceAtlas2 layout settings)
+  // Forces (slider values; mapped onto the hand-rolled force simulation)
   centerForce: number;
   repelForce: number;
   linkForce: number;

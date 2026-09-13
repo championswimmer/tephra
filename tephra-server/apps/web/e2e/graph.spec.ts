@@ -98,8 +98,12 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await expect(local.getByText('2 neighbours within depth 1')).toBeVisible({ timeout: 30_000 });
 
   // Global graph with the e2e debug hook enabled via query param.
+  // The hand-rolled canvas renderer mounts exactly one <canvas> per view.
   await page.goto(`/v/${encodeURIComponent(VAULT_NAME)}/graph?e2eGraph=1`);
   const graph = page.getByRole('region', { name: 'Vault graph' });
+  const canvas = graph.locator('canvas');
+  await expect(canvas).toBeVisible({ timeout: 30_000 });
+  await expect(canvas).toHaveCount(1);
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 30_000 });
   await page.waitForFunction(() => (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount === 3, null, {
     timeout: 30_000,
@@ -122,4 +126,27 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await expect(noteButtons).toHaveCount(3);
   await graph.getByLabel('Search').fill('');
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+
+  // Orphan toggle: the fixture vault has no orphans, so the counts hold
+  // steady and the choice persists per vault.
+  await graph.getByLabel('Orphans').uncheck();
+  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+  await graph.getByLabel('Orphans').check();
+  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+
+  // Keyboard pan/zoom on the focused canvas keeps the renderer alive and
+  // the counts unchanged.
+  await canvas.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('+');
+  await page.keyboard.press('-');
+  await expect(canvas).toBeVisible();
+  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
+
+  // Clicking empty canvas space (top-left corner) neither crashes nor
+  // navigates away from the graph.
+  await canvas.click({ position: { x: 5, y: 5 } });
+  await expect(page).toHaveURL(new RegExp(`/v/${encodeURIComponent(VAULT_NAME)}/graph`));
+  await expect(canvas).toBeVisible();
 });

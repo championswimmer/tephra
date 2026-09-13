@@ -12,7 +12,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@react-sigma/core": "5.0.6",
     "@tephra/graph-renderer": "0.1.0",
     "@tephra/protocol": "0.1.0",
     "lucide-react": "^1.45.0",

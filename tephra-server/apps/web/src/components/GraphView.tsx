@@ -1,6 +1,6 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
+import { TephraGraph } from '@tephra/graph-renderer';
 import {
   applyFilters,
   buildGraphModel,
@@ -13,8 +13,6 @@ import {
   subgraph,
   type GraphScope,
 } from '@tephra/graph-renderer/pure';
-import type { TephraGraphProps } from '@tephra/graph-renderer';
-import '@react-sigma/core/lib/style.css';
 import { api } from '../api/client';
 import type { GraphResponse } from '../api/types';
 import { useTheme } from '../theme/ThemeContext';
@@ -24,25 +22,6 @@ import { GraphSettingsPanel } from './GraphSettingsPanel';
 function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
 }
-
-// The TephraGraph component stays out of the initial bundle: pure graph
-// helpers come from the `/pure` subpath (no Sigma), while the component
-// itself loads on demand through this shared promise, so concurrently
-// mounting GraphView instances (global + local) trigger exactly one fetch
-// instead of racing the module registry with duplicate first imports.
-type GraphRendererModule = { TephraGraph: ComponentType<TephraGraphProps> };
-let graphModulePromise: Promise<GraphRendererModule> | null = null;
-function loadGraphModule(): Promise<GraphRendererModule> {
-  graphModulePromise ??= import('@tephra/graph-renderer').catch((error: unknown) => {
-    graphModulePromise = null;
-    throw error;
-  });
-  return graphModulePromise;
-}
-
-const LazyTephraGraph = lazy(() =>
-  loadGraphModule().then((loaded) => ({ default: loaded.TephraGraph })),
-);
 
 export function GraphView({
   vaultId,
@@ -66,7 +45,6 @@ export function GraphView({
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<unknown>();
   const [reloadToken, setReloadToken] = useState(0);
-  const [webglFailed, setWebglFailed] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const { theme } = useTheme();
@@ -77,7 +55,7 @@ export function GraphView({
 
   // Settings are live state backed by localStorage (keyed per vault and
   // scope, so the global and local graphs never share); every change
-  // re-filters the model and re-renders through <TephraGraph> below.
+  // re-filters the model shown in the canvas below.
   // Obsidian defaults hide tags/attachments.
   const [settings, setSettings] = useState(() => loadGraphSettings(vaultId, scope));
   useEffect(() => {
@@ -119,7 +97,6 @@ export function GraphView({
     setGraph(null);
     setError(undefined);
     setHoveredId(null);
-    setWebglFailed(false);
     void api.graph(vaultId).then(
       (result) => {
         if (!cancelled) setGraph(result);
@@ -133,8 +110,8 @@ export function GraphView({
     };
   }, [vaultId, reloadToken]);
 
-  // Debug hook for the Playwright graph pass (§10): live in dev, and in
-  // any build when `?e2eGraph=1` is present. Read-only counts only.
+  // Debug hook for the Playwright graph pass: live in dev, and in any
+  // build when `?e2eGraph=1` is present. Read-only counts only.
   useEffect(() => {
     const debug =
       import.meta.env.DEV || new URLSearchParams(window.location.search).has('e2eGraph');
@@ -182,17 +159,17 @@ export function GraphView({
     if (node && isNavigable(node.kind)) onOpenRef.current(node.path);
   };
   const handleNodeHover = (id: string | null) => setHoveredId(id);
-  const handleReady = (counts: { nodeCount: number; linkCount: number }) => {
+  const handleReady = () => {
     const debug =
       import.meta.env.DEV || new URLSearchParams(window.location.search).has('e2eGraph');
-    if (debug && graph) {
+    if (debug && filtered && graph) {
       (window as unknown as { __tephraGraph?: unknown }).__tephraGraph = {
-        ...counts,
+        nodeCount: filtered.model.nodes.length,
+        linkCount: filtered.model.links.length,
         revision: graph.revision,
       };
     }
   };
-  const handleWebglError = () => setWebglFailed(true);
 
   return (
     <section className="graph-view" aria-label={rootId ? 'Local graph' : 'Vault graph'}>
@@ -236,34 +213,25 @@ export function GraphView({
           depthVisible={rootId !== undefined}
         />
       </div>
-      {webglFailed ? (
-        <p className="notice" role="status">
-          The interactive graph needs WebGL, which this browser could not provide. The full note
-          list below offers the same notes as buttons.
-        </p>
-      ) : (
-        filtered && (
-          <div
-            className="graph-canvas"
-            role="img"
-            aria-label={`Interactive note relationship graph with ${visible?.nodes.length ?? 0} notes and ${visible?.links.length ?? 0} connections. The note list below offers the same notes as buttons.`}
-          >
-            <Suspense fallback={<Loading label="Loading graph renderer…" />}>
-              <LazyTephraGraph
-                model={filtered.model}
-                settings={settings}
-                groupColors={groupColors}
-                palette={palette}
-                selectedId={selectedId ?? null}
-                seed={graph.revision}
-                onNodeClick={handleNodeClick}
-                onNodeHover={handleNodeHover}
-                onReady={handleReady}
-                onWebglError={handleWebglError}
-              />
-            </Suspense>
-          </div>
-        )
+      {filtered && (
+        <div
+          className="graph-canvas"
+          role="img"
+          aria-label={`Interactive note relationship graph with ${visible?.nodes.length ?? 0} notes and ${visible?.links.length ?? 0} connections. The note list below offers the same notes as buttons.`}
+          data-testid="graph-canvas"
+        >
+          <TephraGraph
+            model={filtered.model}
+            settings={settings}
+            groupColors={groupColors}
+            palette={palette}
+            selectedId={selectedId ?? null}
+            seed={graph.revision}
+            onNodeClick={handleNodeClick}
+            onNodeHover={handleNodeHover}
+            onReady={handleReady}
+          />
+        </div>
       )}
       {activeNode && (
         <div className="graph-selection">

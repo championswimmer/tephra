@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,35 +18,35 @@ const hoisted = vi.hoisted(() => ({
     seed: number;
     onNodeClick: (id: string) => void;
     onNodeHover: (id: string | null) => void;
-    onReady: (counts: { nodeCount: number; linkCount: number }) => void;
-    onWebglError: (error: unknown) => void;
+    onReady: () => void;
   } | null,
+  lastKey: null as string | null,
 }));
 
-// The package barrel pulls in Sigma (WebGL) which cannot evaluate under
-// jsdom (top-level `WebGL2RenderingContext` constants), so the mock loads
-// the pure sources directly (model/filter/depth/settings/groups/palette —
-// none touch Sigma) plus a TephraGraph stub.
-vi.mock('@tephra/graph-renderer', async () => {
-  const model = await import('../../../packages/graph-renderer/src/model');
-  const filter = await import('../../../packages/graph-renderer/src/filter');
-  const depth = await import('../../../packages/graph-renderer/src/depth');
-  const settings = await import('../../../packages/graph-renderer/src/settings');
-  const groups = await import('../../../packages/graph-renderer/src/groups');
-  const palette = await import('../../../packages/graph-renderer/src/palette');
-  return {
-    ...model,
-    ...filter,
-    ...depth,
-    ...settings,
-    ...groups,
-    ...palette,
-    TephraGraph: (props: (typeof hoisted)['lastProps']) => {
-      hoisted.lastProps = props;
-      return <div data-testid="tephra-graph-stub" />;
-    },
-  };
-});
+// The canvas renderer needs a real 2D context + ResizeObserver, neither of
+// which exists under jsdom — so the mock renders a focusable <canvas> that
+// records its props, fires onReady on mount, maps clicks to node 'a', and
+// records keyboard events for the keyboard-pan assertion.
+vi.mock('@tephra/graph-renderer', () => ({
+  TephraGraph: (props: (typeof hoisted)['lastProps']) => {
+    hoisted.lastProps = props;
+    React.useEffect(() => {
+      props?.onReady?.();
+    }, []);
+    return (
+      <canvas
+        data-testid="tephra-graph-canvas"
+        tabIndex={0}
+        role="img"
+        aria-label="Test graph canvas"
+        onClick={() => props?.onNodeClick?.('a')}
+        onKeyDown={(event: React.KeyboardEvent) => {
+          hoisted.lastKey = event.key;
+        }}
+      />
+    );
+  },
+}));
 
 const graphFixture: GraphResponse = {
   revision: 3,
@@ -72,6 +73,14 @@ const graphFixture: GraphResponse = {
   ],
 };
 
+const orphanFixture: GraphResponse = {
+  ...graphFixture,
+  nodes: [
+    ...graphFixture.nodes,
+    { id: 'solo', path: 'solo.md', title: 'Solo', kind: 'note', tags: [], createdAt: 9 },
+  ],
+};
+
 function mockGraph(graph: GraphResponse) {
   vi.mocked(api.graph).mockResolvedValue(graph);
 }
@@ -91,6 +100,7 @@ function pushedIds(): string[] {
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.lastProps = null;
+  hoisted.lastKey = null;
   window.localStorage.clear();
 });
 
@@ -101,15 +111,25 @@ describe('GraphView shell', () => {
     expect(screen.getByText('Loading graph…')).toBeInTheDocument();
   });
 
-  it('passes the Obsidian-default filtered model and group colors to TephraGraph', async () => {
+  it('mounts the canvas renderer with the Obsidian-default filtered model', async () => {
     mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
+    // The hand-rolled renderer mounts exactly one focusable canvas.
+    expect(screen.getByTestId('tephra-graph-canvas')).toBeInTheDocument();
     // Defaults hide tags and attachments; notes + unresolved survive.
     expect(pushedIds()).toEqual(['a', 'b', 'unresolved:Missing']);
     expect(hoisted.lastProps?.groupColors).toEqual([null, null, null]);
     expect(hoisted.lastProps?.seed).toBe(3);
     expect(hoisted.lastProps?.selectedId).toBeNull();
+  });
+
+  it('reports header counts matching the pushed model', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    // 3 visible nodes, 2 surviving links (a–b, b–Missing).
+    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
   });
 
   it('opens notes on node click but ignores synthesized tag nodes', async () => {
@@ -120,6 +140,16 @@ describe('GraphView shell', () => {
     hoisted.lastProps?.onNodeClick('tag:x');
     expect(onOpen).not.toHaveBeenCalled();
     hoisted.lastProps?.onNodeClick('a');
+    expect(onOpen).toHaveBeenCalledWith('a.md');
+  });
+
+  it('navigates when the canvas itself is clicked', async () => {
+    const user = userEvent.setup();
+    mockGraph(graphFixture);
+    const onOpen = vi.fn();
+    renderGraph(<GraphView vaultId="vault-1" onOpen={onOpen} />);
+    await ready();
+    await user.click(screen.getByTestId('tephra-graph-canvas'));
     expect(onOpen).toHaveBeenCalledWith('a.md');
   });
 
@@ -135,6 +165,31 @@ describe('GraphView shell', () => {
     expect(pushedIds()).toContain('img');
     hoisted.lastProps?.onNodeClick('img');
     expect(onOpen).toHaveBeenCalledWith('img.png');
+  });
+
+  it('forwards canvas keyboard events and keeps the canvas focusable', async () => {
+    mockGraph(graphFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    const canvas = screen.getByTestId('tephra-graph-canvas');
+    expect(canvas).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' });
+    expect(hoisted.lastKey).toBe('ArrowRight');
+    fireEvent.keyDown(canvas, { key: '+' });
+    expect(hoisted.lastKey).toBe('+');
+  });
+
+  it('hides orphan notes when the orphan toggle is off', async () => {
+    const user = userEvent.setup();
+    mockGraph(orphanFixture);
+    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
+    await ready();
+    // Orphans shown by default: the isolated solo note survives.
+    expect(pushedIds()).toContain('solo');
+    await user.click(screen.getByRole('button', { name: 'Graph settings' }));
+    await user.click(screen.getByLabelText('Orphans'));
+    await waitFor(() => expect(pushedIds()).not.toContain('solo'));
+    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
   });
 
   it('shows the selection bar for the hovered node', async () => {
@@ -153,13 +208,15 @@ describe('GraphView shell', () => {
     expect(hoisted.lastProps?.selectedId).toBe('b');
   });
 
-  it('shows the WebGL fallback notice when the renderer reports an error', async () => {
+  it('publishes the __tephraGraph debug hook with live counts', async () => {
     mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
-    hoisted.lastProps?.onWebglError(new Error('no webgl'));
-    expect(await screen.findByText(/needs WebGL/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Alpha' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph,
+      ).toMatchObject({ nodeCount: 3 }),
+    );
   });
 
   it('reports an empty graph and surfaces load errors', async () => {
