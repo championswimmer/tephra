@@ -43,6 +43,9 @@ const app = createApp({
 });
 
 const webRoot = process.env.TEPHRA_WEB_ROOT ?? './tephra-server/apps/web/dist';
+// Browsers auto-request /favicon.ico; serve the reused landing-page mark
+// (logo-main.svg) so the request does not fall through to index.html.
+app.get('/favicon.ico', serveStatic({ path: `${webRoot}/logo-main.svg` }));
 app.use('*', serveStatic({ root: webRoot, index: 'index.html' }));
 app.get('*', serveStatic({ path: `${webRoot}/index.html` }));
 

@@ -9,6 +9,7 @@ import type {
   User,
   Vault,
 } from './types';
+import { clearGraphCache, loadGraphCache, saveGraphCache } from './graphCache';
 
 export class ApiError extends Error {
   constructor(
@@ -128,7 +129,32 @@ export class ApiClient {
   // The graph endpoint is pure derived state with an ETag; reuse the last
   // payload on 304 instead of re-downloading it.
   private readonly graphCache = new Map<string, { etag: string; body: GraphResponse }>();
+  // In-flight IndexedDB hydrations, one per vault: concurrent graph() calls
+  // share the same read so the memory Map is populated exactly once.
+  private readonly graphHydration = new Map<string, Promise<void>>();
+  private hydrateGraphCache(vaultIdOrName: string): Promise<void> {
+    let pending = this.graphHydration.get(vaultIdOrName);
+    if (!pending) {
+      pending = (async () => {
+        // loadGraphCache is total (null on miss/failure), but stay
+        // defensive — hydration must never reject into graph().
+        try {
+          if (this.graphCache.has(vaultIdOrName)) return;
+          const cached = await loadGraphCache(vaultIdOrName);
+          if (cached && !this.graphCache.has(vaultIdOrName))
+            this.graphCache.set(vaultIdOrName, { etag: cached.etag, body: cached.body });
+        } catch {
+          // Degrade to network-only.
+        }
+      })();
+      this.graphHydration.set(vaultIdOrName, pending);
+    }
+    return pending;
+  }
   graph = async (vaultIdOrName: string): Promise<GraphResponse> => {
+    // Lazily hydrate the memory Map from IndexedDB so reloads send
+    // If-None-Match and can get a cheap 304 instead of a full download.
+    await this.hydrateGraphCache(vaultIdOrName);
     const path = `/vaults/${encodeURIComponent(vaultIdOrName)}/graph`;
     const cached = this.graphCache.get(vaultIdOrName);
     const response = await this.fetchRaw(
@@ -138,8 +164,14 @@ export class ApiClient {
     if (response.status === 304 && cached) return cached.body;
     const body = (await response.json()) as GraphResponse;
     const etag = response.headers.get('etag');
-    if (etag) this.graphCache.set(vaultIdOrName, { etag, body });
-    else this.graphCache.delete(vaultIdOrName);
+    if (etag) {
+      this.graphCache.set(vaultIdOrName, { etag, body });
+      // Persist for the next page load; the helper never rejects.
+      await saveGraphCache(vaultIdOrName, { etag, body });
+    } else {
+      this.graphCache.delete(vaultIdOrName);
+      await clearGraphCache(vaultIdOrName);
+    }
     return body;
   };
   links = (vaultIdOrName: string, fileId: string) =>

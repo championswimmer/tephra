@@ -1,7 +1,7 @@
 import type { BlobStore } from '@tephra/blob-store-core';
 import type { Clock, IdGenerator } from '@tephra/core';
 import type { Database } from '@tephra/database-core';
-import { buildIndexRows } from '@tephra/indexer';
+import { buildGraphPayload, buildIndexRows } from '@tephra/indexer';
 import { createVaultPathIndex, resolveLink } from '@tephra/link-resolver';
 import { parseNote, renderMarkdown } from '@tephra/markdown';
 
@@ -13,6 +13,35 @@ export function createRuntimeIndexService(dependencies: {
   clock: Clock;
   ids: IdGenerator;
 }): IndexService {
+  // The graph payload is pure derived state of the index inputs: rebuild the
+  // materialized cache row for the revision that just committed. Failures
+  // here must never fail the index itself — the next graph request rebuilds
+  // on a cache miss — so refresh errors delete the row and stay silent.
+  const refreshGraphCache = async (vaultId: string, indexedRevision: number): Promise<void> => {
+    try {
+      const vault = await dependencies.database.vaults.findById(vaultId);
+      if (!vault) return;
+      const [files, metadataRows, links] = await Promise.all([
+        dependencies.database.vaultFiles.listByVault(vaultId),
+        dependencies.database.noteIndex.listMetadata(vaultId),
+        dependencies.database.noteIndex.listLinks(vaultId),
+      ]);
+      const etag = `W/"${vault.latestRevision}-${indexedRevision}-graph-v2"`;
+      await dependencies.database.graphCache.upsert({
+        vaultId,
+        revision: vault.latestRevision,
+        indexedRevision,
+        etag,
+        payloadJson: JSON.stringify(
+          buildGraphPayload({ files, metadataRows, links, latestRevision: vault.latestRevision, indexedRevision }),
+        ),
+        updatedAt: dependencies.clock.now(),
+      });
+    } catch {
+      await dependencies.database.graphCache.deleteByVault(vaultId).catch(() => undefined);
+    }
+  };
+
   const indexVault = async (vaultId: string, revision: number): Promise<void> => {
     try {
       const files = await dependencies.database.vaultFiles.listByVault(vaultId);
@@ -45,7 +74,11 @@ export function createRuntimeIndexService(dependencies: {
         }
         await repositories.noteIndex.setState({ vaultId, indexedRevision: revision, lastError: null });
       });
+      await refreshGraphCache(vaultId, revision);
     } catch (error) {
+      // Never serve a graph built from a superseded or failed index
+      // revision: drop the row so the next request rebuilds from scratch.
+      await dependencies.database.graphCache.deleteByVault(vaultId).catch(() => undefined);
       await dependencies.database.noteIndex.setState({
         vaultId,
         indexedRevision: Math.max(0, revision - 1),

@@ -70,6 +70,23 @@ function linkWidth(count: number, linkThickness: number): number {
   return linkThickness * (1 + Math.log2(Math.max(1, count)));
 }
 
+/**
+ * Order-sensitive id-set comparison for `setModel` change detection
+ * (plan 016 Lane C): same verdicts as the old
+ * `` `${len}:${ids.join('\n')}` `` string compare (length + per-id `===`,
+ * so reorders count as changed) with O(1) extra garbage. Browser-safe.
+ */
+export function sameIdSet(
+  prev: readonly string[] | null,
+  next: readonly string[],
+): boolean {
+  if (prev === null || prev.length !== next.length) return false;
+  for (let i = 0; i < next.length; i += 1) {
+    if (prev[i] !== next[i]) return false;
+  }
+  return true;
+}
+
 function baseNodeColor(kind: string, palette: GraphPalette): string {
   switch (kind) {
     case 'tag':
@@ -120,8 +137,12 @@ export function createGraphRenderer(
   let radii: number[] = [];
   /** Node indices sorted by degree desc — drives the label cap. */
   let labelOrder: number[] = [];
-  /** Signature of the current node id-set; a change means fresh layout + fit. */
-  let idSignature: string | null = null;
+  /**
+   * Ids of the current node set (order-sensitive); a change means fresh
+   * layout + fit. Compared element-wise in `setModel` so no mega-string
+   * is ever allocated (plan 016 Lane C).
+   */
+  let lastIds: string[] | null = null;
   /** Previous positions by id, kept across setModel so slider tweaks don't jump. */
   const prevPositions = new Map<string, { x: number; y: number }>();
 
@@ -147,10 +168,6 @@ export function createGraphRenderer(
   let lastX = 0;
   let lastY = 0;
   let panning = false;
-
-  function signatureFor(m: GraphModel): string {
-    return `${m.nodes.length}:${m.nodes.map((n) => n.id).join('\n')}`;
-  }
 
   /**
    * Rebuild the hit-test index from the frame's visible nodes only, so the
@@ -254,10 +271,10 @@ export function createGraphRenderer(
       .map((_, i) => i)
       .sort((a, b) => next.nodes[b]!.degree - next.nodes[a]!.degree);
 
-    const sig = signatureFor(next);
-    const firstLoad = idSignature === null;
-    const sameIds = sig === idSignature;
-    idSignature = sig;
+    const nextIds = next.nodes.map((n) => n.id);
+    const firstLoad = lastIds === null;
+    const sameIds = sameIdSet(lastIds, nextIds);
+    if (!sameIds) lastIds = nextIds;
 
     sim = createSimulation(
       next.nodes.map((n, i) => {
