@@ -12,6 +12,7 @@ import {
 import { ApiError, api } from '../api/client';
 import type { LinksResponse, ResolveResponse, Vault, VaultFile } from '../api/types';
 import { AttachmentViewer } from '../components/AttachmentViewer';
+import { FileBreadcrumb } from '../components/FileBreadcrumb';
 import { FileBrowser } from '../components/FileBrowser';
 import { GraphView } from '../components/GraphView';
 import { LocalGraph } from '../components/LocalGraph';
@@ -300,6 +301,7 @@ export function VaultWorkspace() {
               </EmptyState>
             ) : (
               <>
+                <FileBreadcrumb vaultName={vault.name} path={selected.path} />
                 {movedFrom && (
                   <p className="notice" role="status">
                     Moved from {movedFrom}
