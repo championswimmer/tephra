@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc"><title id="title">Tephra — Crystal Bloom</title><desc id="desc">Long planes · inspired by the older crystal. A billowing purple ash cloud rises from an original faceted volcanic mountain.</desc><g transform="translate(15.36 -5) scale(.88)">
+
+<path fill="#955CE4" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1 25-7 48 8 51 30 19 1 32 14 32 30 0 19-15 31-36 31h-39l-16 34-17 12-18-14-17-32Z"/>
+<path fill="#C49BFA" d="M61 111C39 111 24 97 24 79c0-16 11-30 28-32 3-20 21-33 41-28 16-18 43-16 57 1-28-3-47 14-47 36-26-5-46 15-42 55Z"/>
+<path fill="#AA75ED" d="M103 56c0-22 19-39 47-36 25-7 48 8 51 30-20-9-39-4-48 9-13-9-31-10-50-3Z"/>
+<path fill="#713CBB" d="M103 56c-10 25 1 51 29 55h26l-16 34-17 12-18-14-17-32H61c-4-40 16-60 42-55Z"/>
+
+</g>
+<defs>
+ <linearGradient id="old-front" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#A780EE"/><stop offset="1" stop-color="#6F47BF"/></linearGradient>
+ <linearGradient id="old-edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#C6A7FA"/><stop offset="1" stop-color="#9770D8"/></linearGradient>
+</defs>
+<path fill="#7448B9" d="m57 208 20-33 11-27 23-15 17 13 22-12 22 28 10 28 17 20-35 27-51 5-37-14Z"/>
+<path fill="url(#old-edge)" d="m57 208 20-33 11-27 23-15-16 45Z"/>
+<path fill="#CDB0FA" d="m111 133 17 13-33 32Z"/>
+<path fill="#A97DE9" d="m128 146 22-12 22 28-34 8Z"/>
+<path fill="url(#old-front)" d="m95 178 33-32 10 24 26 67-51 5Z"/>
+<path fill="#5D359C" d="m138 170 34-8 10 28 17 20-35 27Z"/>
+<path fill="#8254C8" d="m57 208 38-30 18 64-37-14Z"/>
+</svg>
