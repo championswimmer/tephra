@@ -20,15 +20,37 @@ async function database(): Promise<{ db: SqliteDatabase; filename: string }> {
 }
 
 async function seed(db: SqliteDatabase): Promise<void> {
-  await db.users.insert({ id: 'user-1', email: 'one@example.com', passwordHash: null, createdAt: 1, updatedAt: 1 });
-  await db.vaults.insert({ id: 'vault-1', ownerUserId: 'user-1', name: 'Vault', latestRevision: 0, createdAt: 2, updatedAt: 2 });
-  await db.devices.insert({ id: 'device-1', userId: 'user-1', name: 'Phone', platform: 'mobile', createdAt: 3, lastSeenAt: 3 });
+  await db.users.insert({
+    id: 'user-1',
+    email: 'one@example.com',
+    passwordHash: null,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  await db.vaults.insert({
+    id: 'vault-1',
+    ownerUserId: 'user-1',
+    name: 'Vault',
+    latestRevision: 0,
+    createdAt: 2,
+    updatedAt: 2,
+  });
+  await db.devices.insert({
+    id: 'device-1',
+    userId: 'user-1',
+    name: 'Phone',
+    platform: 'mobile',
+    createdAt: 3,
+    lastSeenAt: 3,
+  });
   await db.blobs.insert({ hash: 'a'.repeat(64), size: 5, mimeType: 'text/markdown', createdAt: 4 });
 }
 
 afterEach(async () => {
   while (databases.length > 0) databases.pop()?.close();
-  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
 });
 
 describe('SQLite database adapter', () => {
@@ -36,14 +58,76 @@ describe('SQLite database adapter', () => {
     const { db, filename } = await database();
     await seed(db);
     await db.sessions.insert({ id: 'session-1', userId: 'user-1', expiresAt: 10, createdAt: 4 });
-    await db.apiTokens.insert({ id: 'token-1', userId: 'user-1', vaultId: 'vault-1', deviceId: 'device-1', tokenHash: 'secret-hash', name: 'Sync', scopes: ['vault:upload', 'vault:read-metadata'], createdAt: 5, lastUsedAt: null, expiresAt: null, revokedAt: null });
-    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 6 });
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 7, mimeType: 'text/markdown', kind: 'markdown', updatedRevision: 1 });
-    await db.fileVersions.insertMany([{ id: 'version-1', vaultId: 'vault-1', fileId: 'file-1', revision: 1, path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 7, changeType: 'create', createdAt: 6 }]);
+    await db.apiTokens.insert({
+      id: 'token-1',
+      userId: 'user-1',
+      vaultId: 'vault-1',
+      deviceId: 'device-1',
+      tokenHash: 'secret-hash',
+      name: 'Sync',
+      scopes: ['vault:upload', 'vault:read-metadata'],
+      createdAt: 5,
+      lastUsedAt: null,
+      expiresAt: null,
+      revokedAt: null,
+    });
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 1,
+      manifestHash: 'manifest-1',
+      deviceId: 'device-1',
+      createdAt: 6,
+    });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Note.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 7,
+      mimeType: 'text/markdown',
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await db.fileVersions.insertMany([
+      {
+        id: 'version-1',
+        vaultId: 'vault-1',
+        fileId: 'file-1',
+        revision: 1,
+        path: 'Note.md',
+        blobHash: 'a'.repeat(64),
+        size: 5,
+        mtime: 7,
+        changeType: 'create',
+        createdAt: 6,
+      },
+    ]);
 
-    const metadata: NoteMetadata = { fileId: 'file-1', vaultId: 'vault-1', indexedBlobHash: 'a'.repeat(64), title: 'Note', frontmatter: { nested: { enabled: true }, count: 2 }, headings: [{ text: 'Title' }], tags: ['one', 'two'], blocks: [{ id: 'block' }], indexedAt: 8 };
+    const metadata: NoteMetadata = {
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      indexedBlobHash: 'a'.repeat(64),
+      title: 'Note',
+      frontmatter: { nested: { enabled: true }, count: 2 },
+      headings: [{ text: 'Title' }],
+      tags: ['one', 'two'],
+      blocks: [{ id: 'block' }],
+      indexedAt: 8,
+    };
     await db.noteIndex.upsertMetadata(metadata);
-    const link: NoteLink = { id: 'link-1', vaultId: 'vault-1', sourceFileId: 'file-1', rawText: '[[Note]]', linkPath: 'Note', subpath: null, displayText: null, isEmbed: false, targetFileId: 'file-1', createdAt: 8 };
+    const link: NoteLink = {
+      id: 'link-1',
+      vaultId: 'vault-1',
+      sourceFileId: 'file-1',
+      rawText: '[[Note]]',
+      linkPath: 'Note',
+      subpath: null,
+      displayText: null,
+      isEmbed: false,
+      targetFileId: 'file-1',
+      createdAt: 8,
+    };
     await db.noteIndex.replaceLinksForSource('vault-1', 'file-1', [link]);
     await db.noteIndex.setState({ vaultId: 'vault-1', indexedRevision: 1, lastError: null });
 
@@ -51,17 +135,28 @@ describe('SQLite database adapter', () => {
     expect(await db.users.findByEmail('one@example.com')).toMatchObject({ id: 'user-1' });
     expect(await db.sessions.findById('session-1')).not.toBeNull();
     expect(await db.vaults.listByOwner('user-1')).toHaveLength(1);
-    expect(await db.devices.listByUser('user-1')).toEqual([expect.objectContaining({ platform: 'mobile' })]);
-    expect((await db.apiTokens.findByTokenHash('secret-hash'))?.scopes).toEqual(['vault:upload', 'vault:read-metadata']);
+    expect(await db.devices.listByUser('user-1')).toEqual([
+      expect.objectContaining({ platform: 'mobile' }),
+    ]);
+    expect((await db.apiTokens.findByTokenHash('secret-hash'))?.scopes).toEqual([
+      'vault:upload',
+      'vault:read-metadata',
+    ]);
     expect(await db.blobs.findByHashes(['missing', 'a'.repeat(64)])).toHaveLength(1);
-    expect(await db.vaultFiles.findByPath('vault-1', 'Note.md')).toMatchObject({ fileId: 'file-1' });
+    expect(await db.vaultFiles.findByPath('vault-1', 'Note.md')).toMatchObject({
+      fileId: 'file-1',
+    });
     expect(await db.vaultRevisions.findLatest('vault-1')).toMatchObject({ revision: 1 });
     expect(await db.vaultRevisions.findByManifestHash('vault-1', 'manifest-1')).not.toBeNull();
     expect(await db.fileVersions.listByFile('vault-1', 'file-1')).toHaveLength(1);
     expect(await db.noteIndex.findMetadata('file-1')).toEqual(metadata);
     expect(await db.noteIndex.listLinksBySource('vault-1', 'file-1')).toEqual([link]);
     expect(await db.noteIndex.listLinksByTarget('vault-1', 'file-1')).toEqual([link]);
-    expect(await db.noteIndex.getState('vault-1')).toEqual({ vaultId: 'vault-1', indexedRevision: 1, lastError: null });
+    expect(await db.noteIndex.getState('vault-1')).toEqual({
+      vaultId: 'vault-1',
+      indexedRevision: 1,
+      lastError: null,
+    });
 
     db.close();
     databases.splice(databases.indexOf(db), 1);
@@ -74,25 +169,103 @@ describe('SQLite database adapter', () => {
 
   it('rolls back the complete async transaction and enforces foreign keys', async () => {
     const { db } = await database();
-    await expect(db.transaction(async (repositories) => {
-      await repositories.users.insert({ id: 'rollback', email: 'rollback@example.com', passwordHash: null, createdAt: 1, updatedAt: 1 });
-      await Promise.resolve();
-      throw new Error('fail');
-    })).rejects.toThrow('fail');
+    await expect(
+      db.transaction(async (repositories) => {
+        await repositories.users.insert({
+          id: 'rollback',
+          email: 'rollback@example.com',
+          passwordHash: null,
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        await Promise.resolve();
+        throw new Error('fail');
+      }),
+    ).rejects.toThrow('fail');
     expect(await db.users.findById('rollback')).toBeNull();
-    await expect(db.sessions.insert({ id: 'orphan', userId: 'missing', expiresAt: 1, createdAt: 1 })).rejects.toThrow();
+    await expect(
+      db.sessions.insert({ id: 'orphan', userId: 'missing', expiresAt: 1, createdAt: 1 }),
+    ).rejects.toThrow();
   });
 
   it('enforces unique identities, paths, token hashes, and manifests', async () => {
     const { db } = await database();
     await seed(db);
-    await expect(db.users.insert({ id: 'user-2', email: 'one@example.com', passwordHash: null, createdAt: 1, updatedAt: 1 })).rejects.toThrow();
-    await db.apiTokens.insert({ id: 'token-1', userId: 'user-1', vaultId: 'vault-1', deviceId: null, tokenHash: 'same', name: 'One', scopes: [], createdAt: 1, lastUsedAt: null, expiresAt: null, revokedAt: null });
-    await expect(db.apiTokens.insert({ id: 'token-2', userId: 'user-1', vaultId: 'vault-1', deviceId: null, tokenHash: 'same', name: 'Two', scopes: [], createdAt: 1, lastUsedAt: null, expiresAt: null, revokedAt: null })).rejects.toThrow();
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'same.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    await expect(db.vaultFiles.upsert({ fileId: 'file-2', vaultId: 'vault-1', path: 'same.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 })).rejects.toThrow();
-    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'same-manifest', deviceId: 'device-1', createdAt: 1 });
-    await expect(db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 2, manifestHash: 'same-manifest', deviceId: 'device-1', createdAt: 2 })).rejects.toThrow();
+    await expect(
+      db.users.insert({
+        id: 'user-2',
+        email: 'one@example.com',
+        passwordHash: null,
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    ).rejects.toThrow();
+    await db.apiTokens.insert({
+      id: 'token-1',
+      userId: 'user-1',
+      vaultId: 'vault-1',
+      deviceId: null,
+      tokenHash: 'same',
+      name: 'One',
+      scopes: [],
+      createdAt: 1,
+      lastUsedAt: null,
+      expiresAt: null,
+      revokedAt: null,
+    });
+    await expect(
+      db.apiTokens.insert({
+        id: 'token-2',
+        userId: 'user-1',
+        vaultId: 'vault-1',
+        deviceId: null,
+        tokenHash: 'same',
+        name: 'Two',
+        scopes: [],
+        createdAt: 1,
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      }),
+    ).rejects.toThrow();
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'same.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await expect(
+      db.vaultFiles.upsert({
+        fileId: 'file-2',
+        vaultId: 'vault-1',
+        path: 'same.md',
+        blobHash: 'a'.repeat(64),
+        size: 5,
+        mtime: 1,
+        kind: 'markdown',
+        updatedRevision: 1,
+      }),
+    ).rejects.toThrow();
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 1,
+      manifestHash: 'same-manifest',
+      deviceId: 'device-1',
+      createdAt: 1,
+    });
+    await expect(
+      db.vaultRevisions.insert({
+        vaultId: 'vault-1',
+        revision: 2,
+        manifestHash: 'same-manifest',
+        deviceId: 'device-1',
+        createdAt: 2,
+      }),
+    ).rejects.toThrow();
   });
 
   it('enforces globally unique vault names case-sensitively and resolves by name', async () => {
@@ -102,11 +275,113 @@ describe('SQLite database adapter', () => {
     expect(await db.vaults.findByName('vault')).toBeNull();
     expect(await db.vaults.findByName('Missing')).toBeNull();
     await expect(
-      db.vaults.insert({ id: 'vault-2', ownerUserId: 'user-1', name: 'Vault', latestRevision: 0, createdAt: 3, updatedAt: 3 }),
+      db.vaults.insert({
+        id: 'vault-2',
+        ownerUserId: 'user-1',
+        name: 'Vault',
+        latestRevision: 0,
+        createdAt: 3,
+        updatedAt: 3,
+      }),
     ).rejects.toThrow();
     // Case variants are distinct names (BINARY collation).
-    await db.vaults.insert({ id: 'vault-3', ownerUserId: 'user-1', name: 'vault', latestRevision: 0, createdAt: 3, updatedAt: 3 });
+    await db.vaults.insert({
+      id: 'vault-3',
+      ownerUserId: 'user-1',
+      name: 'vault',
+      latestRevision: 0,
+      createdAt: 3,
+      updatedAt: 3,
+    });
     expect(await db.vaults.findByName('vault')).toMatchObject({ id: 'vault-3' });
+  });
+
+  it('cascades vault deletion to vault-scoped rows', async () => {
+    const { db } = await database();
+    await seed(db);
+    await db.apiTokens.insert({
+      id: 'token-1',
+      userId: 'user-1',
+      vaultId: 'vault-1',
+      deviceId: 'device-1',
+      tokenHash: 'secret-hash',
+      name: 'Sync',
+      scopes: ['vault:upload'],
+      createdAt: 5,
+      lastUsedAt: null,
+      expiresAt: null,
+      revokedAt: null,
+    });
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 1,
+      manifestHash: 'manifest-1',
+      deviceId: 'device-1',
+      createdAt: 6,
+    });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Note.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 7,
+      mimeType: 'text/markdown',
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await db.fileVersions.insertMany([
+      {
+        id: 'version-1',
+        vaultId: 'vault-1',
+        fileId: 'file-1',
+        revision: 1,
+        path: 'Note.md',
+        blobHash: 'a'.repeat(64),
+        size: 5,
+        mtime: 7,
+        changeType: 'create',
+        createdAt: 6,
+      },
+    ]);
+    await db.noteIndex.upsertMetadata({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      indexedBlobHash: 'a'.repeat(64),
+      title: 'Note',
+      frontmatter: {},
+      headings: [],
+      tags: [],
+      blocks: [],
+      indexedAt: 8,
+    });
+    await db.noteIndex.replaceLinksForSource('vault-1', 'file-1', [
+      {
+        id: 'link-1',
+        vaultId: 'vault-1',
+        sourceFileId: 'file-1',
+        rawText: '[[Note]]',
+        linkPath: 'Note',
+        subpath: null,
+        displayText: null,
+        isEmbed: false,
+        targetFileId: 'file-1',
+        createdAt: 8,
+      },
+    ]);
+    await db.noteIndex.setState({ vaultId: 'vault-1', indexedRevision: 1, lastError: null });
+
+    await db.vaults.delete('vault-1');
+
+    expect(await db.vaults.findById('vault-1')).toBeNull();
+    expect(await db.apiTokens.findById('token-1')).toBeNull();
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toBeNull();
+    expect(await db.vaultRevisions.findLatest('vault-1')).toBeNull();
+    expect(await db.fileVersions.listByFile('vault-1', 'file-1')).toEqual([]);
+    expect(await db.noteIndex.findMetadata('file-1')).toBeNull();
+    expect(await db.noteIndex.listLinksBySource('vault-1', 'file-1')).toEqual([]);
+    expect(await db.noteIndex.getState('vault-1')).toBeNull();
+    expect(await db.blobs.findByHash('a'.repeat(64))).not.toBeNull();
   });
 
   it('serializes vault transactions', async () => {
@@ -115,8 +390,12 @@ describe('SQLite database adapter', () => {
     const events: string[] = [];
     let release!: () => void;
     let markStarted!: () => void;
-    const pause = new Promise<void>((resolve) => { release = resolve; });
-    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const pause = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const first = db.transaction(async (repositories) => {
       await repositories.lockVault('vault-1');
       events.push('first-start');
@@ -155,9 +434,37 @@ describe('SQLite database adapter', () => {
     await db.blobs.insert({ hash: oldOrphan, size: 1, mimeType: null, createdAt: 10 });
     await db.blobs.insert({ hash: recentOrphan, size: 1, mimeType: null, createdAt: 100 });
     await db.blobs.insert({ hash: versionOnly, size: 1, mimeType: null, createdAt: 10 });
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: referenced, size: 1, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 11 });
-    await db.fileVersions.insertMany([{ id: 'version-1', vaultId: 'vault-1', fileId: 'file-9', revision: 1, path: 'Old.md', blobHash: versionOnly, size: 1, mtime: 1, changeType: 'create', createdAt: 11 }]);
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Note.md',
+      blobHash: referenced,
+      size: 1,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 1,
+      manifestHash: 'manifest-1',
+      deviceId: 'device-1',
+      createdAt: 11,
+    });
+    await db.fileVersions.insertMany([
+      {
+        id: 'version-1',
+        vaultId: 'vault-1',
+        fileId: 'file-9',
+        revision: 1,
+        path: 'Old.md',
+        blobHash: versionOnly,
+        size: 1,
+        mtime: 1,
+        changeType: 'create',
+        createdAt: 11,
+      },
+    ]);
 
     // Cutoff 50: 'a' (seeded orphan, created_at 4) and the old orphan qualify;
     // current-file, version-only, and recent blobs are excluded.
@@ -165,7 +472,9 @@ describe('SQLite database adapter', () => {
       'a'.repeat(64),
       oldOrphan,
     ]);
-    expect((await db.blobs.findUnreferencedOlderThan(50, 1)).map((item) => item.hash)).toEqual(['a'.repeat(64)]);
+    expect((await db.blobs.findUnreferencedOlderThan(50, 1)).map((item) => item.hash)).toEqual([
+      'a'.repeat(64),
+    ]);
     expect(await db.blobs.findUnreferencedOlderThan(50, 0)).toEqual([]);
     expect(await db.blobs.findUnreferencedOlderThan(4, 10)).toEqual([]);
   });
@@ -173,13 +482,53 @@ describe('SQLite database adapter', () => {
   it('isolates the same file_id across vaults under the composite key', async () => {
     const { db } = await database();
     await seed(db);
-    await db.vaults.insert({ id: 'vault-2', ownerUserId: 'user-1', name: 'Second', latestRevision: 0, createdAt: 3, updatedAt: 3 });
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-2', path: 'Note.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({ vaultId: 'vault-1', path: 'Note.md' });
-    expect(await db.vaultFiles.findById('vault-2', 'file-1')).toMatchObject({ vaultId: 'vault-2', path: 'Note.md' });
+    await db.vaults.insert({
+      id: 'vault-2',
+      ownerUserId: 'user-1',
+      name: 'Second',
+      latestRevision: 0,
+      createdAt: 3,
+      updatedAt: 3,
+    });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Note.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-2',
+      path: 'Note.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    expect(await db.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({
+      vaultId: 'vault-1',
+      path: 'Note.md',
+    });
+    expect(await db.vaultFiles.findById('vault-2', 'file-1')).toMatchObject({
+      vaultId: 'vault-2',
+      path: 'Note.md',
+    });
     // Updating one vault's row leaves the other untouched.
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Renamed.md', blobHash: 'a'.repeat(64), size: 5, mtime: 2, kind: 'markdown', updatedRevision: 2 });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Renamed.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 2,
+      kind: 'markdown',
+      updatedRevision: 2,
+    });
     expect(await db.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({ path: 'Renamed.md' });
     expect(await db.vaultFiles.findById('vault-2', 'file-1')).toMatchObject({ path: 'Note.md' });
     // Scoped delete only removes the requested vault's row.
@@ -191,17 +540,76 @@ describe('SQLite database adapter', () => {
   it('finds files by case-folded path and versions by latest path', async () => {
     const { db } = await database();
     await seed(db);
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Notes/Hello.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    await db.vaultFiles.upsert({ fileId: 'file-2', vaultId: 'vault-1', path: 'NOTES/HELLO.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
-    expect((await db.vaultFiles.findByPathFold('vault-1', 'notes/hello.md')).map((file) => file.fileId).sort()).toEqual(['file-1', 'file-2']);
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Notes/Hello.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    await db.vaultFiles.upsert({
+      fileId: 'file-2',
+      vaultId: 'vault-1',
+      path: 'NOTES/HELLO.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
+    expect(
+      (await db.vaultFiles.findByPathFold('vault-1', 'notes/hello.md'))
+        .map((file) => file.fileId)
+        .sort(),
+    ).toEqual(['file-1', 'file-2']);
     expect(await db.vaultFiles.findByPathFold('vault-1', 'notes/missing.md')).toEqual([]);
-    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 1, manifestHash: 'manifest-1', deviceId: 'device-1', createdAt: 5 });
-    await db.vaultRevisions.insert({ vaultId: 'vault-1', revision: 2, manifestHash: 'manifest-2', deviceId: 'device-1', createdAt: 6 });
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 1,
+      manifestHash: 'manifest-1',
+      deviceId: 'device-1',
+      createdAt: 5,
+    });
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 2,
+      manifestHash: 'manifest-2',
+      deviceId: 'device-1',
+      createdAt: 6,
+    });
     await db.fileVersions.insertMany([
-      { id: 'version-1', vaultId: 'vault-1', fileId: 'file-1', revision: 1, path: 'Old.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, changeType: 'create', createdAt: 5 },
-      { id: 'version-2', vaultId: 'vault-1', fileId: 'file-1', revision: 2, path: 'Old.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, changeType: 'rename', createdAt: 6 },
+      {
+        id: 'version-1',
+        vaultId: 'vault-1',
+        fileId: 'file-1',
+        revision: 1,
+        path: 'Old.md',
+        blobHash: 'a'.repeat(64),
+        size: 5,
+        mtime: 1,
+        changeType: 'create',
+        createdAt: 5,
+      },
+      {
+        id: 'version-2',
+        vaultId: 'vault-1',
+        fileId: 'file-1',
+        revision: 2,
+        path: 'Old.md',
+        blobHash: 'a'.repeat(64),
+        size: 5,
+        mtime: 1,
+        changeType: 'rename',
+        createdAt: 6,
+      },
     ]);
-    expect(await db.fileVersions.findLatestByPath('vault-1', 'Old.md')).toMatchObject({ id: 'version-2', revision: 2 });
+    expect(await db.fileVersions.findLatestByPath('vault-1', 'Old.md')).toMatchObject({
+      id: 'version-2',
+      revision: 2,
+    });
     expect(await db.fileVersions.findLatestByPath('vault-1', 'Missing.md')).toBeNull();
   });
 
@@ -226,7 +634,16 @@ describe('SQLite database adapter', () => {
     // Simulate that state by dropping the column and re-stamping v2.
     const { db, filename } = await database();
     await seed(db);
-    await db.vaultFiles.upsert({ fileId: 'file-1', vaultId: 'vault-1', path: 'Notes/Hello.md', blobHash: 'a'.repeat(64), size: 5, mtime: 1, kind: 'markdown', updatedRevision: 1 });
+    await db.vaultFiles.upsert({
+      fileId: 'file-1',
+      vaultId: 'vault-1',
+      path: 'Notes/Hello.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 1,
+      kind: 'markdown',
+      updatedRevision: 1,
+    });
     db.close();
     databases.splice(databases.indexOf(db), 1);
     const { DatabaseSync } = await import('node:sqlite');
@@ -241,9 +658,28 @@ describe('SQLite database adapter', () => {
     const upgraded = openSqliteDatabase(filename);
     databases.push(upgraded);
     // The previously crashing upsert now works and the fold is backfilled.
-    await upgraded.vaultFiles.upsert({ fileId: 'file-2', vaultId: 'vault-1', path: 'Notes/World.md', blobHash: 'a'.repeat(64), size: 5, mtime: 2, kind: 'markdown', updatedRevision: 2 });
-    expect(await upgraded.vaultFiles.findByPath('vault-1', 'Notes/Hello.md')).toMatchObject({ fileId: 'file-1' });
-    expect((await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/hello.md')).map((file) => file.fileId)).toEqual(['file-1']);
-    expect((await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/world.md')).map((file) => file.fileId)).toEqual(['file-2']);
+    await upgraded.vaultFiles.upsert({
+      fileId: 'file-2',
+      vaultId: 'vault-1',
+      path: 'Notes/World.md',
+      blobHash: 'a'.repeat(64),
+      size: 5,
+      mtime: 2,
+      kind: 'markdown',
+      updatedRevision: 2,
+    });
+    expect(await upgraded.vaultFiles.findByPath('vault-1', 'Notes/Hello.md')).toMatchObject({
+      fileId: 'file-1',
+    });
+    expect(
+      (await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/hello.md')).map(
+        (file) => file.fileId,
+      ),
+    ).toEqual(['file-1']);
+    expect(
+      (await upgraded.vaultFiles.findByPathFold('vault-1', 'notes/world.md')).map(
+        (file) => file.fileId,
+      ),
+    ).toEqual(['file-2']);
   });
 });

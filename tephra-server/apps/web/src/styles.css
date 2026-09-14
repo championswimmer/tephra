@@ -259,6 +259,10 @@ input {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1rem;
 }
+.vault-card {
+  display: grid;
+  gap: 0.75rem;
+}
 .vault-grid a {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -291,6 +295,9 @@ html.theme-dark .vault-grid a {
 .vault-icon .icon {
   width: 1.7rem;
   height: 1.7rem;
+}
+.vault-delete-button {
+  justify-self: end;
 }
 .status {
   min-height: 220px;
@@ -679,50 +686,50 @@ html.theme-dark .vault-grid a {
   margin: 1rem 0;
   color: var(--text-normal);
 }
-.rendered-note .callout[data-callout="abstract"],
-.rendered-note .callout[data-callout="summary"],
-.rendered-note .callout[data-callout="tldr"] {
+.rendered-note .callout[data-callout='abstract'],
+.rendered-note .callout[data-callout='summary'],
+.rendered-note .callout[data-callout='tldr'] {
   --callout-color: 0, 176, 255;
 }
-.rendered-note .callout[data-callout="info"],
-.rendered-note .callout[data-callout="todo"] {
+.rendered-note .callout[data-callout='info'],
+.rendered-note .callout[data-callout='todo'] {
   --callout-color: 0, 184, 212;
 }
-.rendered-note .callout[data-callout="tip"],
-.rendered-note .callout[data-callout="hint"],
-.rendered-note .callout[data-callout="important"] {
+.rendered-note .callout[data-callout='tip'],
+.rendered-note .callout[data-callout='hint'],
+.rendered-note .callout[data-callout='important'] {
   --callout-color: 0, 191, 165;
 }
-.rendered-note .callout[data-callout="success"],
-.rendered-note .callout[data-callout="check"],
-.rendered-note .callout[data-callout="done"] {
+.rendered-note .callout[data-callout='success'],
+.rendered-note .callout[data-callout='check'],
+.rendered-note .callout[data-callout='done'] {
   --callout-color: 0, 200, 83;
 }
-.rendered-note .callout[data-callout="question"],
-.rendered-note .callout[data-callout="help"],
-.rendered-note .callout[data-callout="faq"] {
+.rendered-note .callout[data-callout='question'],
+.rendered-note .callout[data-callout='help'],
+.rendered-note .callout[data-callout='faq'] {
   --callout-color: 100, 221, 23;
 }
-.rendered-note .callout[data-callout="warning"],
-.rendered-note .callout[data-callout="caution"],
-.rendered-note .callout[data-callout="attention"] {
+.rendered-note .callout[data-callout='warning'],
+.rendered-note .callout[data-callout='caution'],
+.rendered-note .callout[data-callout='attention'] {
   --callout-color: 255, 145, 0;
 }
-.rendered-note .callout[data-callout="failure"],
-.rendered-note .callout[data-callout="fail"],
-.rendered-note .callout[data-callout="missing"],
-.rendered-note .callout[data-callout="danger"],
-.rendered-note .callout[data-callout="error"] {
+.rendered-note .callout[data-callout='failure'],
+.rendered-note .callout[data-callout='fail'],
+.rendered-note .callout[data-callout='missing'],
+.rendered-note .callout[data-callout='danger'],
+.rendered-note .callout[data-callout='error'] {
   --callout-color: 255, 82, 82;
 }
-.rendered-note .callout[data-callout="bug"] {
+.rendered-note .callout[data-callout='bug'] {
   --callout-color: 245, 0, 87;
 }
-.rendered-note .callout[data-callout="example"] {
+.rendered-note .callout[data-callout='example'] {
   --callout-color: 124, 77, 255;
 }
-.rendered-note .callout[data-callout="quote"],
-.rendered-note .callout[data-callout="cite"] {
+.rendered-note .callout[data-callout='quote'],
+.rendered-note .callout[data-callout='cite'] {
   --callout-color: 158, 158, 158;
 }
 .rendered-note .callout-title {
@@ -757,7 +764,7 @@ html.theme-dark .vault-grid a {
   display: none;
 }
 .rendered-note details.callout > summary.callout-title::after {
-  content: "";
+  content: '';
   width: 1em;
   height: 1em;
   margin-left: auto;
@@ -781,7 +788,7 @@ html.theme-dark .vault-grid a {
   align-items: baseline;
   gap: 0.5rem;
 }
-.rendered-note li.task-list-item input[type="checkbox"] {
+.rendered-note li.task-list-item input[type='checkbox'] {
   accent-color: var(--interactive-accent);
   flex: none;
 }
@@ -846,6 +853,20 @@ html.theme-dark .vault-grid a {
 .modal-section p {
   margin-top: 0;
   font-size: 0.88rem;
+}
+.modal-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.modal-form label {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 /* Theme selector */

@@ -134,6 +134,53 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
 });
 
+test('vault deletion requires re-entering the exact vault name', async ({ page, request }) => {
+  const DELETE_VAULT_NAME = 'e2e-delete-vault';
+
+  const bootstrap = await request.post('/api/v1/auth/bootstrap', {
+    data: { token: BOOTSTRAP_TOKEN, email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  });
+  expect([201, 409]).toContain(bootstrap.status());
+
+  const apiLogin = await request.post('/api/v1/auth/login', {
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  });
+  expect(apiLogin.status(), 'api login succeeds').toBe(200);
+  const { csrfToken } = (await apiLogin.json()) as { csrfToken: string };
+  const sessionCookie = (await apiLogin.headersArray())
+    .filter((header) => header.name.toLowerCase() === 'set-cookie')
+    .map((header) => header.value.split(';')[0])
+    .join('; ');
+  const authed = { cookie: sessionCookie, 'x-tephra-csrf': csrfToken };
+  const created = await request.post('/api/v1/vaults', {
+    headers: authed,
+    data: { name: DELETE_VAULT_NAME },
+  });
+  expect(created.status(), 'vault creation succeeds').toBe(201);
+
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(ADMIN_EMAIL);
+  await page.getByLabel('Password').fill(ADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/vaults\/?$/);
+
+  const vaultCard = page.locator('.vault-card', {
+    has: page.getByRole('link', { name: new RegExp(DELETE_VAULT_NAME) }),
+  });
+  await vaultCard.getByRole('button', { name: 'Delete vault' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete vault' });
+  const confirmDelete = dialog.getByRole('button', { name: 'Delete vault', exact: true });
+  await expect(confirmDelete).toBeDisabled();
+  await dialog.getByLabel('Vault name').fill('e2e-delete-vault ');
+  await expect(confirmDelete).toBeDisabled();
+  await dialog.getByLabel('Vault name').clear();
+  await dialog.getByLabel('Vault name').fill(DELETE_VAULT_NAME);
+  await expect(confirmDelete).toBeEnabled();
+  await confirmDelete.click();
+  await expect(page.getByRole('dialog', { name: 'Delete vault' })).toBeHidden();
+  await expect(page.getByRole('link', { name: new RegExp(DELETE_VAULT_NAME) })).toBeHidden();
+});
+
 /**
  * Phase 4 (path-addressed URLs): notes open by `#/<path>` hash URL, and
  * after a rename the old hash URL resolves via the `historic` match,
