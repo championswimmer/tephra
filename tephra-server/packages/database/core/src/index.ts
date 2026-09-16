@@ -80,6 +80,11 @@ export interface VaultFileRepository {
 export interface VaultRevisionRepository {
   find(vaultId: string, revision: number): Promise<VaultRevision | null>;
   findLatest(vaultId: string): Promise<VaultRevision | null>;
+  /**
+   * Returns the NEWEST revision carrying `manifestHash`, or null. The same
+   * hash may appear on several revisions (a web edit followed by a revert
+   * reproduces an earlier vault state), so callers must not assume uniqueness.
+   */
   findByManifestHash(vaultId: string, manifestHash: string): Promise<VaultRevision | null>;
   list(vaultId: string): Promise<VaultRevision[]>;
   insert(revision: VaultRevision): Promise<void>;
@@ -89,6 +94,12 @@ export interface FileVersionRepository {
   listByRevision(vaultId: string, revision: number): Promise<FileVersion[]>;
   listByFile(vaultId: string, fileId: string): Promise<FileVersion[]>;
   findLatestByPath(vaultId: string, path: string): Promise<FileVersion | null>;
+  /**
+   * Rows with `revision > sinceRevision`, ordered by `(revision, id)`.
+   * Serves the pull feed (`GET /changes`); the existing
+   * `file_versions_revision_idx(vault_id, revision)` covers it.
+   */
+  listSince(vaultId: string, sinceRevision: number, limit: number): Promise<FileVersion[]>;
   insertMany(versions: readonly FileVersion[]): Promise<void>;
 }
 

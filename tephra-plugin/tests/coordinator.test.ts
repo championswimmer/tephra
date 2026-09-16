@@ -6,6 +6,7 @@ vi.mock('obsidian', () => ({
 
 import { TephraHttpError } from '../src/api/client';
 import { SyncCoordinator } from '../src/sync/coordinator';
+import { sha256Hex } from '../src/sync/hasher';
 import { defaultState } from '../src/state/plugin-state';
 
 const hash = 'a'.repeat(64);
@@ -69,6 +70,8 @@ function mockScanner(
 function mockClient(overrides?: {
   planImpl?: (body: unknown) => Promise<unknown>;
   commitImpl?: (body: unknown) => Promise<unknown>;
+  changesImpl?: (sinceRevision: number, limit?: number) => Promise<unknown>;
+  readContentImpl?: (fileId: string) => Promise<Uint8Array>;
   serverFiles?: Array<{ fileId: string; path: string; blobHash: string; size: number; mtime: number; kind: 'markdown' | 'attachment' }>;
 }) {
   return {
@@ -87,6 +90,19 @@ function mockClient(overrides?: {
         [{ fileId: 'file_1', path: 'a.md', blobHash: hash, size: 4, mtime: 1, kind: 'markdown' as const }],
     })),
     resolve: vi.fn(),
+    // Pull feed defaults to an empty page: most push-path tests never see a remote change.
+    changes: vi.fn(
+      overrides?.changesImpl ??
+        (async () => ({
+          status: 'ok' as const,
+          fromRevision: 0,
+          toRevision: 7,
+          latestRevision: 7,
+          truncated: false,
+          changes: [],
+        })),
+    ),
+    readContent: vi.fn(overrides?.readContentImpl ?? (async () => new Uint8Array())),
   };
 }
 
@@ -121,13 +137,15 @@ function setup(
 describe('SyncCoordinator', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('steady state: no listFiles, no commit, no sidecar write', async () => {
+  it('steady state: pull walks an empty page, no commit, no sidecar write', async () => {
     const state = configuredState();
     state.manifest = { 'a.md': fileA };
     state.lastRemoteRevision = 7;
     const { coordinator, client, identitySave, saveState, statuses } = setup([fileA], { state });
     await coordinator.requestSync();
-    expect(client.listFiles).not.toHaveBeenCalled();
+    // One manifest fetch for the pull phase; the repair path stays quiet.
+    expect(client.listFiles).toHaveBeenCalledTimes(1);
+    expect(client.changes).toHaveBeenCalledWith(0, 200);
     expect(client.commit).not.toHaveBeenCalled();
     expect(identitySave).not.toHaveBeenCalled();
     expect(state.manifest['a.md']?.fileId).toBe('file_1');
@@ -154,7 +172,8 @@ describe('SyncCoordinator', () => {
       },
     });
     await coordinator.requestSync();
-    expect(client.listFiles).toHaveBeenCalledTimes(1);
+    // Pull manifest fetch plus the repair fetch.
+    expect(client.listFiles).toHaveBeenCalledTimes(2);
     expect(scanner.resolveWithServerPrev).toHaveBeenCalledTimes(1);
     expect(client.plan).toHaveBeenCalledTimes(2);
     expect(client.commit).not.toHaveBeenCalled();
@@ -182,7 +201,8 @@ describe('SyncCoordinator', () => {
     });
     await coordinator.requestSync();
     expect(client.commit).toHaveBeenCalledTimes(2);
-    expect(client.listFiles).toHaveBeenCalledTimes(1);
+    // Pull manifest fetch plus the repair fetch.
+    expect(client.listFiles).toHaveBeenCalledTimes(2);
     expect(state.lastRemoteRevision).toBe(4);
     expect(state.manifest['a.md']?.fileId).toBe('file_1');
   });
@@ -215,6 +235,8 @@ describe('SyncCoordinator', () => {
     });
     await coordinator.requestSync();
     expect(client.commit).not.toHaveBeenCalled();
+    // First sync (no lastRemoteRevision): the pull is skipped, so the
+    // offline plan failure leaves everything untouched.
     expect(client.listFiles).not.toHaveBeenCalled();
     expect(identitySave).not.toHaveBeenCalled();
     expect(saveState).not.toHaveBeenCalled();
@@ -330,8 +352,17 @@ describe('SyncCoordinator', () => {
         throw new Error('upload failed');
       }),
       commit: vi.fn(),
-      listFiles: vi.fn(),
+      listFiles: vi.fn(async () => ({ revision: 3, files: [] })),
       resolve: vi.fn(),
+      changes: vi.fn(async () => ({
+        status: 'ok' as const,
+        fromRevision: 0,
+        toRevision: 3,
+        latestRevision: 3,
+        truncated: false,
+        changes: [],
+      })),
+      readContent: vi.fn(async () => new Uint8Array()),
     };
     const app = {
       vault: {
@@ -377,5 +408,161 @@ describe('SyncCoordinator', () => {
     expect(client.plan).not.toHaveBeenCalled();
     expect(statuses).toHaveLength(1);
     expect((statuses[0] as { phase: string }).phase).toBe('disabled');
+  });
+
+  it('pulls server changes before pushing local changes', async () => {
+    const serverText = '# from server';
+    const serverBytes = new TextEncoder().encode(serverText);
+    const serverHash = await sha256Hex(serverBytes);
+    const state = configuredState();
+    state.manifest = { 'a.md': fileA };
+    state.lastRemoteRevision = 7;
+    // Minimal in-memory vault behind the real pull adapter.
+    const stored = new Map<string, string>();
+    const vaultFiles = () =>
+      [...stored.entries()].map(([path, text]) => ({
+        path,
+        extension: path.split('.').at(-1) ?? '',
+        stat: { size: text.length, mtime: 100 },
+      }));
+    const app = {
+      vault: {
+        getAbstractFileByPath: (path: string) =>
+          vaultFiles().find((file) => file.path === path) ?? null,
+        getFiles: () => vaultFiles(),
+        read: async (file: { path: string }) => {
+          const text = stored.get(file.path);
+          if (text === undefined) throw new Error(`missing: ${file.path}`);
+          return text;
+        },
+        readBinary: async (file: { path: string }) =>
+          new TextEncoder().encode(stored.get(file.path) ?? '').buffer,
+        modify: async (file: { path: string }, text: string) => {
+          stored.set(file.path, text);
+        },
+        create: async (path: string, text: string) => {
+          stored.set(path, text);
+          return { path };
+        },
+        createBinary: async () => {
+          throw new Error('unexpected binary create');
+        },
+        createFolder: async () => undefined,
+        trash: async () => {
+          throw new Error('unexpected trash');
+        },
+        delete: async () => undefined,
+        rename: async () => undefined,
+        adapter: {
+          writeBinary: async () => {
+            throw new Error('unexpected binary write');
+          },
+        },
+      },
+    };
+    const created = {
+      fileId: 'file_srv',
+      path: 'srv.md',
+      blobHash: serverHash,
+      size: serverBytes.byteLength,
+      mtime: 5,
+      kind: 'markdown' as const,
+    };
+    const client = mockClient({
+      planImpl: async () => ({
+        status: 'upload-required' as const,
+        latestRevision: 8,
+        missingBlobs: [],
+      }),
+      commitImpl: async () => ({ status: 'committed' as const, revision: 9 }),
+      changesImpl: async () => ({
+        status: 'ok' as const,
+        fromRevision: 7,
+        toRevision: 8,
+        latestRevision: 8,
+        truncated: false,
+        changes: [
+          {
+            fileId: 'file_srv',
+            changeType: 'create' as const,
+            path: 'srv.md',
+            blobHash: serverHash,
+            size: serverBytes.byteLength,
+            mtime: 5,
+            kind: 'markdown' as const,
+            revision: 8,
+          },
+        ],
+      }),
+      readContentImpl: async () => serverBytes,
+      serverFiles: [created],
+    });
+    const scanner = mockScanner([fileA]);
+    const statuses: Array<{ phase: string; message: string }> = [];
+    const coordinator = new SyncCoordinator({
+      app: app as never,
+      state,
+      scanner: scanner as never,
+      saveState: async () => undefined,
+      setStatus: (status) => statuses.push(status as { phase: string; message: string }),
+      clientFactory: () => client as never,
+      identityStore: { ids: idMap([fileA]), save: vi.fn() },
+    });
+    await coordinator.requestSync();
+    // The server change landed locally…
+    expect(stored.get('srv.md')).toBe(serverText);
+    // …before the local change was pushed: pull → scan → commit, in order.
+    const order = (fn: { mock: { invocationCallOrder: number[] } }) =>
+      fn.mock.invocationCallOrder[0]!;
+    expect(order(client.changes)).toBeLessThan(order(scanner.scan));
+    expect(order(scanner.scan)).toBeLessThan(order(client.commit));
+    expect(client.commit).toHaveBeenCalledTimes(1);
+    expect(state.lastPulledRevision).toBe(8);
+    expect(state.lastRemoteRevision).toBe(9);
+    expect(statuses.some((status) => status.phase === 'pulling')).toBe(true);
+    expect(statuses.at(-1)?.phase).toBe('success');
+  });
+
+  it('falls back to the legacy path when the server has no /changes route', async () => {
+    const state = configuredState();
+    state.manifest = { 'a.md': fileA };
+    state.lastRemoteRevision = 7;
+    const { coordinator, client, statuses } = setup([fileA], {
+      state,
+      clientOverrides: {
+        changesImpl: async () => {
+          throw new TephraHttpError(404, 'Unknown route. (NOT_FOUND)');
+        },
+      },
+    });
+    await coordinator.requestSync();
+    // Legacy behavior: steady-state push path proceeds, cursor untouched.
+    expect(client.commit).not.toHaveBeenCalled();
+    expect(state.lastPulledRevision).toBeUndefined();
+    expect(state.identityRepairNeeded ?? false).toBe(false);
+    expect(statuses.at(-1)?.phase).toBe('success');
+  });
+
+  it('routes full-resync-required through the existing repair path', async () => {
+    const state = configuredState();
+    state.manifest = { 'a.md': fileA };
+    state.lastRemoteRevision = 7;
+    const { coordinator, client, scanner } = setup([fileA], {
+      state,
+      clientOverrides: {
+        planImpl: async () => ({
+          status: 'up-to-date' as const,
+          latestRevision: 7,
+          missingBlobs: [],
+        }),
+        changesImpl: async () => ({ status: 'full-resync-required', latestRevision: 12 }),
+      },
+    });
+    await coordinator.requestSync();
+    // The repair fetch ran in the same pass; the pull cursor was not persisted.
+    expect(client.listFiles).toHaveBeenCalledTimes(2);
+    expect(scanner.resolveWithServerPrev).toHaveBeenCalledTimes(1);
+    expect(state.lastPulledRevision).toBeUndefined();
+    expect(state.lastRemoteRevision).toBe(7);
   });
 });

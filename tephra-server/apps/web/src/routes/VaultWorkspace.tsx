@@ -167,6 +167,23 @@ export function VaultWorkspace() {
     const path = pathByFileId.get(fileId);
     if (path !== undefined) open(path);
   };
+  // After a web save, refresh the file list (fresh blob hashes/sizes) and
+  // the links panel (the note's links may have changed). Best-effort: a
+  // failed refresh must not disturb the just-saved editor state.
+  const refreshAfterSave = useCallback(() => {
+    void api
+      .files(vaultId)
+      .then((result) => {
+        setFiles(result.files);
+        setPending(Boolean(result.indexPending));
+      })
+      .catch(() => {});
+    if (resolvedFileId)
+      void api
+        .links(vaultId, resolvedFileId)
+        .then(setLinks)
+        .catch(() => {});
+  }, [vaultId, resolvedFileId]);
   if (error)
     return (
       <main className="page">
@@ -312,7 +329,9 @@ export function VaultWorkspace() {
                     <NoteViewer
                       vaultId={vaultId}
                       fileId={selected.fileId}
+                      file={selected}
                       onOpen={open}
+                      onSaved={refreshAfterSave}
                       getPathForFileId={(fileId) => pathByFileId.get(fileId)}
                     />
                     <LocalGraph vaultId={vaultId} fileId={selected.fileId} onOpen={open} />

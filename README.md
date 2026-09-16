@@ -2,17 +2,15 @@
 
 Tephra is a stripped-down, web-based Obsidian client that you host yourself. It keeps your local Obsidian vault as the source of truth, syncs it to a Tephra server, and lets you open that vault from any browser as if a lightweight copy of Obsidian were running on your own infrastructure.
 
-Today, that means a private Stage 1 web mirror for your notes, links, attachments, and graph. In the future, Tephra aims to grow into a fuller cloud-hosted Obsidian companion with browser editing, two-way sync, a safe subset of community plugin support, and optional publishing controls.
+Today, that means a private web mirror for your notes, links, attachments, and graph, with browser-based note editing and two-way sync so web edits flow back to your vault. In the future, Tephra aims to grow into a fuller cloud-hosted Obsidian companion with a safe subset of community plugin support and optional publishing controls.
 
 Tephra is built for portable single-user deployments: run your vault on your own domain in one container or VM, whether that is an EC2 instance, a Railway deployment, or a similar box you control.
-
-> Stage 1 is under active development. It intentionally provides no web editing or server-to-vault writeback.
 
 ## What Tephra does
 
 - Mirrors your whole Obsidian vault into a private web app you can reach from anywhere.
 - Preserves Obsidian-style reading features like rendered Markdown, wikilinks, backlinks, attachments, and graph navigation.
-- Lets the Obsidian plugin on desktop or mobile keep the hosted view current.
+- Edits Markdown notes from the browser; each save creates a server revision that the Obsidian plugin pulls back into the local vault (last-write-wins with conflicted copies).
 - Stays self-hosted and private: your domain, your login, your storage.
 - Addresses every note by vault-relative path (`/#/path/to/note.md`): shareable links that survive identity changes and resolve identically across macOS, Linux, and Windows (NFC-canonicalized, case-sensitive with a unique-match fallback, rename-aware with a "moved from" hint).
 
@@ -28,8 +26,6 @@ Every mode switch starts with a dry-run preview and requires explicit confirmati
 
 ## Where Tephra is headed
 
-- Browser-based note editing for quick fixes away from your main machine.
-- Two-way sync so web edits can flow safely back to your vault.
 - A browser-safe subset of community plugin support.
 - Optional publishing flows for chosen parts of a vault.
 

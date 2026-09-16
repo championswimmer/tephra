@@ -6,6 +6,7 @@ import { PLUGIN_VERSION, TephraClient } from '../src/api/client';
 class CapturingClient extends TephraClient {
   public captured: RequestUrlParam[] = [];
   public fakeJson: unknown = { status: 'up-to-date', latestRevision: 0, missingBlobs: [] };
+  public fakeArrayBuffer: ArrayBuffer = Uint8Array.from([1, 2, 3]).buffer as ArrayBuffer;
 
   protected async request(options: RequestUrlParam): Promise<never> {
     this.captured.push(options);
@@ -13,6 +14,7 @@ class CapturingClient extends TephraClient {
       status: 200,
       text: JSON.stringify(this.fakeJson),
       json: this.fakeJson,
+      arrayBuffer: this.fakeArrayBuffer,
     } as unknown as never;
   }
 }
@@ -54,6 +56,65 @@ describe('TephraClient version headers', () => {
     const headers = headersOf(client, 0);
     expect(headers['X-Tephra-Plugin-Version']).toBe(PLUGIN_VERSION);
     expect(headers['X-Tephra-Protocol-Version']).toBe(PROTOCOL_VERSION);
+  });
+});
+
+describe('TephraClient pull feed', () => {
+  it('fetches the changes feed with cursor params', async () => {
+    const client = new CapturingClient('https://example.test', 'vault-1', 'token-1');
+    client.fakeJson = {
+      status: 'ok',
+      fromRevision: 3,
+      toRevision: 5,
+      latestRevision: 5,
+      truncated: false,
+      changes: [
+        {
+          fileId: 'file_1',
+          changeType: 'create',
+          path: 'n.md',
+          blobHash: 'a'.repeat(64),
+          size: 1,
+          mtime: 1,
+          kind: 'markdown',
+          revision: 5,
+        },
+      ],
+    };
+    const page = await client.changes(3, 200);
+    expect(client.captured[0]?.url).toBe(
+      'https://example.test/api/v1/vaults/vault-1/changes?sinceRevision=3&limit=200',
+    );
+    expect(headersOf(client, 0)['X-Tephra-Plugin-Version']).toBe(PLUGIN_VERSION);
+    expect(page.status).toBe('ok');
+    if (page.status === 'ok') {
+      expect(page.changes).toHaveLength(1);
+      expect(page.toRevision).toBe(5);
+    }
+  });
+
+  it('omits the limit param when unset', async () => {
+    const client = new CapturingClient('https://example.test', 'vault-1', 'token-1');
+    client.fakeJson = {
+      status: 'full-resync-required',
+      latestRevision: 12,
+    };
+    const page = await client.changes(12);
+    expect(client.captured[0]?.url).toBe(
+      'https://example.test/api/v1/vaults/vault-1/changes?sinceRevision=12',
+    );
+    expect(page).toEqual({ status: 'full-resync-required', latestRevision: 12 });
+  });
+
+  it('downloads blob bytes for a pulled file', async () => {
+    const client = new CapturingClient('https://example.test', 'vault-1', 'token-1');
+    client.fakeArrayBuffer = Uint8Array.from([9, 8, 7]).buffer as ArrayBuffer;
+    const bytes = await client.readContent('file_1');
+    expect([...bytes]).toEqual([9, 8, 7]);
+    expect(client.captured[0]?.url).toBe(
+      'https://example.test/api/v1/vaults/vault-1/files/file_1/content',
+    );
+    expect(client.captured[0]?.method).toBe('GET');
   });
 });
 

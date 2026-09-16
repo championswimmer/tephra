@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run build --workspace=@tephra/protocol --workspace=@tephra/graph-renderer",
+    "prebuild": "npm run build --workspace=@tephra/protocol --workspace=@tephra/graph-renderer --workspace=@tephra/markdown-editor",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tephra/graph-renderer": "0.1.0",
+    "@tephra/markdown-editor": "0.1.0",
     "@tephra/protocol": "0.1.0",
     "lucide-react": "^1.45.0",
     "react": "^19.0.0",

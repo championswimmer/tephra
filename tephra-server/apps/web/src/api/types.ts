@@ -15,6 +15,10 @@ export interface VaultFile {
   mimeType?: string;
   size: number;
   mtime: number;
+  // Present at runtime: the server's `vaultFileSchema` carries the content
+  // hash for every file. The web file list only needs it when editing, so
+  // it stays optional here rather than forcing every mock to carry it.
+  blobHash?: string;
 }
 export interface FilesResponse {
   revision: number;
@@ -66,4 +70,14 @@ export interface ApiToken {
 }
 export interface CreatedToken extends ApiToken {
   token: string;
+}
+
+export type { EditConflictResponse, SaveContentResponse } from '@tephra/protocol';
+
+/** The `current` payload carried by a 409 EDIT_CONFLICT response. */
+export interface EditConflictCurrent {
+  blobHash: string;
+  size: number;
+  mtime: number;
+  revision: number;
 }

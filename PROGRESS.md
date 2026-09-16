@@ -187,3 +187,18 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       revalidating; fallback note list capped at 200; renderer `setModel`
       uses element-wise id comparison instead of a mega-string. Wire format
       and ETag scheme unchanged; full `npm run check` green
+- [x] Web editing and two-way sync (plan
+      `.agents/plans/017-WEB_EDITING_AND_TWO_WAY_SYNC.md`): protocol v2 /
+      plugin floor 0.2.0 with change-feed + `EDIT_CONFLICT` schemas;
+      `@tephra/markdown-editor` (CodeMirror 6, session cache, dirty gating,
+      54 tests); server `PUT …/content` with If-Match/409, migration 005
+      relaxing the revision manifest-hash uniqueness, `vault:write` scope
+      (15 API + 4 migration tests); web edit toggle with conflict banner
+      (9 web tests); server `GET …/changes` + plugin 0.2.0 pull-before-push
+      with hash-authoritative apply and conflicted copies (10 API + 22
+      plugin tests). Full `npm run check` green; Playwright vault-flow
+      green, graph spec has one pre-existing count-assertion failure
+      (orphan-notes-hidden default, untouched by this work). Known
+      deviation: web conflict resolution downloads a conflicted copy
+      instead of PUT-creating one — no file-creation endpoint exists
+      server-side (deferred to a follow-up, per plan §8.2)

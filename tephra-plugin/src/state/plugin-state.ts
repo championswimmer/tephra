@@ -35,6 +35,12 @@ export interface TephraPluginState {
   identityRepairNeeded?: boolean | undefined;
   lastSuccessfulSyncAt?: number | undefined;
   lastRemoteRevision?: number | undefined;
+  /**
+   * Pull cursor (plan 017, Phase 4): highest `file_versions.revision`
+   * applied locally. Defaults to 0 (full history walk); persisted after
+   * every successfully applied page, never on full-resync-required.
+   */
+  lastPulledRevision?: number | undefined;
 }
 
 export const DEFAULT_SETTINGS: TephraSettings = {
@@ -83,6 +89,12 @@ export function parseState(value: unknown): TephraPluginState {
     manifest: input.manifest ?? {},
     scanCache: input.scanCache ?? {},
     pendingRenames: input.pendingRenames ?? [],
+    lastPulledRevision:
+      typeof input.lastPulledRevision === 'number' &&
+      Number.isSafeInteger(input.lastPulledRevision) &&
+      input.lastPulledRevision >= 0
+        ? input.lastPulledRevision
+        : undefined,
     // NOTE: `attachmentIds` from older states is dropped outright (plan 010,
     // §7.4) — attachments resolve through the sidecar like every other file,
     // and a stale local state is repaired from the server (§9.3).

@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -257,15 +259,19 @@ describe('SQLite database adapter', () => {
       deviceId: 'device-1',
       createdAt: 1,
     });
-    await expect(
-      db.vaultRevisions.insert({
-        vaultId: 'vault-1',
-        revision: 2,
-        manifestHash: 'same-manifest',
-        deviceId: 'device-1',
-        createdAt: 2,
-      }),
-    ).rejects.toThrow();
+    // Since 005 the manifest hash is a plain index, not UNIQUE: a later
+    // revision may reproduce an earlier vault state (edit-then-revert), and
+    // findByManifestHash resolves the duplicate to the newest revision.
+    await db.vaultRevisions.insert({
+      vaultId: 'vault-1',
+      revision: 2,
+      manifestHash: 'same-manifest',
+      deviceId: 'device-1',
+      createdAt: 2,
+    });
+    expect(await db.vaultRevisions.findByManifestHash('vault-1', 'same-manifest')).toMatchObject({
+      revision: 2,
+    });
   });
 
   it('enforces globally unique vault names case-sensitively and resolves by name', async () => {
@@ -682,4 +688,112 @@ describe('SQLite database adapter', () => {
       ),
     ).toEqual(['file-2']);
   });
+
+  it.each([1, 2, 3, 4])(
+    'upgrades a user_version %i database through 005 with foreign_key_check clean',
+    async (startVersion) => {
+      // Build a genuinely old database by applying migrations 001..N with a
+      // raw connection (openSqliteDatabase would migrate straight to
+      // latest), seed parent + FK-child rows, stamp the old version, then
+      // reopen through the real runner. 005 rebuilds vault_revisions while
+      // file_versions holds a composite FK onto it — the rows must survive.
+      const migrationFiles: Record<number, string> = {
+        1: '001_initial.sql',
+        2: '002_vault_name_unique.sql',
+        3: '003_vault_files_path_fold.sql',
+        4: '004_graph_cache.sql',
+      };
+      const directory = await mkdtemp(join(tmpdir(), 'tephra-sqlite-005-'));
+      directories.push(directory);
+      const filename = join(directory, 'tephra.db');
+      const { DatabaseSync } = await import('node:sqlite');
+      const legacy = new DatabaseSync(filename);
+      const hash1 = 'a1'.repeat(32);
+      const hash2 = 'b2'.repeat(32);
+      const blob = 'c3'.repeat(32);
+      legacy.exec('PRAGMA foreign_keys = ON');
+      for (let version = 1; version <= startVersion; version++) {
+        const sql = readFileSync(
+          fileURLToPath(
+            new URL(
+              `../../../../migrations/sqlite/${migrationFiles[version]}`,
+              import.meta.url,
+            ),
+          ),
+          'utf8',
+        );
+        legacy.exec(sql);
+      }
+      // Explicit column lists: vault_files has no path_fold at v1/v2 and
+      // gains it (with DEFAULT '') at v3, so one shape fits every version.
+      legacy.exec(
+        `INSERT INTO users VALUES ('user-1', 'one@example.com', NULL, 1, 1);
+         INSERT INTO vaults VALUES ('vault-1', 'user-1', 'Vault', 2, 2, 2);
+         INSERT INTO devices VALUES ('device-1', 'user-1', 'Phone', 'mobile', 3, 3);
+         INSERT INTO blobs VALUES ('${blob}', 5, 'text/markdown', 4);
+         INSERT INTO vault_revisions VALUES ('vault-1', 1, '${hash1}', 'device-1', 5);
+         INSERT INTO vault_revisions VALUES ('vault-1', 2, '${hash2}', 'device-1', 6);
+         INSERT INTO file_versions
+           (id, vault_id, file_id, revision, path, blob_hash, size, mtime, change_type, created_at)
+           VALUES ('version-1', 'vault-1', 'file-1', 1, 'Note.md', '${blob}', 5, 7, 'create', 5),
+                  ('version-2', 'vault-1', 'file-1', 2, 'Note.md', '${blob}', 6, 8, 'modify', 6);
+         INSERT INTO vault_files
+           (file_id, vault_id, path, blob_hash, size, mtime, mime_type, kind, updated_revision)
+           VALUES ('file-1', 'vault-1', 'Note.md', '${blob}', 6, 8, 'text/markdown', 'markdown', 2);
+         PRAGMA user_version = ${startVersion};`,
+      );
+      legacy.close();
+
+      const upgraded = openSqliteDatabase(filename);
+      databases.push(upgraded);
+      // Nothing cascade-deleted by the 005 rebuild.
+      expect(await upgraded.vaultRevisions.list('vault-1')).toHaveLength(2);
+      expect(await upgraded.fileVersions.listByRevision('vault-1', 1)).toHaveLength(1);
+      expect(await upgraded.fileVersions.listByRevision('vault-1', 2)).toHaveLength(1);
+      expect(await upgraded.vaultFiles.findById('vault-1', 'file-1')).toMatchObject({
+        path: 'Note.md',
+        updatedRevision: 2,
+      });
+      // The relaxed constraint: a later revision may reproduce an earlier
+      // manifest hash (edit-then-revert), and the lookup is newest-wins.
+      await upgraded.vaultRevisions.insert({
+        vaultId: 'vault-1',
+        revision: 3,
+        manifestHash: hash1,
+        deviceId: 'device-1',
+        createdAt: 30,
+      });
+      expect(await upgraded.vaultRevisions.findByManifestHash('vault-1', hash1)).toMatchObject({
+        revision: 3,
+      });
+      expect(await upgraded.vaultRevisions.findByManifestHash('vault-1', hash2)).toMatchObject({
+        revision: 2,
+      });
+      upgraded.close();
+      databases.splice(databases.indexOf(upgraded), 1);
+
+      const raw = new DatabaseSync(filename);
+      try {
+        expect(
+          (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
+        ).toBe(5);
+        expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+        expect(
+          raw
+            .prepare(
+              "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'vault_revisions_manifest_idx'",
+            )
+            .all(),
+        ).toHaveLength(1);
+        const revisionIndexes = raw
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'vault_revisions'",
+          )
+          .all() as Array<{ sql: string | null }>;
+        expect(revisionIndexes.some((row) => row.sql?.includes('UNIQUE'))).toBe(false);
+      } finally {
+        raw.close();
+      }
+    },
+  );
 });

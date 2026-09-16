@@ -11,8 +11,8 @@ import {
 
 describe('protocol versioning', () => {
   it('exposes the current protocol version and minimum plugin version', () => {
-    expect(PROTOCOL_VERSION).toBe('1');
-    expect(MINIMUM_PLUGIN_VERSION).toBe('0.1.0');
+    expect(PROTOCOL_VERSION).toBe('2');
+    expect(MINIMUM_PLUGIN_VERSION).toBe('0.2.0');
     expect(PROTOCOL_VERSION_HEADER).toBe('X-Tephra-Protocol-Version');
     expect(PLUGIN_VERSION_HEADER).toBe('X-Tephra-Plugin-Version');
   });
@@ -30,8 +30,8 @@ describe('protocol versioning', () => {
         status: 'upload-required',
         latestRevision: 3,
         missingBlobs: [],
-        protocolVersion: '1',
-        minimumPluginVersion: '0.1.0',
+        protocolVersion: '2',
+        minimumPluginVersion: '0.2.0',
       }).success,
     ).toBe(true);
     expect(syncCommitResponseSchema.safeParse({ status: 'committed', revision: 1 }).success).toBe(
@@ -41,8 +41,8 @@ describe('protocol versioning', () => {
       syncCommitResponseSchema.safeParse({
         status: 'up-to-date',
         revision: 1,
-        protocolVersion: '1',
-        minimumPluginVersion: '0.1.0',
+        protocolVersion: '2',
+        minimumPluginVersion: '0.2.0',
       }).success,
     ).toBe(true);
   });
@@ -51,7 +51,7 @@ describe('protocol versioning', () => {
     expect(isSupportedPluginVersion(null)).toBe(true);
     expect(isSupportedPluginVersion(undefined)).toBe(true);
     expect(isSupportedPluginVersion('')).toBe(true);
-    expect(isSupportedPluginVersion('0.1.0')).toBe(true);
+    expect(isSupportedPluginVersion('0.1.0')).toBe(false);
     expect(isSupportedPluginVersion('0.2.0')).toBe(true);
     expect(isSupportedPluginVersion('1.0.0')).toBe(true);
     expect(isSupportedPluginVersion('0.0.9')).toBe(false);

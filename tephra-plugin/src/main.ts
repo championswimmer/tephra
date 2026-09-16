@@ -316,6 +316,10 @@ export default class TephraPlugin extends Plugin {
       scanner: this.scanner,
       saveState: () => this.persistState(),
       setStatus: (status) => this.updateStatus(status),
+      suppressPath: (path) => {
+        this.suppressedModify.add(path);
+        window.setTimeout(() => this.suppressedModify.delete(path), 5_000);
+      },
       identityStore: {
         ids: this.identityIds,
         save: (ids) => saveIdentityStore(adapter, this.state.settings.vaultId, ids),
@@ -329,7 +333,13 @@ export default class TephraPlugin extends Plugin {
       this.updateStatus({ phase: 'disabled', message: 'Managed (Sync Off)', at: Date.now() });
     }
 
-    this.registerEvent(this.app.vault.on('create', (file) => this.bufferFileEvent('create', file)));
+    this.registerEvent(
+      this.app.vault.on('create', (file) => {
+        // Pull-applied creates land here; consume the suppression (§7.4).
+        if (file instanceof TFile && this.suppressedModify.delete(file.path)) return;
+        this.bufferFileEvent('create', file);
+      }),
+    );
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (this.suppressedModify.delete(file.path)) return;
@@ -337,13 +347,21 @@ export default class TephraPlugin extends Plugin {
       }),
     );
     this.registerEvent(
-      this.app.vault.on('delete', (file) =>
-        this.bufferPathEvent({ type: 'delete', path: file.path }),
-      ),
+      this.app.vault.on('delete', (file) => {
+        if (this.suppressedModify.delete(file.path)) return;
+        this.bufferPathEvent({ type: 'delete', path: file.path });
+      }),
     );
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
+        // A pull-applied rename suppresses both sides; consume both so a
+        // lingering new-path entry cannot swallow a genuine later event.
+        if (this.suppressedModify.delete(oldPath)) {
+          if (file instanceof TFile) this.suppressedModify.delete(file.path);
+          return;
+        }
         if (file instanceof TFile && shouldSyncPath(file.path)) {
+          if (this.suppressedModify.delete(file.path)) return;
           this.bufferPathEvent({ type: 'rename', path: file.path, oldPath });
         } else if (shouldSyncPath(oldPath)) {
           this.bufferPathEvent({ type: 'delete', path: oldPath });

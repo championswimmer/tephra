@@ -2,8 +2,8 @@
 
 ## Source of truth
 
-- Implement Stage 1 according to `.agents/plans/001-TEPHRA_STAGE1_PLAN.md`.
-- Stage 1 is a read-only web mirror. Never add web-to-vault writes, merging, or third-party Obsidian plugin execution.
+- Implement web editing and two-way sync according to `.agents/plans/017-WEB_EDITING_AND_TWO_WAY_SYNC.md`.
+- Never add third-party Obsidian plugin execution.
 - Keep original file bytes canonical, blobs immutable and SHA-256 verified, and successful vault commits revisioned.
 
 ## Planning requirement

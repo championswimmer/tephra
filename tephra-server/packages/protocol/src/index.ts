@@ -41,8 +41,8 @@ export const sha256Schema = z
 const identifierSchema = z.string().min(1);
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe();
 
-export const PROTOCOL_VERSION = '1';
-export const MINIMUM_PLUGIN_VERSION = '0.1.0';
+export const PROTOCOL_VERSION = '2';
+export const MINIMUM_PLUGIN_VERSION = '0.2.0';
 export const PROTOCOL_VERSION_HEADER = 'X-Tephra-Protocol-Version';
 export const PLUGIN_VERSION_HEADER = 'X-Tephra-Plugin-Version';
 
@@ -174,6 +174,7 @@ export const apiErrorCodeSchema = z.enum([
   'BLOB_TOO_LARGE',
   'BLOB_HASH_MISMATCH',
   'BLOB_MISSING',
+  'EDIT_CONFLICT',
   'COMMIT_FAILED',
   'INDEX_PENDING',
   'FILE_DELETED',
@@ -265,6 +266,64 @@ export const graphResponseSchema = z
     });
   });
 export type GraphResponse = z.infer<typeof graphResponseSchema>;
+
+export const changeEntrySchema = z.strictObject({
+  fileId: identifierSchema,
+  changeType: z.enum(['create', 'modify', 'rename', 'delete']),
+  path: canonicalVaultPathSchema,
+  previousPath: canonicalVaultPathSchema.optional(),
+  blobHash: sha256Schema.optional(),
+  size: nonNegativeIntegerSchema.optional(),
+  mtime: nonNegativeIntegerSchema.optional(),
+  kind: z.enum(['markdown', 'attachment']),
+  revision: z.number().int().positive().safe(),
+});
+export type ChangeEntry = z.infer<typeof changeEntrySchema>;
+
+export const changesResponseSchema = z.union([
+  z.strictObject({
+    status: z.literal('ok'),
+    fromRevision: nonNegativeIntegerSchema,
+    toRevision: nonNegativeIntegerSchema,
+    latestRevision: nonNegativeIntegerSchema,
+    truncated: z.boolean(),
+    changes: z.array(changeEntrySchema),
+  }),
+  z.strictObject({
+    status: z.literal('full-resync-required'),
+    latestRevision: nonNegativeIntegerSchema,
+  }),
+]);
+export type ChangesResponse = z.infer<typeof changesResponseSchema>;
+
+export const saveContentResponseSchema = z.union([
+  z.strictObject({
+    status: z.literal('committed'),
+    revision: nonNegativeIntegerSchema,
+    blobHash: sha256Schema,
+    size: nonNegativeIntegerSchema,
+    mtime: nonNegativeIntegerSchema,
+  }),
+  z.strictObject({
+    status: z.literal('up-to-date'),
+    revision: nonNegativeIntegerSchema,
+    blobHash: sha256Schema,
+    size: nonNegativeIntegerSchema,
+    mtime: nonNegativeIntegerSchema,
+  }),
+]);
+export type SaveContentResponse = z.infer<typeof saveContentResponseSchema>;
+
+export const editConflictResponseSchema = z.strictObject({
+  error: z.strictObject({ code: z.literal('EDIT_CONFLICT'), message: z.string().min(1) }),
+  current: z.strictObject({
+    blobHash: sha256Schema,
+    size: nonNegativeIntegerSchema,
+    mtime: nonNegativeIntegerSchema,
+    revision: nonNegativeIntegerSchema,
+  }),
+});
+export type EditConflictResponse = z.infer<typeof editConflictResponseSchema>;
 
 export function canonicalManifestJson(input: readonly SyncManifestEntry[]): string {
   const files = unorderedManifestSchema.parse(input);

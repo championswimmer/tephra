@@ -33,7 +33,7 @@ export interface Session {
   createdAt: number;
 }
 
-export type ApiTokenScope = 'vault:read-metadata' | 'vault:upload';
+export type ApiTokenScope = 'vault:read-metadata' | 'vault:upload' | 'vault:write';
 
 export interface ApiToken {
   id: string;

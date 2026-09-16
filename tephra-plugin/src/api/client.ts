@@ -1,6 +1,7 @@
 import { requestUrl, type RequestUrlParam } from 'obsidian';
 import {
   blobUploadResponseSchema,
+  changesResponseSchema,
   filesResponseSchema,
   PLUGIN_VERSION_HEADER,
   PROTOCOL_VERSION,
@@ -8,6 +9,7 @@ import {
   resolveResponseSchema,
   syncCommitResponseSchema,
   syncPlanResponseSchema,
+  type ChangesResponse,
   type FilesResponse,
   type ResolveResponse,
   type SyncCommitBody,
@@ -17,7 +19,7 @@ import {
 } from '@tephra/protocol';
 
 /** Mirrors the `version` field in the plugin `package.json`. */
-export const PLUGIN_VERSION = '0.1.0';
+export const PLUGIN_VERSION = '0.2.0';
 
 export class TephraHttpError extends Error {
   constructor(
@@ -67,6 +69,14 @@ export interface TephraClientLike {
   /** Server identity authority for repair (plan 010, §9.2): one GET, no protocol change. */
   listFiles(): Promise<FilesResponse>;
   resolve(path: string): Promise<ResolveResponse>;
+  /**
+   * Pull feed (plan 017, Phase 4): change entries after `sinceRevision`.
+   * Throws TephraHttpError(404) on servers predating the route — the
+   * caller falls back to the legacy full-manifest reconcile.
+   */
+  changes(sinceRevision: number, limit?: number): Promise<ChangesResponse>;
+  /** Download one blob by file id; the caller verifies bytes against the advertised hash. */
+  readContent(fileId: string): Promise<Uint8Array>;
 }
 
 export class TephraClient implements TephraClientLike {
@@ -203,6 +213,31 @@ export class TephraClient implements TephraClientLike {
       undefined,
       resolveResponseSchema.parse,
     );
+  }
+
+  changes(sinceRevision: number, limit?: number): Promise<ChangesResponse> {
+    const params = new URLSearchParams({ sinceRevision: String(sinceRevision) });
+    if (limit !== undefined) params.set('limit', String(limit));
+    return this.jsonRequest(
+      `${this.vaultUrl('/changes')}?${params.toString()}`,
+      'GET',
+      undefined,
+      changesResponseSchema.parse,
+    );
+  }
+
+  async readContent(fileId: string): Promise<Uint8Array> {
+    const response = await this.request({
+      url: this.vaultUrl(`/files/${encodeURIComponent(fileId)}/content`),
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        ...this.versionHeaders(),
+      },
+      throw: false,
+    });
+    this.assertSuccess(response.status, response.text);
+    return new Uint8Array(response.arrayBuffer);
   }
 
   private async jsonRequest<T>(

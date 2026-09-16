@@ -1,11 +1,13 @@
 import type {
   ApiToken,
   CreatedToken,
+  EditConflictCurrent,
   FilesResponse,
   GraphResponse,
   LinksResponse,
   RenderedNote,
   ResolveResponse,
+  SaveContentResponse,
   User,
   Vault,
 } from './types';
@@ -16,10 +18,28 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /** Parsed error response body, when the server sent JSON (e.g. the
+     * `current` payload on 409 EDIT_CONFLICT). */
+    public readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Extract the `current` server state from a 409 EDIT_CONFLICT failure, or
+ * return undefined for any other error. The save path uses this to offer
+ * Reload / Overwrite instead of a generic failure.
+ */
+export function editConflictCurrent(error: unknown): EditConflictCurrent | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.status !== 409 || error.code !== 'EDIT_CONFLICT') return undefined;
+  const current = (error.body as { current?: unknown } | undefined)?.current as
+    | EditConflictCurrent
+    | undefined;
+  if (!current || typeof current.blobHash !== 'string') return undefined;
+  return current;
 }
 
 interface ErrorBody {
@@ -68,6 +88,7 @@ export class ApiClient {
         response.status,
         body.error?.code ?? 'HTTP_ERROR',
         body.error?.message ?? `Request failed (${response.status}).`,
+        body,
       );
     }
     return response;
@@ -124,6 +145,27 @@ export class ApiClient {
       `/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/content`,
       { headers: { Accept: 'text/plain' } },
     );
+  /**
+   * Save edited markdown. `baseBlobHash` is the SHA-256 of the bytes the
+   * edit was based on, sent as `If-Match`; a stale base is rejected with
+   * 409 EDIT_CONFLICT carrying the server's `current` state. Throws
+   * ApiError with the parsed body attached (see `editConflictCurrent`).
+   */
+  saveContent = (vaultIdOrName: string, fileId: string, text: string, baseBlobHash: string) => {
+    const bytes = new TextEncoder().encode(text);
+    return this.request<SaveContentResponse>(
+      `/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/content`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'X-Tephra-Content-Size': String(bytes.byteLength),
+          'If-Match': `"${baseBlobHash}"`,
+        },
+        body: text,
+      },
+    );
+  };
   contentUrl = (vaultIdOrName: string, fileId: string) =>
     `${this.baseUrl}/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}/content`;
   // The graph endpoint is pure derived state with an ETag; reuse the last

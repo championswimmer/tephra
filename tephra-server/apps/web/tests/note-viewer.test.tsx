@@ -1,8 +1,19 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
 import { NoteViewer } from '../src/components/NoteViewer';
+import { ThemeProvider } from '../src/theme/ThemeContext';
+
+function wrapper({ children }: { children: ReactNode }) {
+  return (
+    <MemoryRouter>
+      <ThemeProvider>{children}</ThemeProvider>
+    </MemoryRouter>
+  );
+}
 describe('NoteViewer', () => {
   it('shows loading and then server-rendered sanitized HTML', async () => {
     let finish!: (value: { html: string; title: string }) => void;
@@ -11,7 +22,7 @@ describe('NoteViewer', () => {
         finish = resolve;
       }),
     );
-    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={vi.fn()} />);
+    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={vi.fn()} />, { wrapper });
     expect(screen.getByRole('status')).toHaveTextContent('Rendering note');
     finish({ title: 'Welcome', html: '<p>Hello <strong>Tephra</strong></p>' });
     expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument();
@@ -36,6 +47,7 @@ describe('NoteViewer', () => {
         onOpen={onOpen}
         getPathForFileId={(fileId) => (fileId === 'file-2' ? 'Notes/Target.md' : undefined)}
       />,
+      { wrapper },
     );
     await user.click(await screen.findByRole('link', { name: 'Target Note' }));
     expect(onOpen).toHaveBeenCalledWith('Notes/Target.md');
@@ -48,7 +60,7 @@ describe('NoteViewer', () => {
       title: 'Home',
       html: '<p><a href="#" class="tephra-link" data-link-path="Target" data-file-id="file-2">Target Note</a></p>',
     });
-    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={onOpen} />);
+    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={onOpen} />, { wrapper });
     await user.click(await screen.findByRole('link', { name: 'Target Note' }));
     expect(onOpen).not.toHaveBeenCalled();
     expect(await screen.findByRole('status')).toHaveTextContent('Note not found: file-2');
@@ -61,7 +73,7 @@ describe('NoteViewer', () => {
       title: 'Home',
       html: '<p><a href="#" class="tephra-unresolved" data-link-path="Missing" data-unresolved-target="Missing">Missing</a></p>',
     });
-    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={onOpen} />);
+    render(<NoteViewer vaultId="vault-1" fileId="file-1" onOpen={onOpen} />, { wrapper });
     await user.click(await screen.findByRole('link', { name: 'Missing' }));
     expect(onOpen).not.toHaveBeenCalled();
     expect(await screen.findByRole('status')).toHaveTextContent('Note not found: Missing');

@@ -337,6 +337,93 @@ html.theme-dark .vault-grid a {
   font-size: 0.84rem;
   margin: 0.5rem;
 }
+.notice-error {
+  border-left-color: var(--text-error, #c00);
+}
+.note-toolbar-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.note-toolbar .icon-button:disabled,
+.note-editor-bar .icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 0;
+}
+.note-editor-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+.note-editor-bar .icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 4px;
+  padding: 0.45rem 0.9rem;
+}
+.note-editor-bar .icon-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+}
+.note-editor-status {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+.note-editor-host {
+  min-height: 320px;
+  height: 55vh;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: auto;
+  background: var(--background-primary);
+}
+.note-editor-host .tephra-editor {
+  min-height: 100%;
+}
+.conflict-banner {
+  padding: 0.8rem 1rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--text-warning, #b7791f);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+.conflict-banner p {
+  margin: 0.4rem 0 0.6rem;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.conflict-actions .icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 4px;
+  padding: 0.45rem 0.7rem;
+}
+.conflict-actions .icon-button:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+}
+.conflict-actions .icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .auth-page {
   min-height: 100vh;
   display: grid;

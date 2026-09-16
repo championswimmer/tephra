@@ -1,6 +1,6 @@
 # Tephra Sync for Obsidian
 
-Tephra Sync creates a one-way, read-only web mirror of your Obsidian vault on a Tephra Server. It supports desktop and mobile Obsidian and never downloads or applies server content to your vault.
+Tephra Sync keeps your Obsidian vault and a Tephra Server vault in two-way sync. It supports desktop and mobile Obsidian: local changes are pushed up, and changes made on the server (web edits, other devices) are pulled down into your vault.
 
 ## Installation
 
@@ -54,6 +54,8 @@ Use **Sync now** in settings or the command palette for a manual full reconcilia
 - Hidden paths (including `.obsidian` and `.tephra`) and common temporary files are excluded.
 - Uploads are content-addressed. Only blobs reported missing by the server are sent, and a complete manifest is committed only after all uploads succeed.
 - Offline and authentication failures do not advance local successful-sync state. Changes remain in the local vault and are retried later.
-- Stage 1 is upload-only: server content is never written into the vault and no web edits are downloaded.
+- Two-way sync (protocol v2, plugin 0.2.0+): every reconciliation pulls before it pushes. The plugin walks the server change feed from its persisted `lastPulledRevision` cursor (resuming across truncated pages), applies each entry by comparing blob hashes — never mtime — and only then scans, plans, uploads, and commits local changes. Downloads are hash-verified before anything is written.
+- Conflict rule is last-write-wins with conflicted copies: if a note changed both locally and on the server since the last sync, the local file is left untouched and the server version is saved next to it as `<name> (server conflicted copy, YYYY-MM-DD).md` (attachments keep their extension). A server delete only removes the local file when it is still identical to the last-synced bytes; a locally edited file wins over the delete.
+- If the pull cursor ever runs ahead of the server, the plugin falls back to the full-manifest repair; servers predating the change feed keep the previous full-reconcile behavior.
 
 Prefer HTTPS whenever the server is not on a trusted local network. Tokens are never intentionally logged.

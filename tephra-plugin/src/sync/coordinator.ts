@@ -5,6 +5,7 @@ import type { TephraClientLike } from '../api/client';
 import type { TephraPluginState, LocalFileState } from '../state/plugin-state';
 import type { VaultEvent } from './event-buffer';
 import { manifestHash } from './manifest';
+import { pullRemoteChanges } from './puller';
 import { SerializedReconciler } from './reconciliation';
 import type { ScanResult, VaultScanner } from './scanner';
 import { uploadMissingBlobs } from './uploader';
@@ -14,6 +15,7 @@ export type SyncPhase =
   | 'idle'
   | 'disabled'
   | 'scanning'
+  | 'pulling'
   | 'planning'
   | 'repairing'
   | 'uploading'
@@ -43,6 +45,12 @@ export interface CoordinatorOptions {
   scanner: VaultScanner;
   clientFactory?: () => TephraClientLike;
   identityStore?: IdentityStoreHandle | undefined;
+  /**
+   * Echo suppression for pull-applied writes (plan 017, §7.4): the plugin
+   * wires this to the same set the vault event handlers consult, so
+   * pulled creates/modifies/deletes/renames never retrigger a sync.
+   */
+  suppressPath?: ((path: string) => void) | undefined;
 }
 
 /**
@@ -170,6 +178,19 @@ export class SyncCoordinator {
         state.settings.uploadToken,
       );
     try {
+      // Pull before push (plan 017, Phase 4): remote changes land first so
+      // the scan below — and therefore plan/upload/commit — sees them.
+      // full-resync and legacy outcomes keep the old behavior: the
+      // identityRepairNeeded flag routes this same pass through the
+      // existing full-manifest repair; legacy proceeds untouched.
+      this.status('pulling', 'Pulling remote changes…');
+      await pullRemoteChanges({
+        app: this.options.app,
+        client,
+        state,
+        saveState: () => this.options.saveState(),
+        suppressPath: this.options.suppressPath,
+      });
       this.status('scanning', 'Scanning vault…');
       const scanned = await this.options.scanner.scan();
       let files = scanned.files;

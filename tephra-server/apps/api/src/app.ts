@@ -15,7 +15,9 @@ import {
   type AuthPrincipal,
 } from '@tephra/auth';
 import {
+  changesResponseSchema,
   hashManifest,
+  type ChangeEntry,
   isCanonicalVaultPath,
   MINIMUM_PLUGIN_VERSION,
   PROTOCOL_VERSION,
@@ -31,6 +33,7 @@ import {
   diffRevision,
   type ApiTokenScope,
   type CurrentVaultFile,
+  type FileVersion,
   type Vault,
 } from '@tephra/vault-model';
 
@@ -134,9 +137,9 @@ const vaultNameSchema = z
 const vaultSchema = z.strictObject({ name: vaultNameSchema });
 const deleteVaultSchema = z.strictObject({ confirmation: z.string().max(200) });
 const scopesSchema = z
-  .array(z.enum(['vault:read-metadata', 'vault:upload']))
+  .array(z.enum(['vault:read-metadata', 'vault:upload', 'vault:write']))
   .min(1)
-  .max(2);
+  .max(3);
 const tokenSchema = z.strictObject({
   name: z.string().trim().min(1).max(200),
   deviceId: z.string().min(1).max(200).optional(),
@@ -148,6 +151,60 @@ const tokenSchema = z.strictObject({
 
 function fail(status: ApiFailure['status'], code: ApiErrorCode, message: string): never {
   throw new ApiFailure(status, code, message);
+}
+
+/**
+ * Parses the If-Match precondition for the web content write endpoint. The
+ * client must state the blob hash it based its edit on, either bare or
+ * wrapped as `<hash>` (a quoted `"<hash>"` is accepted for tolerance);
+ * a missing or malformed value is a 400, never an unconditional overwrite.
+ */
+function parseIfMatch(header: string | undefined): string {
+  if (header === undefined)
+    fail(400, 'INVALID_MANIFEST', 'An If-Match header with the base content hash is required.');
+  let value = header.trim();
+  if (value.startsWith('<') && value.endsWith('>')) value = value.slice(1, -1).trim();
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"'))
+    value = value.slice(1, -1);
+  try {
+    return sha256Schema.parse(value);
+  } catch {
+    fail(400, 'INVALID_MANIFEST', 'If-Match must be a SHA-256 hash of the base content.');
+  }
+}
+
+/**
+ * Shared blob-store-and-record path (invariant I3): the server hashes the
+ * received bytes itself and never trusts a client-supplied digest. Used by
+ * both `PUT /blobs/:hash` and the web content write endpoint so the two
+ * writers cannot drift apart.
+ */
+async function storeBlobIfAbsent(
+  dependencies: ApiDependencies,
+  input: { hash: string; bytes: Uint8Array; mimeType?: string },
+): Promise<{ stored: boolean }> {
+  const existing = await dependencies.database.blobs.findByHash(input.hash);
+  if (
+    existing &&
+    (existing.size !== input.bytes.byteLength ||
+      !(await dependencies.blobStore.has(input.hash)))
+  )
+    fail(409, 'COMMIT_FAILED', 'Stored blob metadata is inconsistent.');
+  if (!existing) {
+    await dependencies.blobStore.put({
+      hash: input.hash,
+      bytes: input.bytes,
+      size: input.bytes.byteLength,
+      ...(input.mimeType === undefined ? {} : { mimeType: input.mimeType }),
+    });
+    await dependencies.database.blobs.insert({
+      hash: input.hash,
+      size: input.bytes.byteLength,
+      mimeType: input.mimeType ?? null,
+      createdAt: dependencies.clock.now(),
+    });
+  }
+  return { stored: existing === null };
 }
 
 async function jsonBody<T>(c: AppContext, schema: ZodType<T>): Promise<T> {
@@ -504,10 +561,17 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
   });
 
   app.use('/api/v1/vaults/:vaultId/*', async (c, next) => {
+    // The web content write endpoint needs `vault:write`, which neither
+    // implies nor requires the neighbouring read/upload scopes; session
+    // principals (the vault owner) satisfy every scope via canAccessVault.
     const scope =
       c.req.path.includes('/sync/') || c.req.path.includes('/blobs/')
         ? 'vault:upload'
-        : 'vault:read-metadata';
+        : c.req.method === 'PUT' &&
+            c.req.path.includes('/files/') &&
+            c.req.path.endsWith('/content')
+          ? 'vault:write'
+          : 'vault:read-metadata';
     await ownedVault(c, dependencies, scope);
     return next();
   });
@@ -670,29 +734,191 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
       fail(413, 'BLOB_TOO_LARGE', 'Blob exceeds the configured size limit.');
     if ((await sha256Hex(bytes)) !== hash)
       fail(400, 'BLOB_HASH_MISMATCH', 'Uploaded content does not match the declared SHA-256 hash.');
-    const existing = await dependencies.database.blobs.findByHash(hash);
-    if (
-      existing &&
-      (existing.size !== bytes.byteLength || !(await dependencies.blobStore.has(hash)))
-    )
-      fail(409, 'COMMIT_FAILED', 'Stored blob metadata is inconsistent.');
-    if (!existing) {
-      const mimeType = c.req.header('content-type');
-      await dependencies.blobStore.put({
-        hash,
-        bytes,
-        size: bytes.byteLength,
-        ...(mimeType === undefined ? {} : { mimeType }),
-      });
-      await dependencies.database.blobs.insert({
-        hash,
-        size: bytes.byteLength,
-        mimeType: mimeType ?? null,
-        createdAt: dependencies.clock.now(),
+    const mimeType = c.req.header('content-type');
+    const { stored } = await storeBlobIfAbsent(dependencies, {
+      hash,
+      bytes,
+      ...(mimeType === undefined ? {} : { mimeType }),
+    });
+    Object.assign(c.get('logContext'), { uploaded_blob_count: stored ? 1 : 0 });
+    return c.json({ hash, stored });
+  });
+
+  // Web editing write path (plan 017, Phase 2): one saved markdown file
+  // becomes one server revision in the same file_versions ledger plugin
+  // commits use. Optimistic concurrency via the required If-Match header.
+  app.put('/api/v1/vaults/:vaultId/files/:fileId/content', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:write');
+    const fileId = z.string().min(1).parse(c.req.param('fileId'));
+    // Pre-lock read is validation only; the authoritative read happens
+    // inside the transaction after lockVault (step 6 of the plan).
+    const preLock = await dependencies.database.vaultFiles.findById(vault.id, fileId);
+    if (!preLock) fail(404, 'VAULT_NOT_FOUND', 'File was not found.');
+    if (preLock.kind !== 'markdown')
+      fail(400, 'INVALID_MANIFEST', 'Only Markdown files can be edited from the web.');
+    const ifMatch = parseIfMatch(c.req.header('if-match'));
+    const max = dependencies.maxBlobBytes ?? DEFAULT_BLOB_LIMIT;
+    const declaredText = c.req.header('x-tephra-content-size');
+    const declared =
+      declaredText === undefined
+        ? Number(c.req.header('content-length'))
+        : Number(declaredText);
+    if (!Number.isSafeInteger(declared) || declared < 0)
+      fail(400, 'INVALID_MANIFEST', 'A valid content size is required.');
+    if (declared > max) fail(413, 'BLOB_TOO_LARGE', 'Content exceeds the configured size limit.');
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength !== declared)
+      fail(400, 'INVALID_MANIFEST', 'Uploaded size does not match the declared size.');
+    if (bytes.byteLength > max)
+      fail(413, 'BLOB_TOO_LARGE', 'Content exceeds the configured size limit.');
+    // Server-computed digest (invariant I3): never trust a client digest.
+    const hash = await sha256Hex(bytes);
+    Object.assign(c.get('logContext'), {
+      vault_id: vault.id,
+      file_id: fileId,
+      blob_hash: hash,
+      content_bytes: bytes.byteLength,
+    });
+    // Byte-identical save (invariant I2): identical bytes hash identically,
+    // so there is nothing to commit regardless of what the client sent.
+    if (hash === preLock.blobHash) {
+      Object.assign(c.get('logContext'), { revision: vault.latestRevision });
+      return c.json({
+        status: 'up-to-date',
+        revision: vault.latestRevision,
+        blobHash: hash,
+        size: preLock.size,
+        mtime: preLock.mtime,
       });
     }
-    Object.assign(c.get('logContext'), { uploaded_blob_count: existing ? 0 : 1 });
-    return c.json({ hash, stored: existing === null });
+    const mimeType = c.req.header('content-type');
+    await storeBlobIfAbsent(dependencies, {
+      hash,
+      bytes,
+      ...(mimeType === undefined ? {} : { mimeType }),
+    });
+    const principal = c.get('principal');
+    const result = await dependencies.database.transaction(async (repositories) => {
+      await repositories.lockVault(vault.id);
+      const fresh = await repositories.vaults.findById(vault.id);
+      if (!fresh) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
+      const current = await repositories.vaultFiles.findById(vault.id, fileId);
+      if (!current) fail(404, 'VAULT_NOT_FOUND', 'File was not found.');
+      if (current.kind !== 'markdown')
+        fail(400, 'INVALID_MANIFEST', 'Only Markdown files can be edited from the web.');
+      if (current.blobHash !== ifMatch) {
+        return {
+          status: 'conflict' as const,
+          current: {
+            blobHash: current.blobHash,
+            size: current.size,
+            mtime: current.mtime,
+            revision: current.updatedRevision,
+          },
+        };
+      }
+      const now = dependencies.clock.now();
+      // A web edit must strictly post-date the content it was based on so
+      // the timestamp conflict rule cannot be inverted by a lagging clock.
+      const mtime = Math.max(now, current.mtime + 1);
+      // Synthetic web device: device_id is NOT NULL, and web saves have no
+      // plugin device. Inserted idempotently on first web write per user.
+      const deviceId = `web:${principal.user.id}`;
+      if ((await repositories.devices.findById(deviceId)) === null) {
+        await repositories.devices.insert({
+          id: deviceId,
+          userId: principal.user.id,
+          name: 'Tephra Web',
+          platform: 'web',
+          createdAt: now,
+          lastSeenAt: now,
+        });
+      }
+      const files = await repositories.vaultFiles.listByVault(vault.id);
+      const revision = fresh.latestRevision + 1;
+      const incoming = files.map((entry) =>
+        entry.fileId === fileId
+          ? {
+              fileId: entry.fileId,
+              path: entry.path,
+              blobHash: hash,
+              size: bytes.byteLength,
+              mtime,
+              ...(entry.mimeType === undefined ? {} : { mimeType: entry.mimeType }),
+              kind: entry.kind,
+            }
+          : {
+              fileId: entry.fileId,
+              path: entry.path,
+              blobHash: entry.blobHash,
+              size: entry.size,
+              mtime: entry.mtime,
+              ...(entry.mimeType === undefined ? {} : { mimeType: entry.mimeType }),
+              kind: entry.kind,
+            },
+      );
+      // The ledger row comes from the same diffRevision code path as a
+      // plugin commit rather than a hand-written row: exactly one modify.
+      const diff = diffRevision({
+        vaultId: vault.id,
+        revision,
+        createdAt: now,
+        current: files,
+        incoming,
+        ids: dependencies.ids,
+      });
+      // Reuse the canonical manifest hash so vault_revisions.manifest_hash
+      // stays meaningful for both writers.
+      const manifestHash = await hashManifest(
+        incoming.map(({ blobHash, ...entry }) => ({ ...entry, hash: blobHash })),
+      );
+      await repositories.vaultRevisions.insert({
+        vaultId: vault.id,
+        revision,
+        manifestHash,
+        deviceId,
+        createdAt: now,
+      });
+      if (diff.versions.length) await repositories.fileVersions.insertMany(diff.versions);
+      await repositories.vaultFiles.upsert({
+        fileId,
+        vaultId: vault.id,
+        path: current.path,
+        blobHash: hash,
+        size: bytes.byteLength,
+        mtime,
+        ...(current.mimeType === undefined ? {} : { mimeType: current.mimeType }),
+        kind: current.kind,
+        updatedRevision: revision,
+      });
+      await repositories.vaults.update({ ...fresh, latestRevision: revision, updatedAt: now });
+      return { status: 'committed' as const, revision, size: bytes.byteLength, mtime };
+    });
+    if (result.status === 'conflict') {
+      Object.assign(c.get('logContext'), { revision: result.current.revision });
+      return c.json(
+        {
+          error: { code: 'EDIT_CONFLICT', message: 'The file changed since it was loaded.' },
+          current: result.current,
+        },
+        409,
+      );
+    }
+    // Same post-commit behaviour as a plugin commit: trigger indexing and
+    // drop the materialized graph row (deleted first so no stale revision is
+    // served; the index service rebuilds it for the new revision).
+    await dependencies.database.graphCache.deleteByVault(vault.id).catch(() => undefined);
+    if (dependencies.indexService?.indexVault) {
+      void dependencies.indexService.indexVault(vault.id, result.revision).catch(() => undefined);
+    }
+    Object.assign(c.get('logContext'), { revision: result.revision });
+    return c.json({
+      status: 'committed',
+      revision: result.revision,
+      blobHash: hash,
+      size: result.size,
+      mtime: result.mtime,
+    });
   });
 
   app.post('/api/v1/vaults/:vaultId/sync/commit', async (c) => {
@@ -803,6 +1029,124 @@ export function createApp(dependencies: ApiDependencies): Hono<{ Variables: Vari
     Object.assign(c.get('logContext'), { revision: result.revision });
     return c.json({ ...result, ...syncProtocolFields() });
   });
+
+  // Pull feed (plan 017, Phase 4): projects the append-only file_versions
+  // ledger forward from an exclusive revision cursor. Tombstone (delete)
+  // rows are emitted like any other row — the query deliberately does not
+  // join vault_files, so deleted files still appear. Metadata-only: no
+  // vault:write here by intent, and only ids/revision counts enter the logs.
+  app.get('/api/v1/vaults/:vaultId/changes', async (c) => {
+    const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
+    const latestRevision = vault.latestRevision;
+    const rawSince = c.req.query('sinceRevision');
+    const rawLimit = c.req.query('limit');
+    if (rawSince === undefined || rawSince.length === 0)
+      fail(400, 'INVALID_MANIFEST', 'A sinceRevision query parameter is required.');
+    const sinceRevision = Number(rawSince);
+    if (!Number.isSafeInteger(sinceRevision) || sinceRevision < 0)
+      fail(400, 'INVALID_MANIFEST', 'sinceRevision must be a non-negative integer.');
+    let limit = 200;
+    if (rawLimit !== undefined && rawLimit.length > 0) {
+      const parsed = Number(rawLimit);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0)
+        fail(400, 'INVALID_MANIFEST', 'limit must be a positive integer.');
+      limit = Math.min(parsed, 500);
+    }
+    Object.assign(c.get('logContext'), { vault_id: vault.id, from_revision: sinceRevision });
+    // Client ahead of the server: impossible in a correct walk, but the
+    // only safe answer is a full resync rather than an empty page.
+    if (sinceRevision > latestRevision)
+      return c.json({ status: 'full-resync-required', latestRevision });
+    // One emitted entry covers at most two rows (rename + modify at the
+    // same revision), so 2*limit+1 rows prove whether more entries remain.
+    const rows = await dependencies.database.fileVersions.listSince(
+      vault.id,
+      sinceRevision,
+      2 * limit + 1,
+    );
+    // Group rows by (fileId, revision), preserving revision-ASC order.
+    const groups: Array<{ fileId: string; revision: number; rows: FileVersion[] }> = [];
+    for (const row of rows) {
+      const last = groups.at(-1);
+      if (last !== undefined && last.fileId === row.fileId && last.revision === row.revision)
+        last.rows.push(row);
+      else groups.push({ fileId: row.fileId, revision: row.revision, rows: [row] });
+    }
+    const truncated = groups.length > limit;
+    const page = truncated ? groups.slice(0, limit) : groups;
+    // Rename entries need the path the file had before this revision. The
+    // row itself only carries the new path, so resolve the latest earlier
+    // row for the file (bounded: at most one lookup per renamed file).
+    const previousPaths = new Map<string, string>();
+    for (const group of page) {
+      if (!group.rows.some((row) => row.changeType === 'rename')) continue;
+      const history = await dependencies.database.fileVersions.listByFile(vault.id, group.fileId);
+      const previous = history
+        .filter((row) => row.revision < group.revision)
+        .sort((left, right) => right.revision - left.revision)[0];
+      if (previous !== undefined && previous.path !== group.rows.at(-1)?.path)
+        previousPaths.set(group.fileId, previous.path);
+    }
+    const changes: ChangeEntry[] = page.map((group) => {
+      const lastRow = group.rows.at(-1)!;
+      const types = new Set(group.rows.map((row) => row.changeType));
+      const changeType: ChangeEntry['changeType'] = types.has('delete')
+        ? 'delete'
+        : types.has('create')
+          ? 'create'
+          : types.has('rename')
+            ? 'rename'
+            : 'modify';
+      const previousPath = previousPaths.get(group.fileId);
+      return {
+        fileId: group.fileId,
+        changeType,
+        path: lastRow.path,
+        ...(previousPath === undefined ? {} : { previousPath }),
+        // Tombstones carry no blob: blobHash/size/mtime stay absent.
+        ...(changeType === 'delete' || lastRow.blobHash === null
+          ? {}
+          : {
+              blobHash: lastRow.blobHash,
+              ...(lastRow.size === null ? {} : { size: lastRow.size }),
+              ...(lastRow.mtime === null ? {} : { mtime: lastRow.mtime }),
+            }),
+        kind: changesKindForPath(lastRow.path),
+        revision: group.revision,
+      };
+    });
+    const toRevision = page.length > 0 ? page.at(-1)!.revision : latestRevision;
+    Object.assign(c.get('logContext'), {
+      to_revision: toRevision,
+      change_count: changes.length,
+      truncated,
+    });
+    return c.json(
+      changesResponseSchema.parse({
+        status: 'ok',
+        fromRevision: sinceRevision,
+        toRevision,
+        latestRevision,
+        truncated,
+        changes,
+      }),
+    );
+  });
+
+  /**
+   * a file with an `.md` extension is markdown, everything else is an
+   * attachment. This mirrors the plugin scanner's
+   * `file.extension.toLowerCase() === 'md'` rule (there is no separate
+   * blob-upload kind rule in this handler file); `file_versions` rows carry
+   * no kind column, so the path is the only signal available.
+   */
+  function changesKindForPath(path: string): 'markdown' | 'attachment' {
+    const base = path.split('/').at(-1) ?? path;
+    const dot = base.lastIndexOf('.');
+    return dot >= 0 && base.slice(dot + 1).toLowerCase() === 'md'
+      ? 'markdown'
+      : 'attachment';
+  }
 
   app.get('/api/v1/vaults/:vaultId/files', async (c) => {
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
