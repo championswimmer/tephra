@@ -202,3 +202,10 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       deviation: web conflict resolution downloads a conflicted copy
       instead of PUT-creating one — no file-creation endpoint exists
       server-side (deferred to a follow-up, per plan §8.2)
+- [x] Pull self-heals blob hash mismatches (plugin 0.2.0): a changelog entry
+      whose advertised hash disagrees with `/content` bytes no longer aborts
+      the sync — the puller refreshes the server manifest once, skips
+      superseded/server-deleted entries with a warning, retries once then
+      skips genuinely corrupt blobs; the vault is never written with
+      unverified bytes. Full `npm run check` green (166 plugin tests),
+      rebuilt + synced to Obsidian vault via `npm run sync:plugin`

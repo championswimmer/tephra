@@ -125,7 +125,7 @@ export async function pullRemoteChanges(deps: PullDeps): Promise<PullOutcome> {
 async function applyEntry(
   ctx: PullContext,
   entry: ChangeEntry,
-  serverKind: ReadonlyMap<string, 'markdown' | 'attachment'>,
+  serverKind: Map<string, 'markdown' | 'attachment'>,
 ): Promise<boolean> {
   // (a) Canonical path rules mirror the push validation: anything else is
   // skipped with a warning, never written.
@@ -141,7 +141,7 @@ async function applyEntry(
     if (moved) return true;
     // Fell through: previous path missing or diverged — upsert at the new path.
   }
-  return applyUpsert(ctx, entry, local, kind);
+  return applyUpsert(ctx, entry, local, kind, serverKind);
 }
 
 /**
@@ -176,17 +176,102 @@ async function localHash(ctx: PullContext, info: PullFileInfo): Promise<string> 
   return sha256Hex(bytes);
 }
 
+/**
+ * Integrity failure carrying both hashes so the pull loop can tell a
+ * superseded changelog entry (the file moved on server-side) from a
+ * genuinely unreadable blob.
+ */
+export class BlobIntegrityError extends Error {
+  constructor(
+    readonly path: string,
+    readonly advertised: string,
+    readonly actual: string,
+  ) {
+    super(
+      `Blob hash mismatch for ${path}: changelog advertised ${advertised}, downloaded ${actual}.`,
+    );
+    this.name = 'BlobIntegrityError';
+  }
+}
+
 /** Verify the downloaded bytes against the advertised hash before touching the vault. */
 async function downloadVerified(ctx: PullContext, entry: ChangeEntry): Promise<Uint8Array> {
   const remoteHash = entry.blobHash;
   if (!remoteHash) throw new Error(`Server change without blob hash: ${entry.path}`);
   const bytes = await ctx.client.readContent(entry.fileId);
   const actual = await sha256Hex(bytes);
-  if (actual !== remoteHash)
-    throw new Error(
-      `Blob hash mismatch for ${entry.path}: changelog advertised ${remoteHash}, downloaded ${actual}.`,
-    );
+  if (actual !== remoteHash) throw new BlobIntegrityError(entry.path, remoteHash, actual);
   return bytes;
+}
+
+/**
+ * Self-healing download: a changelog entry can advertise a hash the content
+ * endpoint no longer serves — the file was modified again after the page was
+ * read, so `/content` (current bytes by file id) disagrees with the
+ * historical entry. Aborting the whole sync over that wedges the plugin on
+ * every run; instead refresh the server manifest once and:
+ * - superseded (or server-deleted) entry → warn and skip it; the newer
+ *   entry later in the walk (or the next sync) carries the current state;
+ * - otherwise retry once (mid-commit race / truncated download), then warn
+ *   and skip so the sync still completes. The vault is never written with
+ *   unverified bytes; the following push phase reconverges the ledger.
+ * Returns `null` when the entry was skipped. Non-integrity failures
+ * (offline, auth, …) and an unreachable manifest refresh rethrow — the
+ * sync must retry those, never silently advance past them.
+ */
+async function downloadResilient(
+  ctx: PullContext,
+  entry: ChangeEntry,
+  serverKind: Map<string, 'markdown' | 'attachment'>,
+): Promise<Uint8Array | null> {
+  try {
+    return await downloadVerified(ctx, entry);
+  } catch (error) {
+    if (!(error instanceof BlobIntegrityError) && !isNotFound(error)) throw error;
+    const advertised = entry.blobHash ?? '(missing)';
+    const actual = error instanceof BlobIntegrityError ? error.actual : undefined;
+    let fresh: Awaited<ReturnType<PullContext['client']['listFiles']>>;
+    try {
+      fresh = await ctx.client.listFiles();
+    } catch {
+      throw error;
+    }
+    for (const file of fresh.files) serverKind.set(file.fileId, file.kind);
+    const current = fresh.files.find((file) => file.fileId === entry.fileId);
+    if (!current) {
+      console.warn(
+        `[tephra] Skipping change for ${entry.path}: file is gone from the server (advertised ${advertised}).`,
+      );
+      return null;
+    }
+    if (actual !== undefined && current.blobHash === actual) {
+      console.warn(
+        `[tephra] Skipping superseded change for ${entry.path} at revision ${String(entry.revision)}: server is already at ${current.blobHash}.`,
+      );
+      return null;
+    }
+    if (current.blobHash !== entry.blobHash) {
+      // The server moved on but the single download matches neither hash
+      // (race between the page read and the download) — a newer entry in
+      // this walk (or the next sync) carries the state.
+      console.warn(
+        `[tephra] Skipping superseded change for ${entry.path} at revision ${String(entry.revision)}: server is at ${current.blobHash}, downloaded ${actual ?? '(unavailable)'}.`,
+      );
+      return null;
+    }
+    // Not superseded: the server still advertises this hash, so retry once
+    // before giving up (mid-commit race or truncated download).
+    try {
+      return await downloadVerified(ctx, entry);
+    } catch (retryError) {
+      if (!(retryError instanceof BlobIntegrityError) && !isNotFound(retryError))
+        throw retryError;
+      console.warn(
+        `[tephra] Skipping change for ${entry.path}: downloaded bytes do not match advertised ${advertised}; sync continues and the push phase reconverges.`,
+      );
+      return null;
+    }
+  }
 }
 
 async function applyUpsert(
@@ -194,6 +279,7 @@ async function applyUpsert(
   entry: ChangeEntry,
   local: PullFileInfo | null,
   kind: 'markdown' | 'attachment',
+  serverKind: Map<string, 'markdown' | 'attachment'>,
 ): Promise<boolean> {
   const remoteHash = entry.blobHash;
   if (!remoteHash) {
@@ -201,7 +287,8 @@ async function applyUpsert(
     return false;
   }
   if (!local) {
-    const bytes = await downloadVerified(ctx, entry);
+    const bytes = await downloadResilient(ctx, entry, serverKind);
+    if (!bytes) return false;
     await writeKindBytes(ctx, entry.path, bytes, kind);
     setStateEntry(ctx, entry, kind, bytes);
     return true;
@@ -213,7 +300,8 @@ async function applyUpsert(
     return false;
   }
   const previous = ctx.state.manifest[entry.path]?.hash;
-  const bytes = await downloadVerified(ctx, entry);
+  const bytes = await downloadResilient(ctx, entry, serverKind);
+  if (!bytes) return false;
   if (previous !== undefined && current === previous) {
     // Untouched since the last pull/push: safe to overwrite. Markdown goes
     // through UTF-8 decode, byte-compare, then modify, binary-safe.

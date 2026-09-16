@@ -601,13 +601,133 @@ describe('pullRemoteChanges', () => {
     expect(warn).toHaveBeenCalled();
   });
 
-  it('aborts on blob hash mismatch without touching the vault', async () => {
+  it('skips a blob hash mismatch with a warning and completes the sync', async () => {
+    const state = pullState();
+    const fake = createFakeVault();
+    // Server still advertises the stale hash: retry once, then skip — the
+    // vault is never written with unverified bytes and the sync completes.
+    const entry = await mdEntry({ blobHash: 'f'.repeat(64), content: 'tampered' });
+    const { client } = createFakeClient({
+      pages: [okPage([entry], 8)],
+      blobs: { file_1: encoder.encode('tampered') },
+      manifest: [
+        { fileId: 'file_1', path: 'new.md', blobHash: 'f'.repeat(64), kind: 'markdown' },
+      ],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const saveState = vi.fn(async () => undefined);
+    const outcome = await pullRemoteChanges({
+      app: {} as never,
+      client: client as never,
+      state,
+      saveState,
+      conflictedDate: DATE,
+      vault: fake.vault,
+    });
+    expect(outcome).toEqual({ outcome: 'ok', applied: 0, toRevision: 8 });
+    expect(fake.textWrites).toEqual([]);
+    expect(client.readContent).toHaveBeenCalledTimes(2); // initial + one retry
+    expect(warn).toHaveBeenCalled();
+    expect(saveState).toHaveBeenCalledTimes(1);
+    expect(state.lastPulledRevision).toBe(8);
+  });
+
+  it('skips a superseded entry when the server already moved on', async () => {
+    const state = pullState();
+    const fake = createFakeVault();
+    // The changelog advertises a stale hash but /content already serves the
+    // current server bytes: no retry, skip with a superseded warning.
+    const currentBytes = encoder.encode('current server text');
+    const currentHash = await sha256Hex(currentBytes);
+    const entry = await mdEntry({ blobHash: 'f'.repeat(64), content: 'ignored' });
+    const { client } = createFakeClient({
+      pages: [okPage([entry], 8)],
+      blobs: { file_1: currentBytes },
+      manifest: [
+        { fileId: 'file_1', path: 'new.md', blobHash: currentHash, kind: 'markdown' },
+      ],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const outcome = await pullRemoteChanges({
+      app: {} as never,
+      client: client as never,
+      state,
+      saveState: async () => undefined,
+      conflictedDate: DATE,
+      vault: fake.vault,
+    });
+    expect(outcome).toEqual({ outcome: 'ok', applied: 0, toRevision: 8 });
+    expect(fake.textWrites).toEqual([]);
+    expect(client.readContent).toHaveBeenCalledTimes(1); // no retry when superseded
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('superseded'));
+    expect(state.lastPulledRevision).toBe(8);
+  });
+
+  it('skips a mismatched entry for a file gone from the server', async () => {
     const state = pullState();
     const fake = createFakeVault();
     const entry = await mdEntry({ blobHash: 'f'.repeat(64), content: 'tampered' });
     const { client } = createFakeClient({
       pages: [okPage([entry], 8)],
       blobs: { file_1: encoder.encode('tampered') },
+      manifest: [], // refresh shows the file is gone
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const outcome = await pullRemoteChanges({
+      app: {} as never,
+      client: client as never,
+      state,
+      saveState: async () => undefined,
+      conflictedDate: DATE,
+      vault: fake.vault,
+    });
+    expect(outcome).toEqual({ outcome: 'ok', applied: 0, toRevision: 8 });
+    expect(fake.textWrites).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('gone from the server'));
+    expect(state.lastPulledRevision).toBe(8);
+  });
+
+  it('applies later entries after skipping a mismatched one', async () => {
+    const state = pullState();
+    const fake = createFakeVault();
+    const bad = await mdEntry({
+      fileId: 'file_bad',
+      path: 'bad.md',
+      blobHash: 'f'.repeat(64),
+      content: 'tampered',
+    });
+    const good = await mdEntry({ fileId: 'file_1', path: 'good.md', content: 'good bytes' });
+    const { client } = createFakeClient({
+      pages: [okPage([bad, good], 8)],
+      blobs: { file_bad: encoder.encode('tampered'), file_1: encoder.encode('good bytes') },
+      manifest: [
+        { fileId: 'file_bad', path: 'bad.md', blobHash: 'f'.repeat(64), kind: 'markdown' },
+        { fileId: 'file_1', path: 'good.md', blobHash: good.blobHash!, kind: 'markdown' },
+      ],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const outcome = await pullRemoteChanges({
+      app: {} as never,
+      client: client as never,
+      state,
+      saveState: async () => undefined,
+      conflictedDate: DATE,
+      vault: fake.vault,
+    });
+    expect(outcome).toEqual({ outcome: 'ok', applied: 1, toRevision: 8 });
+    expect(fake.textWrites).toEqual([{ path: 'good.md', text: 'good bytes' }]);
+    expect(fake.files.has('bad.md')).toBe(false);
+    expect(warn).toHaveBeenCalled();
+    expect(state.lastPulledRevision).toBe(8);
+  });
+
+  it('still throws non-integrity download failures instead of skipping', async () => {
+    const state = pullState();
+    const fake = createFakeVault();
+    const entry = await mdEntry({ content: 'server text' });
+    const { client } = createFakeClient({ pages: [okPage([entry], 8)] });
+    client.readContent = vi.fn(async () => {
+      throw new TephraHttpError(500, 'Server exploded.');
     });
     const saveState = vi.fn(async () => undefined);
     await expect(
@@ -619,7 +739,7 @@ describe('pullRemoteChanges', () => {
         conflictedDate: DATE,
         vault: fake.vault,
       }),
-    ).rejects.toThrow(/Blob hash mismatch/);
+    ).rejects.toThrow(/Server exploded/);
     expect(fake.textWrites).toEqual([]);
     expect(saveState).not.toHaveBeenCalled();
     expect(state.lastPulledRevision).toBe(7);
