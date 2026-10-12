@@ -28,7 +28,8 @@ Tag matching is exact on the full tag path: `tag:#area` does not match
 1. The Tags / Attachments toggles remove those node kinds.
 2. The search keeps real files (notes, attachments) that match; tag and
    unresolved nodes survive only while they still touch a visible file.
-3. Existing files only removes unresolved-link nodes.
+3. Unresolved and external links never produce nodes or edges (the server omits
+   them and the client model drops any legacy unresolved nodes).
 4. Orphan hiding runs last, because every earlier step can create orphans.
 
 ## Local graph

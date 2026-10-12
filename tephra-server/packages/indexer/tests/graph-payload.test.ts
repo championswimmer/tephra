@@ -14,7 +14,7 @@ const link = (overrides: Partial<NoteLink> & { id: string; linkPath: string }): 
 });
 
 describe('buildGraphPayload', () => {
-  it('synthesizes attachment, tag, and unresolved nodes with index-based edges', () => {
+  it('synthesizes attachment and tag nodes with index-based edges', () => {
     const files = [file('file-a', 'A.md'), file('file-b', 'B.md'), file('file-img', 'img.png', 100, 'attachment')];
     const payload = buildGraphPayload({
       files,
@@ -32,24 +32,39 @@ describe('buildGraphPayload', () => {
     expect(payload.truncated).toBe(false);
     expect(payload).not.toHaveProperty('indexPending');
     const byId = new Map(payload.nodes.map((node, index) => [node.id, { ...node, index }]));
-    expect([...byId.keys()].sort()).toEqual(['file-a', 'file-b', 'file-img', 'tag:foo', 'unresolved:Missing Note']);
+    expect([...byId.keys()].sort()).toEqual(['file-a', 'file-b', 'file-img', 'tag:foo']);
     expect(byId.get('file-a')).toMatchObject({ kind: 'note', tags: ['foo'], createdAt: 100 });
     expect(byId.get('file-img')).toMatchObject({ kind: 'attachment', tags: [], createdAt: 100 });
     expect(byId.get('tag:foo')).toMatchObject({ kind: 'tag', title: '#foo', createdAt: 100 });
-    expect(byId.get('unresolved:Missing Note')).toMatchObject({ kind: 'unresolved', title: 'Missing Note' });
     // Markdown notes come first so trimming prefers them.
-    expect(payload.nodes.slice(0, 3).every((node) => node.kind !== 'tag' && node.kind !== 'unresolved')).toBe(true);
+    expect(payload.nodes.slice(0, 3).every((node) => node.kind !== 'tag')).toBe(true);
     const edge = (a: string, b: string) =>
       payload.edges.find((item) => item.s === byId.get(a)!.index && item.t === byId.get(b)!.index);
     expect(edge('file-a', 'file-b')).toMatchObject({ count: 1, embeds: 0 });
     expect(edge('file-a', 'file-img')).toMatchObject({ count: 1, embeds: 1 });
     expect(edge('file-a', 'tag:foo')).toMatchObject({ count: 1, embeds: 0 });
-    expect(edge('file-a', 'unresolved:Missing Note')).toMatchObject({ count: 1, embeds: 0 });
-    expect(edge('file-b', 'unresolved:Missing Note')).toMatchObject({ count: 1, embeds: 0 });
     for (const item of payload.edges) {
       expect(item.s).toBeLessThan(payload.nodes.length);
       expect(item.t).toBeLessThan(payload.nodes.length);
     }
+  });
+
+  it('creates no nodes or edges for external URLs or unresolved links', () => {
+    const payload = buildGraphPayload({
+      files: [file('file-a', 'A.md'), file('file-b', 'B.md')],
+      metadataRows: [meta('file-a', 'Alpha'), meta('file-b', 'Beta')],
+      links: [
+        link({ id: 'l1', linkPath: 'https://example.com/page' }),
+        link({ id: 'l2', linkPath: 'mailto:a@b.co' }),
+        link({ id: 'l3', linkPath: 'Missing Note' }),
+        link({ id: 'l4', linkPath: 'B', targetFileId: 'file-b' }),
+      ],
+      latestRevision: 1,
+      indexedRevision: 1,
+    });
+    expect(payload.nodes.map((node) => node.id)).toEqual(['file-a', 'file-b']);
+    expect(payload.nodes.some((node) => node.kind === 'unresolved')).toBe(false);
+    expect(payload.edges).toEqual([{ s: 0, t: 1, count: 1, embeds: 0 }]);
   });
 
   it('aggregates duplicate edges and counts embeds', () => {
@@ -76,24 +91,6 @@ describe('buildGraphPayload', () => {
     };
     expect(buildGraphPayload({ ...input, indexedRevision: 2 })).toMatchObject({ revision: 3, indexPending: true });
     expect(buildGraphPayload({ ...input, indexedRevision: 3 })).not.toHaveProperty('indexPending');
-  });
-
-  it('dedupes unresolved targets by normalized path and skips blank links', () => {
-    const payload = buildGraphPayload({
-      files: [file('file-a', 'A.md', 50), file('file-b', 'B.md', 30)],
-      metadataRows: [meta('file-a', 'Alpha'), meta('file-b', 'Beta')],
-      links: [
-        link({ id: 'l1', linkPath: '  Missing  ' }),
-        link({ id: 'l2', sourceFileId: 'file-b', linkPath: 'Missing' }),
-        link({ id: 'l3', linkPath: '   ' }),
-      ],
-      latestRevision: 1,
-      indexedRevision: 1,
-    });
-    const unresolved = payload.nodes.filter((node) => node.kind === 'unresolved');
-    expect(unresolved.map((node) => node.id)).toEqual(['unresolved:Missing']);
-    // createdAt inherits the oldest referencing note.
-    expect(unresolved[0]).toMatchObject({ createdAt: 30 });
   });
 
   it('truncates to the node limit with markdown notes first', () => {

@@ -126,7 +126,8 @@ export interface GraphPayload {
 
 /**
  * Build the GET /vaults/:vaultId/graph payload v2 (plan 011): markdown
- * notes plus synthesized attachment, tag, and unresolved-link nodes; edges
+ * notes plus attachment and synthesized tag nodes (external and unresolved
+ * links produce neither nodes nor edges); edges
  * reference nodes by array index to keep the payload small at ~30k edges.
  * Pure derived state of the three inputs plus the two revisions.
  */
@@ -184,35 +185,7 @@ export function buildGraphPayload(input: {
     createdAt: tagCreatedAt.get(name) ?? 0,
   }));
 
-  // Unresolved nodes come from links with a null target, deduped by the
-  // normalized raw link path.
-  const mtimeByFileId = new Map(input.files.map((file) => [file.fileId, file.mtime]));
-  const unresolved = new Map<string, NodeSeed>();
-  for (const link of input.links) {
-    if (link.targetFileId !== null) continue;
-    const key = link.linkPath.normalize('NFC').trim();
-    if (key.length === 0) continue;
-    const sourceCreatedAt = mtimeByFileId.get(link.sourceFileId) ?? 0;
-    const existing = unresolved.get(key);
-    if (existing) {
-      if (sourceCreatedAt > 0 && (existing.createdAt === 0 || sourceCreatedAt < existing.createdAt))
-        existing.createdAt = sourceCreatedAt;
-    } else {
-      unresolved.set(key, {
-        id: `unresolved:${key}`,
-        path: key,
-        title: key.split('/').at(-1) ?? key,
-        kind: 'unresolved',
-        tags: [],
-        createdAt: sourceCreatedAt,
-      });
-    }
-  }
-  const unresolvedNodes = [...unresolved.values()].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  );
-
-  const all = [...notes, ...attachments, ...tags, ...unresolvedNodes];
+  const all = [...notes, ...attachments, ...tags];
   const truncated = all.length > GRAPH_NODE_LIMIT;
   const nodes = all.slice(0, GRAPH_NODE_LIMIT);
   const indexById = new Map(nodes.map((node, index) => [node.id, index]));
@@ -231,9 +204,9 @@ export function buildGraphPayload(input: {
   for (const link of input.links) {
     const s = indexById.get(link.sourceFileId);
     if (s === undefined) continue;
-    const targetId =
-      link.targetFileId ?? `unresolved:${link.linkPath.normalize('NFC').trim()}`;
-    const t = indexById.get(targetId);
+    // External and unresolved links have no vault target: no node, no edge.
+    if (link.targetFileId === null) continue;
+    const t = indexById.get(link.targetFileId);
     if (t !== undefined) addEdge(s, t, link.isEmbed);
   }
   for (const note of notes) {

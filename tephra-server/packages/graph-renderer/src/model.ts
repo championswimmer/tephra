@@ -58,18 +58,28 @@ export interface GraphModel {
 
 /** Build the render model from a `/graph`-shaped payload. */
 export function buildGraphModel(payload: GraphInput): GraphModel {
-  const nodes: RenderNode[] = payload.nodes.map((node) => ({
-    id: node.id,
-    path: node.path,
-    title: node.title,
-    kind: node.kind,
-    tags: node.tags,
-    degree: 0,
-  }));
+  // Only vault items may be nodes. Unresolved/external link placeholders
+  // (e.g. from older cached payloads) are dropped along with their edges.
+  const remap = new Map<number, number>();
+  const nodes: RenderNode[] = [];
+  payload.nodes.forEach((node, index) => {
+    if (node.kind === 'unresolved') return;
+    remap.set(index, nodes.length);
+    nodes.push({
+      id: node.id,
+      path: node.path,
+      title: node.title,
+      kind: node.kind,
+      tags: node.tags,
+      degree: 0,
+    });
+  });
   const links: RenderLink[] = [];
   for (const edge of payload.edges) {
-    if (edge.s >= nodes.length || edge.t >= nodes.length) continue;
-    links.push({ source: edge.s, target: edge.t, count: edge.count, embeds: edge.embeds });
+    const source = remap.get(edge.s);
+    const target = remap.get(edge.t);
+    if (source === undefined || target === undefined) continue;
+    links.push({ source, target, count: edge.count, embeds: edge.embeds });
   }
   const adjacencyLists: number[][] = nodes.map(() => []);
   for (const link of links) {

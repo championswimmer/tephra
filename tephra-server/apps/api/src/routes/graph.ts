@@ -4,20 +4,21 @@ import type { ApiApp, ApiDependencies } from '../http/types.js';
 
 export function registerGraphRoutes(app: ApiApp, dependencies: ApiDependencies): void {
   // Graph payload v2 (plan 011): markdown notes plus synthesized attachment,
-  // tag, and unresolved-link nodes; edges reference nodes by array index to
+  // and tag nodes (never unresolved/external links); edges reference nodes by array index to
   // keep the payload small at ~30k edges. Pure derived state, so the response
   // carries an ETag keyed by vault + index revision.
   app.get('/api/v1/vaults/:vaultId/graph', async (c) => {
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const indexState = await dependencies.database.noteIndex.getState(vault.id);
     const indexedRevision = indexState?.indexedRevision ?? 0;
-    const etag = `W/"${vault.latestRevision}-${indexedRevision}-graph-v2"`;
+    const etag = `W/"${vault.latestRevision}-${indexedRevision}-graph-v3"`;
     c.header('ETag', etag);
     if (c.req.header('if-none-match') === etag) return c.body(null, 304);
 
     const cached = await dependencies.database.graphCache.find(vault.id);
     if (
       cached !== null &&
+      cached.etag === etag &&
       cached.revision === vault.latestRevision &&
       cached.indexedRevision === indexedRevision
     )

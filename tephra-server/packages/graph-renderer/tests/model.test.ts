@@ -47,3 +47,21 @@ describe('nodeRadius', () => {
     expect(nodeRadius(9, 1)).toBe(5);
   });
 });
+
+describe('buildGraphModel unresolved placeholders', () => {
+  it('drops unresolved nodes and their edges, remapping indices', () => {
+    const model = buildGraphModel({
+      nodes: [
+        { id: 'a', path: 'a.md', title: null, kind: 'note', tags: [] },
+        { id: 'unresolved:https://x.test', path: 'https://x.test', title: null, kind: 'unresolved', tags: [] },
+        { id: 'b', path: 'b.md', title: null, kind: 'note', tags: [] },
+      ],
+      edges: [
+        { s: 0, t: 1, count: 1, embeds: 0 },
+        { s: 0, t: 2, count: 1, embeds: 0 },
+      ],
+    });
+    expect(model.nodes.map((n) => n.id)).toEqual(['a', 'b']);
+    expect(model.links).toEqual([{ source: 0, target: 1, count: 1, embeds: 0 }]);
+  });
+});
