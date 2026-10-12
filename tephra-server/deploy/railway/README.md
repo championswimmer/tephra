@@ -16,23 +16,29 @@ cannot be managed by both systems at once.
 
 ## One-command deploy (IaC CLI path)
 
-Prerequisite: the Railway CLI installed and `railway login` completed.
+Prerequisite: the Railway CLI installed, `railway login` and `railway link`
+completed (pick or create the target project).
 
 From the repository root:
 
 ```bash
-railway link                         # pick (or create) the Railway project
-railway config plan                  # read-only preview; expect create-only lines
-railway config apply                 # confirm, then the service + volume are created
+npm run deploy:railway
 ```
 
-Then set the two secrets exactly once (generate independent values locally):
+The script (`scripts/deploy-railway.mjs`) runs `railway config apply` (shows
+the plan, asks for confirmation, creates the service and volume), then
+generates `TEPHRA_SESSION_SECRET` and `TEPHRA_BOOTSTRAP_TOKEN` **only if they
+are not already set**, piping them over stdin so they never appear in argv,
+logs, or git. Re-running is safe: existing secrets are left untouched. Pass
+`-- --yes` to skip the apply confirmation.
+
+Manual equivalent:
 
 ```bash
-export TEPHRA_SESSION_SECRET="$(openssl rand -hex 32)"
-export TEPHRA_BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
-printf '%s' "$TEPHRA_SESSION_SECRET" | railway variable set TEPHRA_SESSION_SECRET --stdin --service tephra
-printf '%s' "$TEPHRA_BOOTSTRAP_TOKEN" | railway variable set TEPHRA_BOOTSTRAP_TOKEN --stdin --service tephra
+railway config plan                  # read-only preview; expect create-only lines
+railway config apply
+printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_SESSION_SECRET --stdin --service tephra --skip-deploys
+printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_BOOTSTRAP_TOKEN --stdin --service tephra
 ```
 
 `preserve()` keeps these values on later `apply` runs. The app binds

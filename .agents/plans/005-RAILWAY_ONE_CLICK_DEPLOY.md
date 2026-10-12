@@ -1,10 +1,10 @@
 # 005 — Railway One-Click Deploy with Storage
 
-> **Status:** Proposed implementation plan; no implementation has started
+> **Status:** IaC file, README, and `npm run deploy:railway` script implemented; operator smoke test and published Template/badge pending (steps in section 6, Step 5)
 > **Project:** Tephra Stage 1 read-only web mirror
 > **Goal:** make the checked-in Railway config out-of-the-box 1-click deployable,
 > including all storage requirements
-> **Last updated:** 2026-09-06
+> **Last updated:** 2026-10-12
 
 ## 1. Context and user outcome
 
@@ -118,14 +118,14 @@ Docker Compose uses. No server code changes are required.
 
 ## 5. Affected files and ownership
 
-| File | Change |
-| ---- | ------ |
-| `.railway/railway.ts` (new) | IaC: project, service, volume, mount, env, healthcheck, replicas |
-| `tephra-server/deploy/railway/railway.json` | **Delete** (deprecated system; conflicts with IaC) |
-| `tephra-server/deploy/railway/README.md` | Rewrite: 1-click template recipe + IaC CLI path + operations |
-| `tephra-server/README.md` | Update Railway bullet (IaC + template pointer, no stale `railway.json` claims) |
-| `eslint.config.mjs` | Ignore `.railway/` (standalone CLI-evaluated file, `railway/iac` import not installed) |
-| `docs/COMPATIBILITY.md` | Touch only if its Railway sentence becomes stale |
+| File                                        | Change                                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `.railway/railway.ts` (new)                 | IaC: project, service, volume, mount, env, healthcheck, replicas                       |
+| `tephra-server/deploy/railway/railway.json` | **Delete** (deprecated system; conflicts with IaC)                                     |
+| `tephra-server/deploy/railway/README.md`    | Rewrite: 1-click template recipe + IaC CLI path + operations                           |
+| `tephra-server/README.md`                   | Update Railway bullet (IaC + template pointer, no stale `railway.json` claims)         |
+| `eslint.config.mjs`                         | Ignore `.railway/` (standalone CLI-evaluated file, `railway/iac` import not installed) |
+| `docs/COMPATIBILITY.md`                     | Touch only if its Railway sentence becomes stale                                       |
 
 No `apps/api`, `packages/*`, Dockerfile, or Compose changes.
 No API/schema/migration changes. No new runtime dependencies.
@@ -135,30 +135,30 @@ No API/schema/migration changes. No new runtime dependencies.
 ### Step 1 — Add `.railway/railway.ts`
 
 ```ts
-import { defineRailway, project, service, volume } from "railway/iac";
+import { defineRailway, project, service, volume } from 'railway/iac';
 
 export default defineRailway(() => {
-  const data = volume("tephra-data", { sizeMB: 512 });
+  const data = volume('tephra-data', { sizeMB: 512 });
 
-  const tephra = service("tephra", {
-    healthcheck: "/healthz",
+  const tephra = service('tephra', {
+    healthcheck: '/healthz',
     healthcheckTimeout: 120,
     replicas: 1,
-    volumeMounts: { "/data": data },
+    volumeMounts: { '/data': data },
     env: {
-      RAILWAY_DOCKERFILE_PATH: "tephra-server/deploy/docker/Dockerfile",
-      RAILWAY_RUN_UID: "0",
-      TEPHRA_DATABASE_DRIVER: "sqlite",
-      TEPHRA_SQLITE_PATH: "/data/tephra.db",
-      TEPHRA_BLOB_DRIVER: "filesystem",
-      TEPHRA_BLOB_PATH: "/data/blobs",
-      TEPHRA_PUBLIC_URL: "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+      RAILWAY_DOCKERFILE_PATH: 'tephra-server/deploy/docker/Dockerfile',
+      RAILWAY_RUN_UID: '0',
+      TEPHRA_DATABASE_DRIVER: 'sqlite',
+      TEPHRA_SQLITE_PATH: '/data/tephra.db',
+      TEPHRA_BLOB_DRIVER: 'filesystem',
+      TEPHRA_BLOB_PATH: '/data/blobs',
+      TEPHRA_PUBLIC_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
       TEPHRA_SESSION_SECRET: preserve(),
       TEPHRA_BOOTSTRAP_TOKEN: preserve(),
     },
   });
 
-  return project("tephra", { resources: [tephra, data] });
+  return project('tephra', { resources: [tephra, data] });
 });
 ```
 
@@ -253,16 +253,16 @@ railway config plan --detailed-exit-code        # operator: CI drift gate option
 
 ## 8. Compatibility, deployment, and rollback risks
 
-| Risk | Mitigation / rollback |
-| ---- | --------------------- |
-| IaC field drift (CLI newer than docs) | `railway config plan` is read-only; fix file, re-plan. No live state touched until `apply`. |
-| `volume()` requires explicit `region` | Pin region, record here; region cannot change after creation (would need new volume + data copy). |
-| `RAILWAY_DOCKERFILE_PATH` ignored / builder wrong | `plan` shows build config; fallback is dashboard builder override recorded in README; Dockerfile path is already proven via `railway.json` today. |
-| `RAILWAY_RUN_UID=0` runs container as root | Railway-prescribed for non-root images with volumes; image keeps `USER node` default for Docker/Compose; note the tradeoff in README. Alternative (root entrypoint that chowns + drops privs) deferred unless review demands it. |
-| Existing Railway services managed by `railway.json` | One-step migration is the point; `plan` errors loudly if a service is still on the old system. Rollback = revert commit (volume data itself is untouched by the management-system switch). |
-| Decreasing `sizeMB` / detaching volume later | Treated destructive by Railway; never do casually — document. |
-| Template shows secrets in composer | Use `secret()` functions; values generate at deploy time, never committed. |
-| Claiming 1-click prematurely | `PROGRESS.md` stays silent until the operator smoke (Step 5) passes. |
+| Risk                                                | Mitigation / rollback                                                                                                                                                                                                            |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IaC field drift (CLI newer than docs)               | `railway config plan` is read-only; fix file, re-plan. No live state touched until `apply`.                                                                                                                                      |
+| `volume()` requires explicit `region`               | Pin region, record here; region cannot change after creation (would need new volume + data copy).                                                                                                                                |
+| `RAILWAY_DOCKERFILE_PATH` ignored / builder wrong   | `plan` shows build config; fallback is dashboard builder override recorded in README; Dockerfile path is already proven via `railway.json` today.                                                                                |
+| `RAILWAY_RUN_UID=0` runs container as root          | Railway-prescribed for non-root images with volumes; image keeps `USER node` default for Docker/Compose; note the tradeoff in README. Alternative (root entrypoint that chowns + drops privs) deferred unless review demands it. |
+| Existing Railway services managed by `railway.json` | One-step migration is the point; `plan` errors loudly if a service is still on the old system. Rollback = revert commit (volume data itself is untouched by the management-system switch).                                       |
+| Decreasing `sizeMB` / detaching volume later        | Treated destructive by Railway; never do casually — document.                                                                                                                                                                    |
+| Template shows secrets in composer                  | Use `secret()` functions; values generate at deploy time, never committed.                                                                                                                                                       |
+| Claiming 1-click prematurely                        | `PROGRESS.md` stays silent until the operator smoke (Step 5) passes.                                                                                                                                                             |
 
 ## 9. Completion checklist
 
