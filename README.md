@@ -1,6 +1,9 @@
-# Tephra
+# <img src="tephra-website/public/logo-main.svg" alt="Tephra logo" height="36" align="absmiddle"> Tephra
 
-Tephra is a self-hosted, web-based Obsidian client. Your local vault stays the source of truth; Tephra syncs it to a server you run, so you can read and edit your notes from any browser. Wikilinks, backlinks, attachments, and the graph all work, and edits made on the web flow back into your vault.
+Tephra is a self-hosted, web-based [Obsidian](https://obsidian.md) client. Your local vault stays the source of truth; Tephra syncs it to a server you run, so you can read and edit your notes from any browser. Wikilinks, backlinks, attachments, and the graph all work, and edits made on the web flow back into your vault.
+
+> [!NOTE]
+> Tephra is an independent project and is not officially affiliated with or endorsed by Obsidian.
 
 It is built for one person on one box: a single container on your own domain, whether that's Railway, EC2, or any VM you control.
 
