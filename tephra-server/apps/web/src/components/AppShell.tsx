@@ -11,6 +11,7 @@ export function AppShell() {
     <div className="app-shell">
       <header className="topbar">
         <Link className="brand" to="/vaults">
+          <img src="/logo-main.svg" alt="" width={28} height={28} className="brand-logo" />
           Tephra
         </Link>
         <nav aria-label="Account">

@@ -158,11 +158,18 @@ button:disabled {
   justify-content: space-between;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 700;
   font-size: 1.15rem;
   text-decoration: none;
   letter-spacing: 0.02em;
   color: var(--text-normal);
+}
+.brand-logo {
+  display: block;
+  border-radius: 6px;
 }
 .topbar nav {
   display: flex;
