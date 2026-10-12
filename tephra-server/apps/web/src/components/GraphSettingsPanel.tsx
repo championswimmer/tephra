@@ -2,72 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, RotateCcw, X } from 'lucide-react';
 import type { ColorGroup, GraphScope, GraphSettings } from '@tephra/graph-renderer/pure';
 import { SETTINGS_LIMITS } from '@tephra/graph-renderer/pure';
+import { Slider, Toggle } from './GraphSettingsControls';
 
 /** Debounce before the search text reaches the simulation (the note list is unaffected). */
 export const GRAPH_SEARCH_DEBOUNCE_MS = 250;
 
 const NEW_GROUP_COLORS = ['#e07856', '#7f6df2', '#4caf50', '#2196f3', '#e0a100'];
 const MAX_GROUPS = 20;
-
-function Slider({
-  id,
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="graph-settings-row">
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <output>{value}</output>
-    </div>
-  );
-}
-
-function Toggle({
-  id,
-  label,
-  checked,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="graph-settings-row">
-      <label htmlFor={id}>
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-        />{' '}
-        {label}
-      </label>
-    </div>
-  );
-}
 
 export function GraphSettingsPanel({
   id,

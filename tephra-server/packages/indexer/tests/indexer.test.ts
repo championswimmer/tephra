@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseNote } from '@tephra/markdown';
 import type { CurrentVaultFile } from '@tephra/vault-model';
-import { buildGraph, buildIndexRows, planLinkReindex } from '../src/index.js';
+import { buildGraph, buildIndexRows } from '../src/index.js';
 
 const file = (fileId: string, path: string, kind: 'markdown' | 'attachment' = 'markdown'): CurrentVaultFile => ({
   fileId, vaultId: 'vault', path, kind, blobHash: `hash-${fileId}`, size: 1, mtime: 1, updatedRevision: 1,
@@ -32,14 +32,5 @@ describe('index utilities', () => {
     const graph = buildGraph({ files, metadata: rows.metadata, links: rows.links });
     expect(graph.nodes.map((node) => node.id)).toEqual(['a', 'b']);
     expect(graph.edges).toEqual([{ source: 'a', target: 'b', count: 3, embedCount: 1 }]);
-  });
-
-  it('reindexes every source when target resolution can change', () => {
-    expect(planLinkReindex({ previousFiles: files, currentFiles: [...files, file('new', 'B.md')] })).toEqual({
-      sourceFileIds: ['a', 'b', 'new'], resolutionMayHaveChanged: true,
-    });
-    expect(planLinkReindex({ previousFiles: files, currentFiles: files, changedMarkdownFileIds: ['b'] })).toEqual({
-      sourceFileIds: ['b'], resolutionMayHaveChanged: false,
-    });
   });
 });

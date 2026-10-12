@@ -7,7 +7,8 @@ vi.mock('obsidian', () => ({
 import { TephraHttpError } from '../src/api/client';
 import { defaultState, type TephraPluginState } from '../src/state/plugin-state';
 import { sha256Hex } from '../src/sync/hasher';
-import { pullRemoteChanges, type PullVault } from '../src/sync/puller';
+import type { PullVault } from '../src/sync/pull-vault';
+import { pullRemoteChanges } from '../src/sync/puller';
 import type { ChangeEntry, ChangesResponse } from '@tephra/protocol';
 
 const DATE = '2026-01-02';

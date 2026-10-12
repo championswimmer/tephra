@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FILE_ID_PROPERTY, VaultScanner, type ScannerIdentity } from '../src/sync/scanner';
+import { FILE_ID_PROPERTY } from '../src/sync/frontmatter-id';
+import { VaultScanner, type ScannerIdentity } from '../src/sync/scanner';
 import { mintFileId } from '../src/sync/identity/id-mint';
 
 interface MockFile {

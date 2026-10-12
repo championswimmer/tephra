@@ -125,7 +125,3 @@ export function resolveLink(sourcePath: string, rawLinkPath: string, index: Vaul
   }
   return result('unresolved', undefined, split.subpath);
 }
-
-export function isAttachmentEmbed(input: { isEmbed: boolean; resolution: ResolveLinkResult }): boolean {
-  return input.isEmbed && input.resolution.status === 'resolved' && input.resolution.targetKind === 'attachment';
-}

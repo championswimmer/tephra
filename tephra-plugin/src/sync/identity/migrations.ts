@@ -4,7 +4,7 @@ import {
   FILE_ID_PROPERTY,
   extractFrontmatterFileId,
   injectFrontmatterFileId,
-} from '../scanner';
+} from '../frontmatter-id';
 import { mintFileId } from './id-mint';
 import type { VaultFileKind } from './types';
 

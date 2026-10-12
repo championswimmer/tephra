@@ -9,7 +9,9 @@ import { TephraClient } from './api/client';
 import { EventBuffer, type VaultEvent } from './sync/event-buffer';
 import { SyncCoordinator, type SyncStatus } from './sync/coordinator';
 import { ensureVaultBinding } from './sync/vault-binding';
-import { FILE_ID_PROPERTY, VaultScanner, shouldSyncPath } from './sync/scanner';
+import { FILE_ID_PROPERTY } from './sync/frontmatter-id';
+import { VaultScanner } from './sync/scanner';
+import { shouldSyncPath } from './sync/syncable-path';
 import { mintFileId, randomFileId } from './sync/identity/id-mint';
 import {
   dryRunIdentityMigration,

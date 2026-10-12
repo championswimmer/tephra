@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { SceneFrame } from '../src/engine/types';
 import {
-  arrowGeometry,
   arrowSize,
   compactRingIndices,
   createWebGLBackend,
@@ -11,7 +10,6 @@ import {
   nodeTextureRows,
   NODE_TEXTURE_WIDTH,
   packNodeTexels,
-  screenRadius,
   syncEdgeEndpoints,
 } from '../src/engine/webgl';
 
@@ -28,28 +26,6 @@ describe('pure helpers', () => {
     expect(arrowSize(0.1)).toBe(4);
     expect(arrowSize(1)).toBe(6);
     expect(arrowSize(5)).toBe(12);
-  });
-
-  it('screenRadius is at least 1 px', () => {
-    expect(screenRadius(0.1, 1)).toBe(1);
-    expect(screenRadius(5, 2)).toBe(10);
-  });
-
-  it('arrowGeometry puts the tip at the target rim + 2 px', () => {
-    const out = new Float32Array(6);
-    expect(arrowGeometry(0, 0, 100, 0, 10, 6, out)).toBe(true);
-    expect(Array.from(out)).toEqual([88, 0, 82, 3, 82, -3]);
-
-    expect(arrowGeometry(0, 0, 0, 50, 0, 4, out)).toBe(true);
-    expect(out[0]).toBeCloseTo(0);
-    expect(out[1]).toBeCloseTo(48);
-    expect(out[3]).toBeCloseTo(44);
-  });
-
-  it('arrowGeometry rejects zero-length edges without touching out', () => {
-    const out = [1, 2, 3, 4, 5, 6];
-    expect(arrowGeometry(5, 5, 5, 5, 3, 6, out)).toBe(false);
-    expect(out).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it('packNodeTexels interleaves x, y, r, 0', () => {

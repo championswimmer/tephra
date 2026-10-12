@@ -44,9 +44,3 @@ export interface PasswordHasher {
   hash(password: string): Promise<string>;
   verify(password: string, passwordHash: string): Promise<boolean>;
 }
-
-export interface SessionStore<TSession> {
-  get(id: string): Promise<TSession | null>;
-  set(session: TSession): Promise<void>;
-  delete(id: string): Promise<void>;
-}

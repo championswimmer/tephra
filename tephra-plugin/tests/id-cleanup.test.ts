@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FILE_ID_PROPERTY, stripFrontmatterFileId } from '../src/sync/scanner';
+import { FILE_ID_PROPERTY, stripFrontmatterFileId } from '../src/sync/frontmatter-id';
 import { removeFileIds, scanForFileIds, type FileIdEntry } from '../src/sync/id-cleanup';
 
 describe('stripFrontmatterFileId', () => {

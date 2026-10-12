@@ -395,6 +395,35 @@ describe('graph renderer with a fake backend', () => {
     renderer.destroy();
   });
 
+  it('resizes the backend when devicePixelRatio changes without a host resize', () => {
+    const listeners: Array<() => void> = [];
+    const queries: string[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => {
+      queries.push(query);
+      return {
+        matches: true,
+        media: query,
+        addEventListener: (_: string, cb: () => void) => listeners.push(cb),
+        removeEventListener: (_: string, cb: () => void) => {
+          const i = listeners.indexOf(cb);
+          if (i >= 0) listeners.splice(i, 1);
+        },
+      };
+    });
+    const { backend, renderer } = setup();
+    expect(backend.resize).toHaveBeenLastCalledWith(800, 600, 1);
+    expect(queries.at(-1)).toBe('(resolution: 1dppx)');
+    vi.stubGlobal('devicePixelRatio', 2);
+    expect(listeners).toHaveLength(1);
+    listeners[0]!();
+    expect(backend.resize).toHaveBeenLastCalledWith(800, 600, 2);
+    // Re-armed for the new resolution, old listener dropped.
+    expect(queries.at(-1)).toBe('(resolution: 2dppx)');
+    expect(listeners).toHaveLength(1);
+    renderer.destroy();
+    expect(listeners).toHaveLength(0);
+  });
+
   it('background drag pans the camera', () => {
     const { host, backend, renderer } = setup();
     const m = graph();

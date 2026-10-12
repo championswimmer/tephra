@@ -62,51 +62,6 @@ export function arrowSize(k: number): number {
   return Math.min(12, Math.max(4, 6 * k));
 }
 
-/** Node screen radius in CSS px: `max(1, r * k)`. */
-export function screenRadius(r: number, k: number): number {
-  return Math.max(1, r * k);
-}
-
-/**
- * Arrow-head triangle geometry in screen space (CPU mirror of the arrow
- * vertex shader). Source (`sx`, `sy`) and target (`tx`, `ty`) are screen
- * centres; the tip sits `targetRadius + 2` px from the target centre towards
- * the source, the base is `size` px further back and `size` px wide.
- *
- * Writes `[tipX, tipY, leftX, leftY, rightX, rightY]` into `out` and returns
- * true, or returns false (leaving `out` untouched) for zero-length edges.
- */
-export function arrowGeometry(
-  sx: number,
-  sy: number,
-  tx: number,
-  ty: number,
-  targetRadius: number,
-  size: number,
-  out: Float32Array | number[],
-): boolean {
-  const dx = tx - sx;
-  const dy = ty - sy;
-  const len = Math.hypot(dx, dy);
-  if (!(len > 1e-4)) return false;
-  const ux = dx / len;
-  const uy = dy / len;
-  const nx = -uy;
-  const ny = ux;
-  const tipX = tx - ux * (targetRadius + 2);
-  const tipY = ty - uy * (targetRadius + 2);
-  const baseX = tipX - ux * size;
-  const baseY = tipY - uy * size;
-  const half = size * 0.5;
-  out[0] = tipX;
-  out[1] = tipY;
-  out[2] = baseX + nx * half;
-  out[3] = baseY + ny * half;
-  out[4] = baseX - nx * half;
-  out[5] = baseY - ny * half;
-  return true;
-}
-
 /**
  * Pack node positions/radii into texel scratch `out` (`x, y, r, 0` per node).
  * `out` must hold at least `count * 4` floats.

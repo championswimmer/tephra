@@ -21,11 +21,11 @@ export interface LabelLayerOptions {
 
 export const LABEL_FONT = '12px system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Label box height in CSS px used for overlap tests. */
-export const LABEL_HEIGHT = 14;
+const LABEL_HEIGHT = 14;
 /** Gap between the node rim and the top of its label, CSS px. */
-export const LABEL_GAP = 4;
+const LABEL_GAP = 4;
 /** Labels longer than this many characters are ellipsized. */
-export const LABEL_MAX_CHARS = 40;
+const LABEL_MAX_CHARS = 40;
 /** Occupancy grid cell size in CSS px. */
 const CELL = 8;
 /** Anchors this far outside the viewport are still considered. */

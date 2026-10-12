@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createVaultPathIndex, isAttachmentEmbed, resolveLink } from '../src/index.js';
+import { createVaultPathIndex, resolveLink } from '../src/index.js';
 
 const index = createVaultPathIndex([
   { fileId: 'root-project', path: 'Project.md', kind: 'markdown' },
@@ -34,7 +34,7 @@ describe('resolveLink', () => {
   it('distinguishes unresolved links and attachment embeds', () => {
     expect(resolveLink('One/Source.md', 'Missing', index)).toMatchObject({ status: 'unresolved', targetFileId: null });
     const attachment = resolveLink('One/Source.md', 'Assets/my%20image.png', index);
-    expect(isAttachmentEmbed({ isEmbed: true, resolution: attachment })).toBe(true);
+    expect(attachment).toMatchObject({ status: 'resolved', targetKind: 'attachment' });
   });
 
   it('resolves across Unicode normalization forms (NFD-stored path, NFC wikilink)', () => {

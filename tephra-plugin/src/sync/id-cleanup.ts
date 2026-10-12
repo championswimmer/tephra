@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { extractFrontmatterFileId, FILE_ID_PROPERTY, stripFrontmatterFileId } from './scanner';
+import { extractFrontmatterFileId, FILE_ID_PROPERTY, stripFrontmatterFileId } from './frontmatter-id';
 
 export interface FileIdEntry {
   path: string;

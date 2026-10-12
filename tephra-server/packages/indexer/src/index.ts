@@ -31,11 +31,6 @@ export interface NoteGraph {
   edges: GraphEdge[];
 }
 
-export interface LinkReindexPlan {
-  sourceFileIds: string[];
-  resolutionMayHaveChanged: boolean;
-}
-
 const pathEntries = (files: readonly CurrentVaultFile[]): VaultPathEntry[] => files.map((file) => ({
   fileId: file.fileId,
   path: file.path,
@@ -101,28 +96,6 @@ export function buildIndexRows(input: {
     }
   }
   return { metadata, links, reindexedSourceFileIds };
-}
-
-/**
- * Resolution depends on the complete path set, not only source contents. Any
- * path-set change therefore schedules every current Markdown source for cheap
- * link-row replacement. Blob-only changes reindex only changed notes.
- */
-export function planLinkReindex(input: {
-  previousFiles: readonly CurrentVaultFile[];
-  currentFiles: readonly CurrentVaultFile[];
-  changedMarkdownFileIds?: readonly string[];
-}): LinkReindexPlan {
-  const signature = (files: readonly CurrentVaultFile[]): string => files
-    .map((file) => `${file.fileId}\u0000${file.path}\u0000${file.kind}`)
-    .sort()
-    .join('\u0001');
-  const resolutionMayHaveChanged = signature(input.previousFiles) !== signature(input.currentFiles);
-  const sourceFileIds = resolutionMayHaveChanged
-    ? input.currentFiles.filter((file) => file.kind === 'markdown').map((file) => file.fileId)
-    : [...new Set(input.changedMarkdownFileIds ?? [])];
-  sourceFileIds.sort();
-  return { sourceFileIds, resolutionMayHaveChanged };
 }
 
 export const GRAPH_NODE_LIMIT = 10_000;

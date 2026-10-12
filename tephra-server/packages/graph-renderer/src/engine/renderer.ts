@@ -68,17 +68,17 @@ export interface GraphRenderer {
 }
 
 /** Hard DPR cap so hidpi screens don't melt the fill-rate budget. */
-export const MAX_DPR = 2;
+const MAX_DPR = 2;
 /** Click = pointerup within 500 ms and 4 px of pointerdown. */
-export const CLICK_MAX_MS = 500;
-export const CLICK_MAX_PX = 4;
+const CLICK_MAX_MS = 500;
+const CLICK_MAX_PX = 4;
 /** Wheel zoom feel: `factor = exp(-deltaY * WHEEL_SENSITIVITY)`. */
-export const WHEEL_SENSITIVITY = 0.0015;
+const WHEEL_SENSITIVITY = 0.0015;
 /** Trackpad pinch (`ctrlKey` wheel) sensitivity multiplier. */
-export const PINCH_MULTIPLIER = 3;
+const PINCH_MULTIPLIER = 3;
 /** Synchronous warm-up before the first paint. */
-export const WARMUP_MAX_TICKS = 60;
-export const WARMUP_BUDGET_MS = 12;
+const WARMUP_MAX_TICKS = 60;
+const WARMUP_BUDGET_MS = 12;
 /** Extra ticks per frame allowed while hot and cheap. */
 const MAX_TICKS_PER_FRAME = 3;
 const HOT_ALPHA = 0.5;
@@ -681,6 +681,26 @@ export function createGraphRenderer(
   const resizeObserver =
     typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
 
+  // A devicePixelRatio change (window dragged to another monitor) does not
+  // resize the host, so the ResizeObserver never fires: watch the current
+  // resolution with a media query and re-arm it after each change.
+  let dprQuery: MediaQueryList | null = null;
+  function onDprChange(): void {
+    resize();
+    watchDpr();
+  }
+  function watchDpr(): void {
+    dprQuery?.removeEventListener('change', onDprChange);
+    dprQuery = null;
+    if (destroyed || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    try {
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener('change', onDprChange);
+    } catch {
+      dprQuery = null;
+    }
+  }
+
   host.addEventListener('pointerdown', onPointerDown);
   host.addEventListener('pointermove', onPointerMove);
   host.addEventListener('pointerup', onPointerUp);
@@ -690,6 +710,7 @@ export function createGraphRenderer(
   host.addEventListener('keydown', onKeyDown);
   resizeObserver?.observe(host);
   resize();
+  watchDpr();
   camera = createCamera({ x: viewport.width / 2, y: viewport.height / 2, k: 1 });
 
   function destroy(): void {
@@ -697,6 +718,8 @@ export function createGraphRenderer(
     destroyed = true;
     cancelFrame();
     resizeObserver?.disconnect();
+    dprQuery?.removeEventListener('change', onDprChange);
+    dprQuery = null;
     host.removeEventListener('pointerdown', onPointerDown);
     host.removeEventListener('pointermove', onPointerMove);
     host.removeEventListener('pointerup', onPointerUp);

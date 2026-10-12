@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { ApiError, api } from '../src/api/client';
 import { NoteViewer } from '../src/components/NoteViewer';
-import { MAX_EDIT_BYTES } from '../src/components/NoteViewer';
+import { MAX_EDIT_BYTES } from '../src/components/note/utils';
 import type { VaultFile } from '../src/api/types';
 import type * as MarkdownEditor from '@tephra/markdown-editor';
 import { ThemeProvider } from '../src/theme/ThemeContext';

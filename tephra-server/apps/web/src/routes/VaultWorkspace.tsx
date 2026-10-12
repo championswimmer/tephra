@@ -19,6 +19,7 @@ import { LinksPanel } from '../components/LinksPanel';
 import { NoteViewer } from '../components/NoteViewer';
 import { EmptyState, ErrorState, IndexPending, Loading } from '../components/Status';
 import { TokenManager } from '../components/TokenManager';
+import { useSidebarPref } from '../hooks/useSidebarPref';
 import { encodePathForHash, parseHashView } from '../vault/path-url';
 
 type ResolveState =
@@ -49,8 +50,8 @@ export function VaultWorkspace() {
   const [links, setLinks] = useState<LinksResponse>();
   const [resolveState, setResolveState] = useState<ResolveState>({ status: 'idle' });
   const [treeOpen, setTreeOpen] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(() => readSidebarPref('tephra:sidebar-left', true));
-  const [rightOpen, setRightOpen] = useState(() => readSidebarPref('tephra:sidebar-right', true));
+  const [leftOpen, toggleLeft] = useSidebarPref('tephra:sidebar-left', true);
+  const [rightOpen, toggleRight] = useSidebarPref('tephra:sidebar-right', true);
   async function load() {
     setError(undefined);
     try {
@@ -150,18 +151,6 @@ export function VaultWorkspace() {
     },
     [navigate, vault?.name, vaultId],
   );
-  const toggleLeft = useCallback(() => {
-    setLeftOpen((prev) => {
-      writeSidebarPref('tephra:sidebar-left', !prev);
-      return !prev;
-    });
-  }, []);
-  const toggleRight = useCallback(() => {
-    setRightOpen((prev) => {
-      writeSidebarPref('tephra:sidebar-right', !prev);
-      return !prev;
-    });
-  }, []);
   const openFileId = (fileId: string) => {
     const path = pathByFileId.get(fileId);
     if (path !== undefined) open(path);
@@ -324,16 +313,14 @@ export function VaultWorkspace() {
                   </p>
                 )}
                 {selected.kind === 'markdown' ? (
-                  <>
-                    <NoteViewer
-                      vaultId={vaultId}
-                      fileId={selected.fileId}
-                      file={selected}
-                      onOpen={open}
-                      onSaved={refreshAfterSave}
-                      getPathForFileId={(fileId) => pathByFileId.get(fileId)}
-                    />
-                  </>
+                  <NoteViewer
+                    vaultId={vaultId}
+                    fileId={selected.fileId}
+                    file={selected}
+                    onOpen={open}
+                    onSaved={refreshAfterSave}
+                    getPathForFileId={(fileId) => pathByFileId.get(fileId)}
+                  />
                 ) : (
                   <AttachmentViewer vaultId={vaultId} file={selected} />
                 )}
@@ -351,24 +338,6 @@ export function VaultWorkspace() {
       </div>
     </main>
   );
-}
-
-function readSidebarPref(key: string, fallback: boolean): boolean {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return fallback;
-    const stored = window.localStorage.getItem(key);
-    return stored === null ? fallback : stored !== 'false';
-  } catch {
-    return fallback;
-  }
-}
-
-function writeSidebarPref(key: string, open: boolean): void {
-  try {
-    window.localStorage?.setItem(key, String(open));
-  } catch {
-    // UI preference only; ignore persistence failures (private mode, etc.).
-  }
 }
 
 function isGone(error: unknown): boolean {

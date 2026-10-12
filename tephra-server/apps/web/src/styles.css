@@ -1336,16 +1336,6 @@ html.theme-dark .vault-grid a {
   background: none;
 }
 
-.local-graph {
-  margin-top: 2rem;
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: 1rem;
-}
-
-.local-graph .graph-canvas {
-  min-height: 22rem;
-}
-
 .tephra-graph {
   width: 100%;
   height: 100%;

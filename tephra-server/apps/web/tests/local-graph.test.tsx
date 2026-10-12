@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
 import type { GraphResponse } from '../src/api/types';
 import { GraphView } from '../src/components/GraphView';
-import { LocalGraph } from '../src/components/LocalGraph';
 import { ThemeProvider } from '../src/theme/ThemeContext';
 
 vi.mock('../src/api/client', () => ({ api: { graph: vi.fn() } }));
@@ -81,7 +80,28 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('LocalGraph', () => {
+/** Local-scope GraphView: the neighbourhood of one note. */
+function LocalGraph({
+  vaultId,
+  fileId,
+  onOpen,
+}: {
+  vaultId: string;
+  fileId: string;
+  onOpen: (path: string) => void;
+}) {
+  return (
+    <GraphView
+      vaultId={vaultId}
+      onOpen={onOpen}
+      rootId={fileId}
+      scope="local"
+      selectedId={fileId}
+    />
+  );
+}
+
+describe('local graph', () => {
   it('restricts the view to the root neighbourhood at depth 1', async () => {
     vi.mocked(api.graph).mockResolvedValue(chainFixture);
     renderLocal(<LocalGraph vaultId="vault-1" fileId="b" onOpen={vi.fn()} />);

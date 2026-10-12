@@ -11,6 +11,7 @@ import {
   restoreDefaultGraphSettings,
   saveGraphSettings,
   subgraph,
+  type GraphPalette,
   type GraphScope,
 } from '@tephra/graph-renderer/pure';
 import { api } from '../api/client';
@@ -21,6 +22,21 @@ import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
 import { GraphSettingsPanel } from './GraphSettingsPanel';
 
 const FALLBACK_LIST_LIMIT = 200;
+
+/** Graph palette from a theme's variables, falling back to the live CSS. */
+export function graphPaletteForTheme(variables: Record<string, string>): GraphPalette {
+  const live = readGraphPalette();
+  const pick = (name: string, fallback: string): string => variables[name] ?? fallback;
+  return {
+    node: pick('--graph-node', live.node),
+    tag: pick('--graph-node-tag', live.tag),
+    attachment: pick('--graph-node-attachment', live.attachment),
+    unresolved: pick('--graph-node-unresolved', live.unresolved),
+    focused: pick('--graph-node-focused', live.focused),
+    line: pick('--graph-line', live.line),
+    label: pick('--text-normal', live.label),
+  };
+}
 
 function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
@@ -93,9 +109,11 @@ export function GraphView({
     () => (filtered ? resolveGroupColors(filtered.model, settings.groups) : []),
     [filtered, settings.groups],
   );
-  // Re-tint on theme switch: readGraphPalette() reads the live CSS
-  // variables, so depending on `theme` re-tints without re-init.
-  const palette = useMemo(() => readGraphPalette(), [theme]);
+  // Re-tint on theme switch without re-init. The theme's own variables win:
+  // ThemeProvider applies them to the document in an effect that runs
+  // *after* this render, so the live CSS still holds the previous theme
+  // here (reading only the DOM re-tinted dark mode with light colours).
+  const palette = useMemo(() => graphPaletteForTheme(theme.variables), [theme]);
 
   // The accessible fallback list (up to 200 buttons) is memoised so hover
   // state changes — which re-render this section — do not rebuild it.

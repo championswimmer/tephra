@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   FILE_ID_PROPERTY,
-  VaultScanner,
   extractFrontmatterFileId,
   injectFrontmatterFileId,
-  shouldSyncPath,
-  type ScannerIdentity,
-} from '../src/sync/scanner';
+} from '../src/sync/frontmatter-id';
+import { VaultScanner, type ScannerIdentity } from '../src/sync/scanner';
+import { shouldSyncPath } from '../src/sync/syncable-path';
 
 function makeScanner(app: unknown, overrides?: Partial<ScannerIdentity>): VaultScanner {
   return new VaultScanner(app as never, {

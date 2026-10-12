@@ -26,14 +26,14 @@ import type { LabelFrame, SceneFrame } from './types';
 /** Hover highlight fade duration (ms) for `highlight` 0 → 1 and back. */
 export const HOVER_FADE_MS = 200;
 /** Alpha of non-neighbour nodes at full highlight. */
-export const HOVER_NODE_DIM = 0.2;
+const HOVER_NODE_DIM = 0.2;
 /** Alpha multiplier of edges not touching the hovered node at full highlight. */
-export const HOVER_EDGE_DIM = 0.1;
+const HOVER_EDGE_DIM = 0.1;
 /** Max labels drawn per frame. */
 export const MAX_LABELS = 400;
 /** Edge screen width clamp, CSS px. */
-export const EDGE_WIDTH_MIN = 0.5;
-export const EDGE_WIDTH_MAX = 8;
+const EDGE_WIDTH_MIN = 0.5;
+const EDGE_WIDTH_MAX = 8;
 
 const EMPTY_F32 = new Float32Array(0);
 const EMPTY_U32 = new Uint32Array(0);
