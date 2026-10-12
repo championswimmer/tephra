@@ -5,7 +5,6 @@ import {
   applyFilters,
   buildGraphModel,
   loadGraphSettings,
-  MAX_VISIBLE_NODES,
   nodesWithinDepth,
   readGraphPalette,
   resolveGroupColors,
@@ -20,6 +19,8 @@ import type { GraphResponse } from '../api/types';
 import { useTheme } from '../theme/ThemeContext';
 import { EmptyState, ErrorState, IndexPending, Loading } from './Status';
 import { GraphSettingsPanel } from './GraphSettingsPanel';
+
+const FALLBACK_LIST_LIMIT = 200;
 
 function isNavigable(kind: string): boolean {
   return kind === 'note' || kind === 'attachment';
@@ -96,6 +97,32 @@ export function GraphView({
   // variables, so depending on `theme` re-tints without re-init.
   const palette = useMemo(() => readGraphPalette(), [theme]);
 
+  // The accessible fallback list (up to 200 buttons) is memoised so hover
+  // state changes — which re-render this section — do not rebuild it.
+  const graphNodes = graph?.nodes;
+  const fallbackList = useMemo(() => {
+    if (!graphNodes) return null;
+    const noteNodes = graphNodes.filter((node) => node.kind === 'note');
+    const shown = noteNodes.slice(0, FALLBACK_LIST_LIMIT);
+    const hidden = noteNodes.length - shown.length;
+    return (
+      <ul className="graph-fallback-list" aria-label="Notes in graph">
+        {shown.map((node) => (
+          <li key={node.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(node.path)}
+              aria-current={node.id === selectedId ? 'true' : undefined}
+            >
+              {node.title ?? node.path}
+            </button>
+          </li>
+        ))}
+        {hidden > 0 && <li>…and {hidden} more — use search to open a note</li>}
+      </ul>
+    );
+  }, [graphNodes, selectedId, onOpen]);
+
   // Stale-while-revalidate (plan 016, Lane B): paint the IndexedDB snapshot
   // instantly when present, then revalidate in the background. When the
   // server answers with an unchanged revision the second setGraph is skipped
@@ -162,14 +189,18 @@ export function GraphView({
 
   const visible = filtered?.model;
   const neighbourCount = rootId && scopedBase ? scopedBase.nodes.length - 1 : null;
-  const activeNode =
-    (hoveredId ?? selectedId)
-      ? visible?.nodes.find((node) => node.id === (hoveredId ?? selectedId))
-      : undefined;
+  // O(1) lookups via the model's id index instead of scanning every node
+  // on each hover event.
+  const nodeById = (id: string | null | undefined) => {
+    if (!id || !visible) return undefined;
+    const index = visible.indexById.get(id);
+    return index === undefined ? undefined : visible.nodes[index];
+  };
+  const activeNode = nodeById(hoveredId ?? selectedId);
   const activeNavigable = activeNode && isNavigable(activeNode.kind) ? activeNode : undefined;
 
   const handleNodeClick = (id: string) => {
-    const node = visible?.nodes.find((entry) => entry.id === id);
+    const node = nodeById(id);
     if (node && isNavigable(node.kind)) onOpenRef.current(node.path);
   };
   const handleNodeHover = (id: string | null) => setHoveredId(id);
@@ -272,34 +303,7 @@ export function GraphView({
           node limit.
         </p>
       )}
-      {filtered && filtered.model.nodes.length > MAX_VISIBLE_NODES && (
-        <p className="notice" role="status" data-testid="graph-budget-notice">
-          Showing {MAX_VISIBLE_NODES} of {filtered.model.nodes.length} — zoom in to reveal smaller
-          nodes.
-        </p>
-      )}
-      {(() => {
-        const FALLBACK_LIST_LIMIT = 200;
-        const noteNodes = graph.nodes.filter((node) => node.kind === 'note');
-        const shown = noteNodes.slice(0, FALLBACK_LIST_LIMIT);
-        const hidden = noteNodes.length - shown.length;
-        return (
-          <ul className="graph-fallback-list" aria-label="Notes in graph">
-            {shown.map((node) => (
-              <li key={node.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpen(node.path)}
-                  aria-current={node.id === selectedId ? 'true' : undefined}
-                >
-                  {node.title ?? node.path}
-                </button>
-              </li>
-            ))}
-            {hidden > 0 && <li>…and {hidden} more — use search to open a note</li>}
-          </ul>
-        );
-      })()}
+      {fallbackList}
     </section>
   );
 }

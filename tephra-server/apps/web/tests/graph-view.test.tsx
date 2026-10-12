@@ -313,17 +313,11 @@ describe('GraphView shell', () => {
     expect(await screen.findByText(/larger than the 10 000/)).toBeInTheDocument();
   });
 
-  it('shows the budget notice only when the model exceeds 500 nodes', async () => {
-    mockGraph(graphFixture);
-    renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    await ready();
-    expect(screen.queryByTestId('graph-budget-notice')).toBeNull();
-  });
-
-  it('shows the budget notice for a 501-node model', async () => {
+  it('hands every node of a large model to the canvas with no render-budget notice', async () => {
     mockGraph(bigGraphFixture(501));
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
-    const notice = await screen.findByTestId('graph-budget-notice');
-    expect(notice).toHaveTextContent('Showing 500 of 501 — zoom in to reveal smaller nodes.');
+    await ready();
+    expect(hoisted.lastProps?.model.nodes).toHaveLength(501);
+    expect(screen.queryByText(/zoom in to reveal/)).toBeNull();
   });
 });

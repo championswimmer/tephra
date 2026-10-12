@@ -1,6 +1,7 @@
 /**
  * Renderer-free entrypoint: pure graph core (model/query/filter/depth/
- * settings/groups/palette/simulation/camera/picking). Import from
+ * settings/groups/palette/camera) plus the DOM-free engine pieces
+ * (force simulation, quadtree, colour parsing, label fade). Import from
  * `@tephra/graph-renderer/pure` when the canvas component must stay out
  * of the bundle.
  */
@@ -31,16 +32,6 @@ export type { ColorGroup, GraphScope, GraphSettings } from './settings';
 export { resolveGroupColors } from './groups';
 export { FALLBACK_GRAPH_PALETTE, readGraphPalette } from './palette';
 export type { GraphPalette } from './palette';
-export { createSimulation, mulberry32, DEFAULT_SIM_FORCES } from './simulation';
-export type {
-  SimEdge,
-  SimEdgeInput,
-  SimNode,
-  SimNodeInput,
-  Simulation,
-  SimulationForces,
-  SimulationOptions,
-} from './simulation';
 export {
   createCamera,
   clampZoom,
@@ -64,7 +55,17 @@ export type {
   WorldPoint,
   ZoomOptions,
 } from './camera';
-export { createNodePicker, isNodeInViewport } from './picking';
-export type { NodePicker, PickableNode, PickerOptions } from './picking';
-export { MAX_VISIBLE_NODES, visibleNodeBudget } from './visibility';
-export type { VisibleNodeBudget } from './visibility';
+export { createForceSimulation, DEFAULT_FORCE_PARAMS, mulberry32 } from './engine/simulation';
+export { createQuadtree } from './engine/quadtree';
+export type { FloatArray, Quadtree, QuadtreeBuildOptions, QuadtreeVisitor } from './engine/quadtree';
+export { writeCssColor, rgbaToCss } from './engine/color';
+export { labelFadeOpacity } from './engine/labels';
+export type {
+  DrawBackend,
+  ForceParams,
+  ForceSimulation,
+  ForceSimulationInit,
+  LabelFrame,
+  LabelLayer,
+  SceneFrame,
+} from './engine/types';

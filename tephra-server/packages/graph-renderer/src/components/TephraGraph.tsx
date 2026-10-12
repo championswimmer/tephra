@@ -1,5 +1,5 @@
 /**
- * Thin React shell around the imperative canvas renderer.
+ * Thin React shell around the imperative graph engine (`engine/renderer`).
  *
  * Mounts `createGraphRenderer` once per `seed`, pushes every other prop
  * through `setModel` / `setSelected` via refs so prop churn never
@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { createGraphRenderer } from '../renderer';
+import { createGraphRenderer, type GraphRenderer } from '../engine/renderer';
 import type { GraphModel } from '../model';
 import type { GraphPalette } from '../palette';
 import type { GraphSettings } from '../settings';
@@ -45,7 +45,7 @@ export function TephraGraph({
   propsRef.current = { model, settings, groupColors, palette };
   const callbacksRef = useRef({ onNodeClick, onNodeHover, onReady });
   callbacksRef.current = { onNodeClick, onNodeHover, onReady };
-  const rendererRef = useRef<ReturnType<typeof createGraphRenderer> | null>(null);
+  const rendererRef = useRef<GraphRenderer | null>(null);
 
   // Mount the imperative renderer once per seed.
   useEffect(() => {
@@ -81,8 +81,8 @@ export function TephraGraph({
     rendererRef.current?.setSelected(selectedId);
   }, [selectedId]);
 
-  // On-demand animation: the mount effect's initial setModel draws
-  // statically, so ignore the initial token and only animate on bumps.
+  // Animate button: the layout already animates live on load, so ignore the
+  // initial token and only reheat on bumps.
   useEffect(() => {
     if (animateToken > 0) rendererRef.current?.animate();
   }, [animateToken]);

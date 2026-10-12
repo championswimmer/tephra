@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sameIdSet } from '../src/renderer';
+import { sameIdSet } from '../src/engine/renderer';
 
 /** Old implementation, kept as the parity oracle for these tests. */
 function legacySignature(ids: string[]): string {
