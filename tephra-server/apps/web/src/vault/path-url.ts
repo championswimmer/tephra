@@ -22,6 +22,16 @@ export function hashForPath(path: string): string {
 }
 
 /**
+ * Build the full shareable URL for a vault-relative path: the given page URL
+ * (any existing fragment is dropped) plus the `#/...` route fragment.
+ */
+export function fileUrlForPath(pageHref: string, path: string): string {
+  const hashIndex = pageHref.indexOf('#');
+  const base = hashIndex === -1 ? pageHref : pageHref.slice(0, hashIndex);
+  return `${base}${hashForPath(path)}`;
+}
+
+/**
  * Parse a `location.hash` value back into a vault-relative path.
  * Returns `undefined` for an empty hash (`''`, `'#'`, `'#/'`).
  */

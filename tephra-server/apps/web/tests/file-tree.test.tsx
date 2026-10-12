@@ -26,4 +26,20 @@ describe('FileBrowser', () => {
     await user.click(screen.getByRole('button', { name: /Today\.md/ }));
     expect(onSelect).toHaveBeenCalledWith('Journal/Today.md');
   });
+
+  it('collapses and expands all folders', async () => {
+    const user = userEvent.setup();
+    render(<FileBrowser files={files} onSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Today\.md/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(screen.queryByRole('button', { name: /Today\.md/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Tephra\.md/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Journal/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await user.click(screen.getByRole('button', { name: 'Expand all' }));
+    expect(screen.getByRole('button', { name: /Today\.md/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Tephra\.md/ })).toBeInTheDocument();
+  });
 });

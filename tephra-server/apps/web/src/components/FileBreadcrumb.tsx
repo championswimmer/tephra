@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Link } from 'lucide-react';
+import { fileUrlForPath } from '../vault/path-url';
 
 export function FileBreadcrumb({ vaultName, path }: { vaultName: string; path: string }) {
   const [copied, setCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
   const segments = path.split('/').filter((segment) => segment.length > 0);
 
-  async function copyPath() {
+  async function copyText(text: string, onCopied: (value: boolean) => void) {
     try {
-      await navigator.clipboard.writeText(path);
+      await navigator.clipboard.writeText(text);
     } catch {
       // Clipboard may be unavailable (permissions, insecure context);
       // fall back to a transient textarea + execCommand copy.
       try {
         const textarea = document.createElement('textarea');
-        textarea.value = path;
+        textarea.value = text;
         textarea.setAttribute('readonly', '');
         textarea.style.position = 'absolute';
         textarea.style.left = '-9999px';
@@ -25,8 +27,8 @@ export function FileBreadcrumb({ vaultName, path }: { vaultName: string; path: s
         return;
       }
     }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    onCopied(true);
+    window.setTimeout(() => onCopied(false), 1500);
   }
 
   return (
@@ -50,20 +52,36 @@ export function FileBreadcrumb({ vaultName, path }: { vaultName: string; path: s
           </li>
         ))}
       </ol>
-      <button
-        type="button"
-        className="icon-button file-breadcrumb-copy"
-        aria-label="Copy file path"
-        title="Copy file path"
-        onClick={() => void copyPath()}
-      >
-        {copied ? (
-          <Check size={14} aria-hidden="true" focusable="false" className="icon" />
-        ) : (
-          <Copy size={14} aria-hidden="true" focusable="false" className="icon" />
-        )}
-        <span aria-live="polite">{copied ? 'Copied' : 'Copy path'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '0.4rem', flex: 'none' }}>
+        <button
+          type="button"
+          className="icon-button file-breadcrumb-copy"
+          aria-label="Copy file path"
+          title="Copy file path"
+          onClick={() => void copyText(path, setCopied)}
+        >
+          {copied ? (
+            <Check size={14} aria-hidden="true" focusable="false" className="icon" />
+          ) : (
+            <Copy size={14} aria-hidden="true" focusable="false" className="icon" />
+          )}
+          <span aria-live="polite">{copied ? 'Copied' : 'Copy path'}</span>
+        </button>
+        <button
+          type="button"
+          className="icon-button file-breadcrumb-copy"
+          aria-label="Copy file URL"
+          title="Copy file URL"
+          onClick={() => void copyText(fileUrlForPath(window.location.href, path), setUrlCopied)}
+        >
+          {urlCopied ? (
+            <Check size={14} aria-hidden="true" focusable="false" className="icon" />
+          ) : (
+            <Link size={14} aria-hidden="true" focusable="false" className="icon" />
+          )}
+          <span aria-live="polite">{urlCopied ? 'Copied' : 'Copy URL'}</span>
+        </button>
+      </div>
     </nav>
   );
 }

@@ -30,4 +30,23 @@ describe('FileBreadcrumb', () => {
       delete (navigator as unknown as Record<string, unknown>).clipboard;
     }
   });
+
+  it('copies the full file URL including the hash route', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      render(<FileBreadcrumb vaultName="demo" path="Notes/Target Note.md" />);
+      await user.click(screen.getByRole('button', { name: 'Copy file URL' }));
+      expect(writeText).toHaveBeenCalledWith(
+        `${window.location.href.split('#')[0]}#/Notes/Target%20Note.md`,
+      );
+      expect(await screen.findByText('Copied')).toBeInTheDocument();
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+    }
+  });
 });

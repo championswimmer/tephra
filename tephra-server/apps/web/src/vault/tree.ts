@@ -65,3 +65,21 @@ export function filterTree(nodes: readonly TreeNode[], query: string): TreeNode[
   }
   return result;
 }
+export function collectFolderPaths(nodes: readonly TreeNode[]): Set<string> {
+  const paths = new Set<string>();
+  const visit = (list: readonly TreeNode[]) => {
+    for (const node of list) {
+      if (node.type === 'folder') {
+        paths.add(node.path);
+        visit(node.children);
+      }
+    }
+  };
+  visit(nodes);
+  return paths;
+}
+export function toggleCollapsed(collapsed: ReadonlySet<string>, path: string): Set<string> {
+  const next = new Set(collapsed);
+  if (!next.delete(path)) next.add(path);
+  return next;
+}

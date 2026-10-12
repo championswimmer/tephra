@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import type { VaultFile } from '../api/types';
 import type { TreeNode } from '../vault/tree';
@@ -10,6 +10,8 @@ export interface FileTreeProps {
   selectedPath: string | undefined;
   onSelect: (path: string) => void;
   forceOpen: boolean;
+  collapsed: ReadonlySet<string>;
+  onToggleFolder: (path: string) => void;
 }
 
 const FileRow = memo(function FileRow({
@@ -41,21 +43,24 @@ const FolderRow = memo(function FolderRow({
   selectedPath,
   onSelect,
   forceOpen,
+  collapsed,
+  onToggleFolder,
 }: {
   node: Extract<TreeNode, { type: 'folder' }>;
   selectedPath: string | undefined;
   onSelect: (path: string) => void;
   forceOpen: boolean;
+  collapsed: ReadonlySet<string>;
+  onToggleFolder: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
-  const expanded = forceOpen || open;
+  const expanded = forceOpen || !collapsed.has(node.path);
   return (
     <li>
       <button
         className="tree-folder"
         type="button"
         aria-expanded={expanded}
-        onClick={() => setOpen(!open)}
+        onClick={() => onToggleFolder(node.path)}
       >
         {expanded ? (
           <ChevronDown size={14} aria-hidden="true" focusable="false" className="icon" />
@@ -75,6 +80,8 @@ const FolderRow = memo(function FolderRow({
           selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={forceOpen}
+          collapsed={collapsed}
+          onToggleFolder={onToggleFolder}
         />
       )}
     </li>
@@ -91,6 +98,8 @@ export const TreeBranch = memo(function TreeBranch({
   selectedPath,
   onSelect,
   forceOpen,
+  collapsed,
+  onToggleFolder,
 }: Omit<FileTreeProps, 'files'>) {
   return (
     <ul className="tree-list">
@@ -102,6 +111,8 @@ export const TreeBranch = memo(function TreeBranch({
             selectedPath={selectedPath}
             onSelect={onSelect}
             forceOpen={forceOpen}
+            collapsed={collapsed}
+            onToggleFolder={onToggleFolder}
           />
         ) : (
           <FileRow
@@ -121,6 +132,8 @@ export const FileTree = memo(function FileTree({
   selectedPath,
   onSelect,
   forceOpen,
+  collapsed,
+  onToggleFolder,
 }: Omit<FileTreeProps, 'files'>) {
   return (
     <TreeBranch
@@ -128,6 +141,8 @@ export const FileTree = memo(function FileTree({
       selectedPath={selectedPath}
       onSelect={onSelect}
       forceOpen={forceOpen}
+      collapsed={collapsed}
+      onToggleFolder={onToggleFolder}
     />
   );
 });

@@ -1,7 +1,7 @@
-import { memo, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { ChevronsDownUp, ChevronsUpDown, Search } from 'lucide-react';
 import type { VaultFile } from '../api/types';
-import { buildTree, filterTree } from '../vault/tree';
+import { buildTree, collectFolderPaths, filterTree, toggleCollapsed } from '../vault/tree';
 import { FileTree } from './FileTree';
 
 export interface FileBrowserProps {
@@ -22,14 +22,42 @@ export const FileBrowser = memo(function FileBrowser({
   onSelect,
 }: FileBrowserProps) {
   const [query, setQuery] = useState('');
-  const { nodes, filtering } = useMemo(() => {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const { allNodes, nodes, filtering } = useMemo(() => {
     const trimmed = query.trim();
     const visible = files.filter((file) => !file.path.split('/').includes('.obsidian'));
-    return { nodes: filterTree(buildTree(visible), query), filtering: trimmed.length > 0 };
+    const all = buildTree(visible);
+    return { allNodes: all, nodes: filterTree(all, query), filtering: trimmed.length > 0 };
   }, [files, query]);
+  const onToggleFolder = useCallback(
+    (path: string) => setCollapsed((current) => toggleCollapsed(current, path)),
+    [],
+  );
+  const collapseAll = () => setCollapsed(collectFolderPaths(allNodes));
+  const expandAll = () => setCollapsed(new Set());
 
   return (
     <div className="file-browser">
+      <div className="tree-actions">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label="Collapse all"
+          title="Collapse all"
+          onClick={collapseAll}
+        >
+          <ChevronsDownUp size={14} aria-hidden="true" focusable="false" className="icon" />
+        </button>
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label="Expand all"
+          title="Expand all"
+          onClick={expandAll}
+        >
+          <ChevronsUpDown size={14} aria-hidden="true" focusable="false" className="icon" />
+        </button>
+      </div>
       <label className="tree-search">
         <span className="sr-only">Search files</span>
         <Search size={14} aria-hidden="true" focusable="false" className="icon" />
@@ -46,6 +74,8 @@ export const FileBrowser = memo(function FileBrowser({
           selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={filtering}
+          collapsed={collapsed}
+          onToggleFolder={onToggleFolder}
         />
       ) : (
         <p className="tree-empty">No files match “{query}”.</p>

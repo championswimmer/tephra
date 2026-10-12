@@ -587,6 +587,12 @@ html.theme-dark .vault-grid a {
 .pane-title span {
   color: var(--text-muted);
 }
+.tree-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  padding: 0.4rem 0.7rem 0;
+}
 .tree-search {
   margin: 0.4rem 0.7rem 0.8rem;
   display: flex;

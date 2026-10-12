@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeHashToPath,
   encodePathForHash,
+  fileUrlForPath,
   hashForPath,
   parseHashView,
 } from '../src/vault/path-url';
@@ -44,5 +45,14 @@ describe('path-url hash helpers', () => {
       type: 'file',
       path: 'Notes/Target Note.md',
     });
+  });
+
+  it('builds full file URLs from the page URL plus the hash route', () => {
+    expect(fileUrlForPath('https://x.test/vaults/abc', 'Notes/Target Note.md')).toBe(
+      'https://x.test/vaults/abc#/Notes/Target%20Note.md',
+    );
+    expect(fileUrlForPath('https://x.test/vaults/abc?a=1#/Old.md', 'a#b.md')).toBe(
+      'https://x.test/vaults/abc?a=1#/a%23b.md',
+    );
   });
 });
