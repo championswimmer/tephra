@@ -39,6 +39,24 @@ flowchart LR
 
 Colors: blue = users, orange = network edge, green = compute, red = data, purple = secrets, gray = DNS/meta.
 
+## One-click CloudFormation
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?stackName=tephra&templateURL=https%3A%2F%2Fs3.amazonaws.com%2FYOUR-BUCKET%2Ftephra.yaml)
+
+Template: `tephra-server/deploy/aws/cloudformation.yaml` (EC2, encrypted EBS, Elastic IP; secrets generated in Secrets Manager, never in user-data). CloudFormation only accepts S3 template URLs, so either:
+
+```sh
+# A) no hosting needed
+aws cloudformation deploy --stack-name tephra --capabilities CAPABILITY_IAM \
+  --template-file tephra-server/deploy/aws/cloudformation.yaml \
+  --parameter-overrides DomainName=notes.example.com
+
+# B) host once, then the button above works (replace YOUR-BUCKET in its URL)
+aws s3 cp tephra-server/deploy/aws/cloudformation.yaml s3://YOUR-BUCKET/tephra.yaml
+```
+
+Then: point `A notes.example.com` at the `ElasticIp` output, run the `BootstrapTokenCommand` output to get the setup token, and open `/setup`.
+
 ## Quick: one command
 
 ```sh

@@ -6,6 +6,26 @@ Today, that means a private web mirror for your notes, links, attachments, and g
 
 Tephra is built for portable single-user deployments: run your vault on your own domain in one container or VM, whether that is an EC2 instance, a Railway deployment, or a similar box you control.
 
+## Deploy
+
+One private instance, your domain, one disk. Pick a platform (each guide is a few lines):
+
+<p>
+  <a href="docs/deploy/RAILWAY.md"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40"></a>
+  <a href="https://shell.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fchampionswimmer%2Ftephra.git&amp;cloudshell_workspace=.&amp;cloudshell_open_in_editor=docs%2Fdeploy%2FGCP.md"><img src="https://gstatic.com/cloudssh/images/open-btn.svg" alt="Open in Google Cloud Shell" height="40"></a>
+  <a href="docs/deploy/AWS.md#one-click-cloudformation"><img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png" alt="Launch Stack on AWS" height="40"></a>
+  <a href="docs/deploy/DO.md"><img src="https://www.deploytodo.com/do-btn-blue.svg" alt="Deploy to DigitalOcean" height="40"></a>
+</p>
+
+| Platform                           | What you get                                 | How                                             |
+| ---------------------------------- | -------------------------------------------- | ----------------------------------------------- |
+| [Railway](docs/deploy/RAILWAY.md)  | Service + volume, from `.railway/railway.ts` | `npm run deploy:railway`                        |
+| [Google Cloud](docs/deploy/GCP.md) | VM + disk + static IP + Secret Manager       | Cloud Shell, then `scripts/deploy/gcp.sh`       |
+| [AWS](docs/deploy/AWS.md)          | EC2 + encrypted EBS + Elastic IP             | CloudFormation stack or `scripts/deploy/aws.sh` |
+| [DigitalOcean](docs/deploy/DO.md)  | Droplet + volume + Reserved IP               | `scripts/deploy/do.sh`                          |
+
+The buttons open the guide or a prefilled shell, not a blind deploy: Tephra needs a persistent disk and exactly one instance, so the stock Cloud Run and App Platform one-click buttons do not fit.
+
 ## What Tephra does
 
 - Mirrors your whole Obsidian vault into a private web app you can reach from anywhere.

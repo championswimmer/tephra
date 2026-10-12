@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # Deploy Tephra to one GCE VM + Persistent Disk, with Caddy for HTTPS.
 # Usage: PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.example.com \
-#        IMAGE=us-docker.pkg.dev/my-proj/tephra/tephra:latest scripts/deploy/gcp.sh
+#        scripts/deploy/gcp.sh
 # Optional: NAME=tephra DISK_GB=10 MACHINE=e2-small
+#   IMAGE=us-docker.pkg.dev/my-proj/tephra/tephra:latest  (pull a prebuilt image;
+#   if unset, the VM clones REPO and builds the image on first boot, ~5 min)
+#   REPO=https://github.com/championswimmer/tephra.git
 # Needs: gcloud (logged in), openssl. Secrets live in Secret Manager; never printed.
 set -euo pipefail
 
-: "${PROJECT:?set PROJECT}" "${ZONE:?set ZONE}" "${DOMAIN:?set DOMAIN}" "${IMAGE:?set IMAGE}"
+: "${PROJECT:?set PROJECT}" "${ZONE:?set ZONE}" "${DOMAIN:?set DOMAIN}"
+IMAGE="${IMAGE:-}"
+REPO="${REPO:-https://github.com/championswimmer/tephra.git}"
+if [ -n "$IMAGE" ]; then
+  PULL_CMD="gcloud auth configure-docker --quiet ${IMAGE%%/*} >/dev/null 2>&1 || true"
+else
+  IMAGE="tephra:local"
+  PULL_CMD="docker image inspect tephra:local >/dev/null 2>&1 || { apt-get install -y git && git clone --depth 1 $REPO /opt/tephra-src && docker build -f /opt/tephra-src/tephra-server/deploy/docker/Dockerfile -t tephra:local /opt/tephra-src; }"
+fi
 NAME="${NAME:-tephra}"
 DISK_GB="${DISK_GB:-10}"
 MACHINE="${MACHINE:-e2-small}"
@@ -42,7 +53,7 @@ mkdir -p /data; mountpoint -q /data || mount -o discard,defaults "\$DEV" /data
 grep -q ' /data ' /etc/fstab || echo "\$DEV /data ext4 discard,defaults,nofail 0 2" >> /etc/fstab
 chown 1000:1000 /data
 command -v docker >/dev/null || { apt-get update && apt-get install -y docker.io docker-compose; }
-gcloud auth configure-docker --quiet ${IMAGE%%/*} >/dev/null 2>&1 || true
+$PULL_CMD
 mkdir -p /opt/tephra; cd /opt/tephra
 sec() { gcloud secrets versions access latest --secret="$NAME-\$1"; }
 if [ ! -f tephra.env ]; then
