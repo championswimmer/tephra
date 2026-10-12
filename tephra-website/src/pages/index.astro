@@ -8,51 +8,51 @@ const rawBase = import.meta.env.BASE_URL ?? "/";
 const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
 
 const scenarios = [
-  'Your laptop is at home.',
-  'You are on a machine that will never have Obsidian installed.',
-  'You just want to look something up, right now, from a browser.',
+  'Your laptop is at home and you need one note.',
+  "You're on a work machine where you can't install anything.",
+  'You just want to look something up quickly in a browser tab.',
 ];
 
 const shipped = [
   {
     icon: 'lucide:folder-tree',
     title: 'Your whole vault',
-    body: 'Every folder, every note. Nothing to curate.',
+    body: 'Every folder and every note gets synced. No picking and choosing.',
   },
   {
     icon: 'lucide:file-text',
-    title: 'Notes, rendered',
-    body: 'Markdown, frontmatter, tags, callouts, code.',
+    title: 'Proper rendering',
+    body: 'Markdown, frontmatter, tags, callouts and code blocks.',
   },
   {
     icon: 'lucide:link-2',
     title: 'Wikilinks & backlinks',
-    body: '[[Links]] resolve, down to headings and blocks.',
+    body: '[[Links]] work, including links to headings and blocks.',
   },
   {
     icon: 'lucide:waypoints',
     title: 'Graph view',
-    body: 'Your link structure, laid out and clickable.',
+    body: 'See how your notes connect and click around.',
   },
   {
     icon: 'lucide:image',
     title: 'Attachments',
-    body: 'Images and PDFs open inline.',
+    body: 'Images and PDFs open right inside the note.',
   },
   {
     icon: 'lucide:moon-star',
     title: 'Light & dark themes',
-    body: 'Looks like Obsidian, not a file listing.',
+    body: 'It looks and feels like Obsidian.',
   },
   {
     icon: 'lucide:laptop-minimal-check',
     title: 'Desktop & mobile sync',
-    body: 'The plugin runs on every Obsidian platform.',
+    body: 'The plugin works in Obsidian on desktop, iOS and Android.',
   },
   {
     icon: 'lucide:server',
     title: 'Self-hosted',
-    body: 'One container. Your domain, your login.',
+    body: 'A single container on your own server and domain.',
   },
 ];
 
@@ -60,44 +60,44 @@ const upcoming = [
   {
     icon: 'lucide:pencil-line',
     title: 'Editing in the browser',
-    body: 'Fix a note from a machine that is not yours.',
+    body: 'Make quick fixes to a note from any computer.',
   },
   {
     icon: 'lucide:refresh-cw',
     title: 'Two-way sync',
-    body: 'Web edits flow home. Three-way merge, no silent overwrites.',
+    body: "Edits made on the web sync back to your devices, merged properly so nothing gets overwritten.",
   },
   {
     icon: 'lucide:plug-zap',
     title: 'Community plugins',
-    body: 'A browser-safe subset of the ecosystem.',
+    body: 'Support for plugins that can run safely in a browser.',
   },
   {
     icon: 'lucide:globe',
     title: 'Optional publishing',
-    body: 'Opt in, one subtree at a time.',
+    body: 'Make specific folders public if you want to.',
   },
 ];
 
 const comparisons = [
   {
     icon: 'lucide:arrow-left-right',
-    title: 'Obsidian Sync moves files',
-    lead: 'Sync keeps vaults in step across devices — both directions, with version history, selective sync of settings and plugins, and shared vaults. It assumes you already have Obsidian open on each end.',
-    verdict: 'Tephra is the end. It is a client, not a pipe — reachable from a machine that has no Obsidian at all.',
+    title: 'Obsidian Sync',
+    lead: 'Sync keeps your vault up to date across devices that have Obsidian installed, with version history and shared vaults. It does that really well.',
+    verdict: 'Tephra lets you read your vault on devices that don\'t have Obsidian at all.',
   },
   {
     icon: 'lucide:users',
-    title: 'Obsidian Publish is for other people',
-    lead: 'Publish takes notes you pick and puts them on the open web with a custom domain, SEO and analytics — or one site-wide password if you want the whole thing closed.',
-    verdict: 'Tephra is for you. The whole vault, on your infra, behind your login. There is no public mode to switch on.',
+    title: 'Obsidian Publish',
+    lead: 'Publish turns notes you choose into a public website, with a custom domain, SEO and analytics. You can password-protect the whole site if you need to.',
+    verdict: 'Tephra is just for you: your entire vault, on your own server, behind your own login.',
   },
 ];
 ---
 
 <Base
-  title="Tephra — a lightweight Obsidian in the cloud"
-  description="Tephra is a self-hosted, Obsidian-compatible client that runs on your own infrastructure. Sync it with your Obsidian instances and open your whole vault from any browser — no laptop, no app install required."
+  title="Tephra — your Obsidian vault in any browser"
+  description="Tephra is a self-hosted web app for your Obsidian vault. A plugin syncs your notes to your own server so you can open them from any browser, no Obsidian install needed."
 >
   <Nav />
 
@@ -106,13 +106,13 @@ const comparisons = [
     <section class="hero">
       <div class="wrap hero-inner">
         <div class="hero-copy">
-          <span class="eyebrow">Obsidian, minus the install</span>
-          <h1>A lightweight <em class="grad">Obsidian</em>, running in the cloud.</h1>
+          <span class="eyebrow">Self-hosted · Open source</span>
+          <h1>Your <em class="grad">Obsidian</em> vault, in any browser.</h1>
           <p class="lede">
-            Tephra is an Obsidian-compatible client you host on your own infrastructure. It syncs
-            with your Obsidian instances, then serves your whole vault at
-            <code>tephra.yourdomain.com</code> — as if a copy of the app were running on your server,
-            waiting in a browser tab.
+            Tephra is a web app for your Obsidian vault that you run on your own server. A plugin
+            keeps it synced with Obsidian on your devices, so you can open your notes at
+            <code>tephra.yourdomain.com</code> from any computer, with links, backlinks and graph
+            view working the way you expect.
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="https://github.com/championswimmer/tephra">
@@ -138,34 +138,33 @@ const comparisons = [
     <!-- What it is -->
     <section id="what" class="band">
       <div class="wrap">
-        <span class="eyebrow">What it is for</span>
-        <h2>For when the app is not where you are.</h2>
+        <span class="eyebrow">Why Tephra</span>
+        <h2>For when Obsidian isn't within reach.</h2>
         <ul class="scenarios">
           {scenarios.map((line) => <li>{line}</li>)}
         </ul>
         <p class="lede">
-          Obsidian is a desktop app, and a vault is a folder on a disk. That is the whole point of
-          it — right up until you are not at that disk. Tephra is a second client for the same
-          vault: fewer features than the real app, but it lives on a server you own and opens in
-          any browser you can find.
+          Obsidian stores your vault as plain files on your own devices, which is great until you
+          need a note and none of those devices are around. Tephra gives you another way in. It
+          doesn't do everything the app does, but it runs on your server and works in any browser.
         </p>
         <div class="flow">
           <div class="step">
             <span class="num"><Icon name="lucide:container" size="18" aria-hidden="true" /></span>
             <h3>Host it yourself</h3>
-            <p>One container on your own infra, on a subdomain you pick.</p>
+            <p>Run a single container on your server, on any subdomain you like.</p>
           </div>
           <div class="arrow" aria-hidden="true"><Icon name="lucide:arrow-right" size="22" /></div>
           <div class="step">
             <span class="num"><Icon name="lucide:refresh-cw" size="18" aria-hidden="true" /></span>
-            <h3>Sync your instances</h3>
-            <p>The plugin runs in Obsidian on desktop and mobile and keeps Tephra current.</p>
+            <h3>Install the plugin</h3>
+            <p>Add the Tephra plugin to Obsidian on desktop or mobile. It keeps the server up to date.</p>
           </div>
           <div class="arrow" aria-hidden="true"><Icon name="lucide:arrow-right" size="22" /></div>
           <div class="step">
             <span class="num"><Icon name="lucide:app-window" size="18" aria-hidden="true" /></span>
             <h3>Open a browser</h3>
-            <p>Log in from any machine and your vault is there — links, graph and all.</p>
+            <p>Log in from any computer and your vault is right there.</p>
           </div>
         </div>
       </div>
@@ -174,10 +173,10 @@ const comparisons = [
     <!-- Different model -->
     <section id="not">
       <div class="wrap">
-        <span class="eyebrow">A different model</span>
-        <h2>Why this is not Sync, and not Publish.</h2>
+        <span class="eyebrow">How it compares</span>
+        <h2>How is this different from Sync or Publish?</h2>
         <p class="lede">
-          Obsidian sells two services that sound adjacent to this. Both solve a different problem.
+          Obsidian already offers two paid services that sound similar. Here's where Tephra fits.
         </p>
         <div class="grid grid-2 not-grid">
           {
@@ -198,8 +197,8 @@ const comparisons = [
     <section id="features" class="band">
       <div class="wrap">
         <span class="eyebrow">Features</span>
-        <h2>A subset of Obsidian, honestly labelled.</h2>
-        <p class="lede">Exactly what it does today, and exactly what is coming.</p>
+        <h2>What works today, and what's next.</h2>
+        <p class="lede">Tephra covers the parts of Obsidian you need for reading your notes. More is on the way.</p>
 
         <div class="track track-now">
           <div class="track-head">
@@ -223,7 +222,7 @@ const comparisons = [
 
         <div class="track track-soon">
           <div class="track-head">
-            <span class="pill pill-soon">On the horizon</span>
+            <span class="pill pill-soon">Coming soon</span>
             <span class="track-rule"></span>
           </div>
           <div class="grid grid-4 feat-grid">
@@ -242,9 +241,9 @@ const comparisons = [
         </div>
 
         <p class="fineprint">
-          Today Tephra renders CommonMark Markdown, YAML frontmatter, headings, tags, Markdown
-          links, Obsidian wikilinks, heading and block subpaths, and image/PDF attachments. It does
-          not yet run community plugins, Dataview, Templater, custom JavaScript, or custom CSS.
+          Right now Tephra supports CommonMark Markdown, YAML frontmatter, headings, tags, Markdown
+          links, Obsidian wikilinks (including heading and block links), and image/PDF attachments.
+          It doesn't run community plugins, Dataview, Templater, custom JavaScript or custom CSS yet.
         </p>
       </div>
     </section>
@@ -259,16 +258,16 @@ const comparisons = [
           <span class="eyebrow">The name</span>
           <h2>Tephra <span class="ipa">/ˈtɛfrə/</span> <span class="greek" lang="grc">τέφρα</span></h2>
           <p>
-            <strong>Tephra</strong> is the ash a volcano throws skyward — from the Ancient Greek
-            <em>τέφρα</em>. The cloud above the mountain.
+            <strong>Tephra</strong> is the ash and rock a volcano throws into the air when it erupts.
+            The word comes from the Ancient Greek <em>τέφρα</em>, meaning ash.
           </p>
           <p>
-            Obsidian's makers named their app after volcanic glass, with a metaphor they put
-            plainly: if your raw thoughts are lava, Obsidian is your crystallised knowledge.
+            Obsidian is named after volcanic glass. As its makers put it, if your raw thoughts are
+            lava, Obsidian is your crystallised knowledge.
           </p>
           <p>
-            Same eruption, the part that travels. Your vault is the rock; Tephra is the cloud it
-            throws — far enough to read from anywhere.
+            Tephra comes from the same eruption, but it's the part that travels. Your vault stays
+            where it is, and Tephra carries it far enough that you can read it from anywhere.
           </p>
         </div>
       </div>
@@ -277,10 +276,10 @@ const comparisons = [
     <!-- CTA -->
     <section class="final">
       <div class="wrap final-inner">
-        <h2>Put an Obsidian on your own server.</h2>
+        <h2>Take your vault anywhere.</h2>
         <p class="lede">
-          One container, one plugin, one login — and your vault is waiting at your own domain, on
-          whatever machine you happen to be sitting at.
+          Set up the server, install the plugin, and your notes are a browser tab away from any
+          computer.
         </p>
         <div class="cta">
           <a class="btn btn-primary" href="https://github.com/championswimmer/tephra">
