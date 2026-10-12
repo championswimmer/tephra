@@ -178,7 +178,7 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       verified on copies of real DBs); `vaultFiles.upsert` now names columns
       explicitly so both physical orders work. Deployed to production and
       verified live — Main vault committed revision 3, plugin sync healthy
-- [x] Graph cold-start cache (plan `.agents/plans/016-GRAPH_CACHE.md`):
+- [x] Graph cold-start cache (plan 016):
       server materializes one `vault_graph_cache` row per vault
       (migration `004_graph_cache.sql`, keyed by revision+indexedRevision,
       recalculated after `indexVault`, deleted on index failure) via pure
@@ -187,8 +187,8 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       revalidating; fallback note list capped at 200; renderer `setModel`
       uses element-wise id comparison instead of a mega-string. Wire format
       and ETag scheme unchanged; full `npm run check` green
-- [x] Web editing and two-way sync (plan
-      `.agents/plans/017-WEB_EDITING_AND_TWO_WAY_SYNC.md`): protocol v2 /
+- [x] Web editing and two-way sync (plan 017):
+      protocol v2 /
       plugin floor 0.2.0 with change-feed + `EDIT_CONFLICT` schemas;
       `@tephra/markdown-editor` (CodeMirror 6, session cache, dirty gating,
       54 tests); server `PUT …/content` with If-Match/409, migration 005

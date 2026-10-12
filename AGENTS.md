@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-- Implement web editing and two-way sync according to `.agents/plans/017-WEB_EDITING_AND_TWO_WAY_SYNC.md`.
+- Implement according to `.agents/plans/001-TEPHRA_STAGE1_PLAN.md` and any open plan in `.agents/plans/`.
 - Never add third-party Obsidian plugin execution.
 - Keep original file bytes canonical, blobs immutable and SHA-256 verified, and successful vault commits revisioned.
 
