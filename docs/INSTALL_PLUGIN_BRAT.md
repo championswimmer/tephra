@@ -23,6 +23,8 @@ BRAT does not read the repo's files. It downloads `manifest.json` and `main.js` 
 
 ## Publishing a release (maintainers)
 
+Ask the agent to "release plugin" (see the `release-plugin` skill), or do it by hand:
+
 [`.github/workflows/release-plugin.yml`](../.github/workflows/release-plugin.yml) runs when a version tag is pushed.
 
 1. Set the same version in `tephra-plugin/manifest.json` and `tephra-plugin/package.json`, and commit it.

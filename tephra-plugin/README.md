@@ -8,15 +8,11 @@ Tephra Sync keeps your Obsidian vault and a Tephra Server vault in two-way sync.
 
 The easiest way, including on mobile. See [Install with BRAT](../docs/INSTALL_PLUGIN_BRAT.md).
 
-### Install from source
+### Manual install
 
-From the repository root, install workspace dependencies and run:
+Download `main.js` and `manifest.json` from the [latest release](https://github.com/championswimmer/tephra/releases/latest), put them in `<vault>/.obsidian/plugins/tephra-sync/`, then enable **Tephra Sync** in Community plugins.
 
-```sh
-npm run build --workspace=@tephra/plugin
-```
-
-Copy `main.js`, `manifest.json`, and `versions.json` into `<vault>/.obsidian/plugins/tephra-sync/`, then enable **Tephra Sync** in Community plugins.
+Contributors: build from source with `npm run build --workspace=@tephra/plugin`, or use the `sync-plugin` skill.
 
 ## Configure
 

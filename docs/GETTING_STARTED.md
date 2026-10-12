@@ -83,21 +83,13 @@ Notes:
 
 ## Step 4 — Install the Tephra Sync plugin in Obsidian
 
-The plugin is not yet in the Obsidian community store. The easiest route is
-[BRAT](INSTALL_PLUGIN_BRAT.md), which installs it from this repo on desktop and
-mobile. To install manually instead:
-
-1. On a machine with the Tephra repository, build the plugin:
-   ```sh
-   npm run build --workspace=@tephra/plugin
-   ```
-2. Copy `main.js`, `manifest.json`, and `versions.json` from `tephra-plugin/`
-   into your vault's plugin folder:
-   `<vault>/.obsidian/plugins/tephra-sync/`
-   (for mobile, use a file manager or sync tool to place the same three files
-   in the same path inside your mobile vault folder).
-3. In Obsidian, open **Settings → Community plugins**, enable **Tephra Sync**.
-   (You must have community plugins enabled.)
+The plugin is not yet in the Obsidian community store. Install it with
+[BRAT](INSTALL_PLUGIN_BRAT.md) (desktop and mobile), which pulls the built
+plugin from this repo's latest release and keeps it updated. Or, manually:
+download `main.js` and `manifest.json` from the
+[latest release](https://github.com/championswimmer/tephra/releases/latest)
+into `<vault>/.obsidian/plugins/tephra-sync/`, then enable **Tephra Sync** in
+**Settings → Community plugins**.
 
 ---
 
