@@ -38,7 +38,17 @@ export const FileBrowser = memo(function FileBrowser({
 
   return (
     <div className="file-browser">
-      <div className="tree-actions">
+      <div className="tree-toolbar">
+        <label className="tree-search">
+          <span className="sr-only">Search files</span>
+          <Search size={14} aria-hidden="true" focusable="false" className="icon" />
+          <input
+            type="search"
+            placeholder="Search files"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
         <button
           type="button"
           className="sidebar-toggle"
@@ -58,16 +68,6 @@ export const FileBrowser = memo(function FileBrowser({
           <ChevronsUpDown size={14} aria-hidden="true" focusable="false" className="icon" />
         </button>
       </div>
-      <label className="tree-search">
-        <span className="sr-only">Search files</span>
-        <Search size={14} aria-hidden="true" focusable="false" className="icon" />
-        <input
-          type="search"
-          placeholder="Search files"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
       {nodes.length ? (
         <FileTree
           nodes={nodes}

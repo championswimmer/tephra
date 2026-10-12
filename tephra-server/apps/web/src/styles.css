@@ -148,8 +148,8 @@ button:disabled {
 
 /* Top bar (Obsidian title-bar look: secondary background). */
 .topbar {
-  height: 62px;
-  padding: 0 clamp(1rem, 4vw, 3rem);
+  height: 44px;
+  padding: 0 clamp(0.75rem, 2vw, 1.25rem);
   background: var(--background-secondary);
   color: var(--text-normal);
   border-bottom: 1px solid var(--background-modifier-border);
@@ -162,7 +162,7 @@ button:disabled {
   align-items: center;
   gap: 0.55rem;
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1rem;
   text-decoration: none;
   letter-spacing: 0.02em;
   color: var(--text-normal);
@@ -174,9 +174,10 @@ button:disabled {
 .topbar nav {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 0.75rem;
 }
 .topbar nav a {
+  font-size: 0.86rem;
   color: var(--text-muted);
   text-decoration: none;
 }
@@ -188,21 +189,21 @@ button:disabled {
   background: var(--background-primary);
   color: var(--text-normal);
   border-radius: 5px;
-  padding: 0.4rem 0.7rem;
-  font-size: 0.86rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.82rem;
 }
 .topbar-button:hover {
   background: var(--background-modifier-hover);
 }
 .user-email {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .page {
   max-width: 1180px;
   margin: auto;
-  padding: 3rem clamp(1rem, 4vw, 3rem);
+  padding: 1.75rem clamp(1rem, 3vw, 2rem);
 }
 .page.narrow {
   max-width: 760px;
@@ -212,11 +213,11 @@ button:disabled {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 2rem;
-  margin-bottom: 2rem;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 .page h1 {
-  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
   line-height: 1;
   margin: 0.25rem 0;
   color: var(--text-normal);
@@ -243,7 +244,7 @@ button:disabled {
 .button {
   border: 0;
   border-radius: 5px;
-  padding: 0.7rem 1rem;
+  padding: 0.45rem 0.85rem;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   text-decoration: none;
@@ -255,7 +256,7 @@ button:disabled {
 input {
   border: 1px solid var(--background-modifier-border);
   border-radius: 5px;
-  padding: 0.65rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   background: var(--background-modifier-form-field);
   color: var(--text-normal);
 }
@@ -273,7 +274,7 @@ input {
 .vault-grid a {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  padding: 1.4rem;
+  padding: 1rem;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.2rem 0.8rem;
@@ -361,8 +362,8 @@ html.theme-dark .vault-grid a {
 .note-editor {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 1rem 0;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
 }
 .note-editor-bar {
   display: flex;
@@ -378,7 +379,7 @@ html.theme-dark .vault-grid a {
   background: var(--background-primary);
   color: var(--text-normal);
   border-radius: 4px;
-  padding: 0.45rem 0.9rem;
+  padding: 0.25rem 0.6rem;
 }
 .note-editor-bar .icon-button:hover:not(:disabled) {
   background: var(--background-modifier-hover);
@@ -422,7 +423,7 @@ html.theme-dark .vault-grid a {
   background: var(--background-primary);
   color: var(--text-normal);
   border-radius: 4px;
-  padding: 0.45rem 0.7rem;
+  padding: 0.25rem 0.55rem;
 }
 .conflict-actions .icon-button:hover:not(:disabled) {
   background: var(--background-modifier-hover);
@@ -481,7 +482,7 @@ html.theme-dark .vault-grid a {
 }
 .settings-card,
 .management {
-  padding: 1.5rem;
+  padding: 1rem;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -492,7 +493,7 @@ html.theme-dark .vault-grid a {
   background: transparent;
   color: #c0503f;
   border-radius: 5px;
-  padding: 0.55rem 0.8rem;
+  padding: 0.35rem 0.65rem;
 }
 .danger.subtle {
   font-size: 0.8rem;
@@ -500,36 +501,37 @@ html.theme-dark .vault-grid a {
 
 /* Workspace */
 .workspace {
-  height: calc(100vh - 62px);
+  height: calc(100vh - 44px);
   display: flex;
   flex-direction: column;
   background: var(--background-primary);
 }
 .vault-header {
-  height: 54px;
+  height: 36px;
   flex: none;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
+  padding: 0 0.5rem;
 }
 .vault-header > div,
 .vault-header nav {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.5rem;
+  font-size: 0.86rem;
 }
 .vault-header a {
-  font-size: 0.86rem;
+  font-size: 0.84rem;
 }
 .vault-header nav a {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   text-decoration: none;
-  padding: 0.35rem 0.55rem;
+  padding: 0.2rem 0.45rem;
   border-radius: 4px;
   color: var(--text-muted);
 }
@@ -544,15 +546,15 @@ html.theme-dark .vault-grid a {
 }
 .workspace-grid {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 240px;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
   min-height: 0;
   flex: 1;
 }
 .workspace-grid.hide-left {
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1fr) 220px;
 }
 .workspace-grid.hide-right {
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 .workspace-grid.hide-left.hide-right {
   grid-template-columns: minmax(0, 1fr);
@@ -570,7 +572,8 @@ html.theme-dark .vault-grid a {
   background: transparent;
   color: var(--text-muted);
   border-radius: 4px;
-  padding: 0.35rem 0.45rem;
+  padding: 0.2rem 0.3rem;
+  line-height: 1;
 }
 .sidebar-toggle:hover {
   color: var(--text-normal);
@@ -579,7 +582,7 @@ html.theme-dark .vault-grid a {
 .pane-title {
   display: flex;
   justify-content: space-between;
-  padding: 1rem 1rem 0.5rem;
+  padding: 0.6rem 0.75rem 0.2rem;
   text-transform: uppercase;
   font-size: 0.72rem;
   letter-spacing: 0.1em;
@@ -587,37 +590,40 @@ html.theme-dark .vault-grid a {
 .pane-title span {
   color: var(--text-muted);
 }
-.tree-actions {
+.tree-toolbar {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.2rem;
-  padding: 0.4rem 0.7rem 0;
+  align-items: center;
+  gap: 0.1rem;
+  margin: 0.3rem 0.4rem 0.4rem 0.5rem;
 }
 .tree-search {
-  margin: 0.4rem 0.7rem 0.8rem;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.4rem;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-modifier-form-field);
   border-radius: 5px;
-  padding-left: 0.5rem;
+  padding-left: 0.45rem;
   color: var(--text-muted);
 }
 .tree-search input {
   min-width: 0;
   width: 100%;
+  padding: 0.25rem 0.4rem 0.25rem 0;
+  font-size: 0.84rem;
   border: 0;
   background: transparent;
 }
 .tree-list {
   list-style: none;
-  padding: 0 0 0 0.7rem;
+  padding: 0 0 0 0.4rem;
   margin: 0;
 }
 .tree-list .tree-list {
   border-left: 1px solid var(--background-modifier-border);
-  margin-left: 0.65rem;
+  margin-left: 0.55rem;
 }
 .tree-file,
 .tree-folder {
@@ -625,7 +631,7 @@ html.theme-dark .vault-grid a {
   border: 0;
   background: transparent;
   text-align: left;
-  padding: 0.35rem 0.6rem;
+  padding: 0.2rem 0.45rem;
   display: flex;
   gap: 0.4rem;
   align-items: center;
@@ -655,7 +661,7 @@ html.theme-dark .vault-grid a {
 .links-panel {
   border-left: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  padding: 1rem;
+  padding: 0.5rem 0.75rem;
   overflow: auto;
 }
 .links-panel h3 {
@@ -675,7 +681,7 @@ html.theme-dark .vault-grid a {
 }
 .links-panel li {
   font-size: 0.82rem;
-  margin: 0.6rem 0;
+  margin: 0.35rem 0;
 }
 .links-panel button {
   border: 0;
@@ -693,8 +699,7 @@ html.theme-dark .vault-grid a {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  margin-bottom: 0.25rem;
+  padding: 0.3rem 0.75rem;
   border-bottom: 1px solid var(--background-modifier-border);
   font-size: 0.84rem;
   color: var(--text-muted);
@@ -736,8 +741,8 @@ html.theme-dark .vault-grid a {
   background: var(--background-primary);
   color: var(--text-muted);
   border-radius: 4px;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
 }
 .file-breadcrumb-copy:hover {
   color: var(--text-normal);
@@ -749,18 +754,19 @@ html.theme-dark .vault-grid a {
 .management {
   max-width: 920px;
   margin: auto;
-  padding: clamp(1rem, 4vw, 3rem);
+  padding: 1rem clamp(0.75rem, 3vw, 2rem);
 }
 .note-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: 1rem;
+  padding-bottom: 0.5rem;
 }
 .note-toolbar h2 {
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
-  margin: 0.25rem 0;
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  margin: 0;
   color: var(--text-normal);
 }
 .note-toolbar button,
@@ -768,22 +774,28 @@ html.theme-dark .vault-grid a {
 .token-once button {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
   color: var(--text-normal);
   border-radius: 4px;
-  padding: 0.45rem 0.7rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.85rem;
 }
 .note-toolbar button:hover,
 .graph-selection button:hover,
 .token-once button:hover {
   background: var(--background-modifier-hover);
 }
+.note-toolbar button[aria-pressed='true'],
+.note-toolbar button[aria-pressed='true']:hover {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
 .rendered-note {
-  max-width: 760px;
   font-size: 1.05rem;
-  padding: 1.5rem 0;
+  padding: 0.75rem 0;
   overflow-wrap: anywhere;
   color: var(--text-normal);
 }
@@ -948,7 +960,7 @@ html.theme-dark .vault-grid a {
   flex: none;
 }
 .raw-source {
-  margin: 1.5rem 0;
+  margin: 0.75rem 0;
   white-space: pre-wrap;
 }
 .readonly-badge {
@@ -979,7 +991,7 @@ html.theme-dark .vault-grid a {
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-  padding: 1.5rem;
+  padding: 1.25rem;
 }
 .modal-header {
   display: flex;
@@ -1200,14 +1212,8 @@ html.theme-dark .vault-grid a {
   }
 }
 @media (max-width: 650px) {
-  .topbar {
-    height: 54px;
-  }
-  .workspace {
-    height: calc(100vh - 54px);
-  }
   .page {
-    padding-top: 2rem;
+    padding-top: 1.25rem;
   }
   .page-heading {
     align-items: stretch;
@@ -1271,7 +1277,7 @@ html.theme-dark .vault-grid a {
   .management,
   .note-view,
   .attachment-view {
-    padding: 1rem;
+    padding: 0.75rem;
   }
 }
 
