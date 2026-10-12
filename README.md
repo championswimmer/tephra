@@ -1,14 +1,19 @@
 # Tephra
 
-Tephra is a stripped-down, web-based Obsidian client that you host yourself. It keeps your local Obsidian vault as the source of truth, syncs it to a Tephra server, and lets you open that vault from any browser as if a lightweight copy of Obsidian were running on your own infrastructure.
+Tephra is a self-hosted, web-based Obsidian client. Your local vault stays the source of truth; Tephra syncs it to a server you run, so you can read and edit your notes from any browser. Wikilinks, backlinks, attachments, and the graph all work, and edits made on the web flow back into your vault.
 
-Today, that means a private web mirror for your notes, links, attachments, and graph, with browser-based note editing and two-way sync so web edits flow back to your vault. In the future, Tephra aims to grow into a fuller cloud-hosted Obsidian companion with a safe subset of community plugin support and optional publishing controls.
+It is built for one person on one box: a single container on your own domain, whether that's Railway, EC2, or any VM you control.
 
-Tephra is built for portable single-user deployments: run your vault on your own domain in one container or VM, whether that is an EC2 instance, a Railway deployment, or a similar box you control.
+## Set up
+
+1. **Deploy a server** (see below) and keep the `TEPHRA_BOOTSTRAP_TOKEN` you start it with.
+2. **Create your account and a vault** in the web app, then create an upload token for that vault.
+3. **Install the plugin** in Obsidian. The easiest route, on desktop and mobile, is [BRAT](docs/INSTALL_PLUGIN_BRAT.md), which installs it straight from this repo.
+4. **Connect it:** paste the server URL, vault ID, and token into the plugin settings and click **Sync now**.
+
+[Getting Started](docs/GETTING_STARTED.md) covers each step in detail.
 
 ## Deploy
-
-One private instance, your domain, one disk. Pick a platform (each guide is a few lines):
 
 <p>
   <a href="docs/deploy/RAILWAY.md"><img src="https://img.shields.io/badge/Deploy_to-Railway-853BCE?style=for-the-badge&logo=railway&logoColor=white" alt="Deploy to Railway" height="40"></a>
@@ -17,47 +22,28 @@ One private instance, your domain, one disk. Pick a platform (each guide is a fe
   <a href="docs/deploy/DO.md"><img src="https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&logo=digitalocean&logoColor=white" alt="Deploy to DigitalOcean" height="40"></a>
 </p>
 
-| Platform                           | What you get                                 | How                                             |
-| ---------------------------------- | -------------------------------------------- | ----------------------------------------------- |
-| [Railway](docs/deploy/RAILWAY.md)  | Service + volume, from `.railway/railway.ts` | `npm run deploy:railway`                        |
-| [Google Cloud](docs/deploy/GCP.md) | VM + disk + static IP + Secret Manager       | Cloud Shell, then `scripts/deploy/gcp.sh`       |
-| [AWS](docs/deploy/AWS.md)          | EC2 + encrypted EBS + Elastic IP             | CloudFormation stack or `scripts/deploy/aws.sh` |
-| [DigitalOcean](docs/deploy/DO.md)  | Droplet + volume + Reserved IP               | `scripts/deploy/do.sh`                          |
+Each button opens a guide or a prefilled shell rather than deploying blindly: Tephra needs a persistent disk and exactly one instance, so one-click Cloud Run or App Platform buttons don't fit. See [`docs/deploy/`](docs/deploy/) for all guides.
 
-The buttons open the guide or a prefilled shell, not a blind deploy: Tephra needs a persistent disk and exactly one instance, so the stock Cloud Run and App Platform one-click buttons do not fit.
+## Good to know
 
-## What Tephra does
+- Notes are addressed by vault-relative path (`/#/path/to/note.md`), so links are shareable and behave the same on macOS, Linux, and Windows.
+- A web edit creates a server revision that the plugin pulls into your vault. If a note changed in both places, the newest write wins and the other version is kept as a conflicted copy.
+- The plugin remembers which note is which across renames using one of three [identity modes](tephra-plugin/README.md#behavior-and-privacy). The default sidecar mode never modifies your notes.
+- Vaults are private, plugin tokens are scoped to one vault, blobs are SHA-256 verified, and Markdown is sanitized before display. See the [threat model](docs/THREAT_MODEL.md).
 
-- Mirrors your whole Obsidian vault into a private web app you can reach from anywhere.
-- Preserves Obsidian-style reading features like rendered Markdown, wikilinks, backlinks, attachments, and graph navigation.
-- Edits Markdown notes from the browser; each save creates a server revision that the Obsidian plugin pulls back into the local vault (last-write-wins with conflicted copies).
-- Stays self-hosted and private: your domain, your login, your storage.
-- Addresses every note by vault-relative path (`/#/path/to/note.md`): shareable links that survive identity changes and resolve identically across macOS, Linux, and Windows (NFC-canonicalized, case-sensitive with a unique-match fallback, rename-aware with a "moved from" hint).
+## Roadmap
 
-## Note identity
-
-The Obsidian plugin offers three identity modes (Settings → Note identity, default: sidecar file):
-
-- **Frontmatter property** — writes a `tephra-file-id` into every note. Most portable, but modifies notes and shows up in Properties and git diffs.
-- **Sidecar file (recommended)** — caches identities in `.tephra/data.json` (gitignorable cache, never synced) without touching notes; repairs from the server when needed.
-- **Path only** — stores nothing; a rename looks like delete plus create, so history restarts and old links stop working.
-
-Every mode switch starts with a dry-run preview and requires explicit confirmation when identities change. **Remove Tephra IDs from notes** (after switching to the sidecar, so identity is harvested first) deletes the property vault-wide.
-
-## Where Tephra is headed
-
-- A browser-safe subset of community plugin support.
-- Optional publishing flows for chosen parts of a vault.
+A browser-safe subset of community plugin support, and optional publishing of chosen parts of a vault.
 
 ## Repository
 
-- [`tephra-server/`](tephra-server/) — API, web application, shared domain packages, and deployment assets.
-- [`tephra-plugin/`](tephra-plugin/) — mobile-compatible Obsidian synchronization plugin.
-- [Stage 1 implementation plan](.agents/plans/001-TEPHRA_STAGE1_PLAN.md)
+- [`tephra-server/`](tephra-server/): API, web app, shared packages, deployment assets.
+- [`tephra-plugin/`](tephra-plugin/): the mobile-compatible Obsidian sync plugin.
+- [Stage 1 plan](.agents/plans/001-TEPHRA_STAGE1_PLAN.md)
 
 ## Development
 
-Requirements: Node.js 22+ and npm 10+.
+Requires Node.js 22+ and npm 10+.
 
 ```bash
 npm install
@@ -65,11 +51,7 @@ npm run check
 npm run dev
 ```
 
-See the product READMEs for configuration and usage.
-
-## Security model
-
-Vaults are private. Plugin credentials are scoped to one vault. Uploaded blobs are independently SHA-256 verified. Markdown is treated as untrusted input and sanitized before display.
+The product READMEs cover configuration and usage.
 
 ## License
 

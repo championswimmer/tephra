@@ -83,7 +83,9 @@ Notes:
 
 ## Step 4 — Install the Tephra Sync plugin in Obsidian
 
-The plugin is not yet in the Obsidian community store, so install it manually:
+The plugin is not yet in the Obsidian community store. The easiest route is
+[BRAT](INSTALL_PLUGIN_BRAT.md), which installs it from this repo on desktop and
+mobile. To install manually instead:
 
 1. On a machine with the Tephra repository, build the plugin:
    ```sh
