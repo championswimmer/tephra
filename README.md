@@ -12,7 +12,7 @@ One private instance, your domain, one disk. Pick a platform (each guide is a fe
 
 <p>
   <a href="docs/deploy/RAILWAY.md"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40"></a>
-  <a href="https://shell.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fchampionswimmer%2Ftephra.git&amp;cloudshell_workspace=.&amp;cloudshell_open_in_editor=docs%2Fdeploy%2FGCP.md"><img src="https://gstatic.com/cloudssh/images/open-btn.svg" alt="Open in Google Cloud Shell" height="40"></a>
+  <a href="https://shell.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fchampionswimmer%2Ftephra.git&amp;cloudshell_workspace=.&amp;cloudshell_open_in_editor=docs%2Fdeploy%2FGCP.md"><img src="https://img.shields.io/badge/Deploy_to-Google_Cloud-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white" alt="Deploy to Google Cloud" height="40"></a>
   <a href="docs/deploy/AWS.md#one-click-cloudformation"><img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png" alt="Launch Stack on AWS" height="40"></a>
   <a href="docs/deploy/DO.md"><img src="https://www.deploytodo.com/do-btn-blue.svg" alt="Deploy to DigitalOcean" height="40"></a>
 </p>
