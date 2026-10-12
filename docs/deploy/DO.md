@@ -1,5 +1,7 @@
 # Deploy on DigitalOcean
 
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/droplets/new)
+
 One Droplet + one Volume (`/data`) + Reserved IP, running Docker Compose with Caddy (auto HTTPS).
 App Platform is not suitable: it has no persistent disk (Tephra needs SQLite + blobs on disk).
 

@@ -11,10 +11,10 @@ Tephra is built for portable single-user deployments: run your vault on your own
 One private instance, your domain, one disk. Pick a platform (each guide is a few lines):
 
 <p>
-  <a href="docs/deploy/RAILWAY.md"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40"></a>
+  <a href="docs/deploy/RAILWAY.md"><img src="https://img.shields.io/badge/Deploy_to-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" alt="Deploy to Railway" height="40"></a>
   <a href="https://shell.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fchampionswimmer%2Ftephra.git&amp;cloudshell_workspace=.&amp;cloudshell_open_in_editor=docs%2Fdeploy%2FGCP.md"><img src="https://img.shields.io/badge/Deploy_to-Google_Cloud-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white" alt="Deploy to Google Cloud" height="40"></a>
-  <a href="docs/deploy/AWS.md#one-click-cloudformation"><img src="https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png" alt="Launch Stack on AWS" height="40"></a>
-  <a href="docs/deploy/DO.md"><img src="https://www.deploytodo.com/do-btn-blue.svg" alt="Deploy to DigitalOcean" height="40"></a>
+  <a href="docs/deploy/AWS.md#one-click-cloudformation"><img src="https://img.shields.io/badge/Deploy_to-AWS-232F3E?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA0MCI%2BPHRleHQgeD0iMzIiIHk9IjIyIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtc2l6ZT0iMjQiIGZpbGw9IiNmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPmF3czwvdGV4dD48cGF0aCBkPSJNMTAgMjljMTMgNyAzMSA3IDQ0IDAiIHN0cm9rZT0iI0ZGOTkwMCIgc3Ryb2tlLXdpZHRoPSIzLjUiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxwYXRoIGQ9Ik00NyAyNGw4IDQtNiA2IiBzdHJva2U9IiNGRjk5MDAiIHN0cm9rZS13aWR0aD0iMy41IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4%3D&logoColor=white" alt="Deploy to AWS" height="40"></a>
+  <a href="docs/deploy/DO.md"><img src="https://img.shields.io/badge/Deploy_to-DigitalOcean-0080FF?style=for-the-badge&logo=digitalocean&logoColor=white" alt="Deploy to DigitalOcean" height="40"></a>
 </p>
 
 | Platform                           | What you get                                 | How                                             |

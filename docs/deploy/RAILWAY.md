@@ -1,5 +1,7 @@
 # Deploy Tephra on Railway
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new)
+
 Needs: 1 service + 1 volume at `/data` + **1 replica** (SQLite). Defined in `.railway/railway.ts`.
 
 ## Infra at a glance
