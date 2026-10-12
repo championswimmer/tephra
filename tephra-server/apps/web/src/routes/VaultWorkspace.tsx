@@ -15,7 +15,6 @@ import { AttachmentViewer } from '../components/AttachmentViewer';
 import { FileBreadcrumb } from '../components/FileBreadcrumb';
 import { FileBrowser } from '../components/FileBrowser';
 import { GraphView } from '../components/GraphView';
-import { LocalGraph } from '../components/LocalGraph';
 import { LinksPanel } from '../components/LinksPanel';
 import { NoteViewer } from '../components/NoteViewer';
 import { EmptyState, ErrorState, IndexPending, Loading } from '../components/Status';
@@ -334,7 +333,6 @@ export function VaultWorkspace() {
                       onSaved={refreshAfterSave}
                       getPathForFileId={(fileId) => pathByFileId.get(fileId)}
                     />
-                    <LocalGraph vaultId={vaultId} fileId={selected.fileId} onOpen={open} />
                   </>
                 ) : (
                   <AttachmentViewer vaultId={vaultId} file={selected} />

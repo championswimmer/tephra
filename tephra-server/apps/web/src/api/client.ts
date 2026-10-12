@@ -5,6 +5,7 @@ import type {
   FilesResponse,
   GraphResponse,
   LinksResponse,
+  NoteLink,
   RenderedNote,
   ResolveResponse,
   SaveContentResponse,
@@ -216,10 +217,14 @@ export class ApiClient {
     }
     return body;
   };
-  links = (vaultIdOrName: string, fileId: string) =>
-    this.request<LinksResponse>(
-      `/vaults/${encodeURIComponent(vaultIdOrName)}/links?fileId=${encodeURIComponent(fileId)}`,
-    );
+  links = async (vaultIdOrName: string, fileId: string): Promise<LinksResponse> => {
+    const base = `/vaults/${encodeURIComponent(vaultIdOrName)}/files/${encodeURIComponent(fileId)}`;
+    const [outgoing, incoming] = await Promise.all([
+      this.request<{ links: NoteLink[] }>(`${base}/links`),
+      this.request<{ links: NoteLink[] }>(`${base}/backlinks`),
+    ]);
+    return { links: outgoing.links, backlinks: incoming.links };
+  };
   tokens = (vaultIdOrName: string) =>
     this.request<{ tokens: ApiToken[] }>(`/vaults/${encodeURIComponent(vaultIdOrName)}/tokens`);
   createToken = (vaultIdOrName: string, name: string) =>

@@ -4,11 +4,13 @@ function LinkList({
   title,
   icon,
   links,
+  direction,
   onOpen,
 }: {
   title: string;
   icon: typeof Link2;
   links: NoteLink[];
+  direction: 'out' | 'in';
   onOpen: (id: string) => void;
 }) {
   const Icon = icon;
@@ -22,20 +24,24 @@ function LinkList({
         <p className="muted">None</p>
       ) : (
         <ul>
-          {links.map((link, index) => (
-            <li key={`${link.sourceFileId}-${link.targetFileId ?? 'missing'}-${index}`}>
-              {link.targetFileId ? (
-                <button type="button" onClick={() => onOpen(link.targetFileId!)}>
-                  {link.displayText ?? link.targetPath ?? link.sourcePath ?? link.rawText ?? 'Note'}
-                </button>
-              ) : (
-                <span title="Unresolved link">
-                  {link.displayText ?? link.targetPath ?? link.rawText ?? 'Unresolved'}{' '}
-                  <small>unresolved</small>
-                </span>
-              )}
-            </li>
-          ))}
+          {links.map((link, index) => {
+            const otherId = direction === 'in' ? link.sourceFileId : link.targetFileId;
+            const otherPath = direction === 'in' ? link.sourcePath : link.targetPath;
+            return (
+              <li key={`${link.sourceFileId}-${link.targetFileId ?? 'missing'}-${index}`}>
+                {otherId ? (
+                  <button type="button" onClick={() => onOpen(otherId)}>
+                    {otherPath ?? link.displayText ?? link.rawText ?? 'Note'}
+                  </button>
+                ) : (
+                  <span title="Unresolved link">
+                    {link.displayText ?? link.targetPath ?? link.rawText ?? 'Unresolved'}{' '}
+                    <small>unresolved</small>
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -54,11 +60,12 @@ export function LinksPanel({
 }) {
   return (
     <aside className="links-panel" aria-label="Note relationships" {...(id ? { id } : {})}>
-      <LinkList title="Links" icon={Link2} links={links} onOpen={onOpen} />
+      <LinkList title="Links" icon={Link2} links={links} direction="out" onOpen={onOpen} />
       <LinkList
         title="Backlinks"
         icon={ArrowLeftRight}
         links={backlinks}
+        direction="in"
         onOpen={(id) => onOpen(id)}
       />
     </aside>
