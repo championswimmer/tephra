@@ -36,7 +36,7 @@ function fixture(): GraphModel {
 describe('applyFilters', () => {
   it('passes everything through with permissive defaults', () => {
     const { model, removedCount } = applyFilters(fixture(), baseFilters);
-    expect(model.nodes).toHaveLength(7);
+    expect(model.nodes).toHaveLength(6);
     expect(removedCount).toBe(0);
   });
 

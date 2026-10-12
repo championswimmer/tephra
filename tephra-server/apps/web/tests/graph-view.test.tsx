@@ -135,9 +135,9 @@ describe('GraphView shell', () => {
     await ready();
     // The hand-rolled renderer mounts exactly one focusable canvas.
     expect(screen.getByTestId('tephra-graph-canvas')).toBeInTheDocument();
-    // Defaults hide tags and attachments; notes + unresolved survive.
-    expect(pushedIds()).toEqual(['a', 'b', 'unresolved:Missing']);
-    expect(hoisted.lastProps?.groupColors).toEqual([null, null, null]);
+    // Defaults hide tags and attachments; notes survive (legacy unresolved nodes are dropped).
+    expect(pushedIds()).toEqual(['a', 'b']);
+    expect(hoisted.lastProps?.groupColors).toEqual([null, null]);
     expect(hoisted.lastProps?.seed).toBe(3);
     expect(hoisted.lastProps?.selectedId).toBeNull();
   });
@@ -146,8 +146,8 @@ describe('GraphView shell', () => {
     mockGraph(graphFixture);
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
-    // 3 visible nodes, 2 surviving links (a–b, b–Missing).
-    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
+    // 2 visible nodes, 1 surviving link (a–b).
+    expect(screen.getByText('2 notes · 1 connections')).toBeInTheDocument();
   });
 
   it('bumps the animate token when the Animate button is pressed', async () => {
@@ -172,8 +172,8 @@ describe('GraphView shell', () => {
     renderGraph(<GraphView vaultId="vault-1" onOpen={vi.fn()} />);
     await ready();
     // The linked attachment and its edge are excluded from the markdown-only default.
-    expect(pushedIds()).toEqual(['a', 'b', 'unresolved:Missing']);
-    expect(screen.getByText('3 notes · 2 connections')).toBeInTheDocument();
+    expect(pushedIds()).toEqual(['a', 'b']);
+    expect(screen.getByText('2 notes · 1 connections')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Graph settings' }));
     await user.click(screen.getByLabelText('Non-markdown files'));
     await waitFor(() => expect(pushedIds()).toContain('img'));
@@ -261,7 +261,7 @@ describe('GraphView shell', () => {
     await waitFor(() =>
       expect(
         (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph,
-      ).toMatchObject({ nodeCount: 3 }),
+      ).toMatchObject({ nodeCount: 2 }),
     );
   });
 
