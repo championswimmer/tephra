@@ -1,4 +1,5 @@
 ---
+import { Icon } from 'astro-icon/components';
 const rawBase = import.meta.env.BASE_URL ?? '/';
 const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 ---
@@ -13,9 +14,9 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
       Self-hostable, AGPL-3.0-or-later. Not affiliated with or endorsed by Obsidian.
     </p>
     <nav class="foot-links">
-      <a href="https://github.com/championswimmer/tephra">GitHub</a>
-      <a href="https://github.com/championswimmer/tephra/blob/main/docs/GETTING_STARTED.md">Docs</a>
-      <a href="https://github.com/championswimmer/tephra/blob/main/SECURITY.md">Security</a>
+      <a href="https://github.com/championswimmer/tephra"><Icon name="simple-icons:github" size="15" aria-hidden="true" />GitHub</a>
+      <a href="https://github.com/championswimmer/tephra/blob/main/docs/GETTING_STARTED.md"><Icon name="lucide:book-open" size="15" aria-hidden="true" />Docs</a>
+      <a href="https://github.com/championswimmer/tephra/blob/main/SECURITY.md"><Icon name="lucide:shield-check" size="15" aria-hidden="true" />Security</a>
     </nav>
   </div>
 </footer>
@@ -38,7 +39,9 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
     display: flex;
     align-items: center;
     gap: 9px;
-    font-weight: 700;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 1.15rem;
   }
 
   .note {
@@ -49,8 +52,20 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 
   .foot-links {
     display: flex;
-    gap: 20px;
+    gap: 22px;
     font-size: 0.9rem;
+  }
+
+  .foot-links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+
+  .foot-links a:hover {
+    color: var(--accent);
   }
 
   @media (min-width: 720px) {

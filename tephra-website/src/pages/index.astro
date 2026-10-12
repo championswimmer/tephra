@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import { Icon } from 'astro-icon/components';
 
 const rawBase = import.meta.env.BASE_URL ?? "/";
 const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
@@ -14,42 +15,42 @@ const scenarios = [
 
 const shipped = [
   {
-    icon: 'tree',
+    icon: 'lucide:folder-tree',
     title: 'Your whole vault',
     body: 'Every folder, every note. Nothing to curate.',
   },
   {
-    icon: 'doc',
+    icon: 'lucide:file-text',
     title: 'Notes, rendered',
     body: 'Markdown, frontmatter, tags, callouts, code.',
   },
   {
-    icon: 'link',
+    icon: 'lucide:link-2',
     title: 'Wikilinks & backlinks',
     body: '[[Links]] resolve, down to headings and blocks.',
   },
   {
-    icon: 'graph',
+    icon: 'lucide:waypoints',
     title: 'Graph view',
     body: 'Your link structure, laid out and clickable.',
   },
   {
-    icon: 'image',
+    icon: 'lucide:image',
     title: 'Attachments',
     body: 'Images and PDFs open inline.',
   },
   {
-    icon: 'moon',
+    icon: 'lucide:moon-star',
     title: 'Light & dark themes',
     body: 'Looks like Obsidian, not a file listing.',
   },
   {
-    icon: 'devices',
+    icon: 'lucide:laptop-minimal-check',
     title: 'Desktop & mobile sync',
     body: 'The plugin runs on every Obsidian platform.',
   },
   {
-    icon: 'server',
+    icon: 'lucide:server',
     title: 'Self-hosted',
     body: 'One container. Your domain, your login.',
   },
@@ -57,49 +58,36 @@ const shipped = [
 
 const upcoming = [
   {
-    icon: 'pencil',
+    icon: 'lucide:pencil-line',
     title: 'Editing in the browser',
     body: 'Fix a note from a machine that is not yours.',
   },
   {
-    icon: 'sync',
+    icon: 'lucide:refresh-cw',
     title: 'Two-way sync',
     body: 'Web edits flow home. Three-way merge, no silent overwrites.',
   },
   {
-    icon: 'plug',
+    icon: 'lucide:plug-zap',
     title: 'Community plugins',
     body: 'A browser-safe subset of the ecosystem.',
   },
   {
-    icon: 'globe',
+    icon: 'lucide:globe',
     title: 'Optional publishing',
     body: 'Opt in, one subtree at a time.',
   },
 ];
 
-const icons: Record<string, string> = {
-  tree: '<path d="M3 8a2 2 0 0 1 2-2h3.4l1.8 2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M7 13h7M7 16h4"/>',
-  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/>',
-  link: '<path d="M10 13a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-6-6l-1 1"/><path d="M14 11a4 4 0 0 0-6-.5l-2 2a4 4 0 0 0 6 6l1-1"/>',
-  graph: '<circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="9" r="2.4"/><circle cx="11" cy="18" r="2.4"/><path d="M8 8.5 16 9M7.5 9.5 10 15.7M16.7 11 12.6 16.3"/>',
-  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m4 17 5-4 4 3 3-2 4 3"/>',
-  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
-  devices: '<rect x="2" y="5" width="13" height="10" rx="1.5"/><rect x="16" y="9" width="6" height="11" rx="1.5"/><path d="M6 19h5"/>',
-  server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
-  pencil: '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.5 6.5 3 3"/>',
-  sync: '<path d="M4 11a8 8 0 0 1 13.5-5.5L20 8"/><path d="M20 4v4h-4"/><path d="M20 13a8 8 0 0 1-13.5 5.5L4 16"/><path d="M4 20v-4h4"/>',
-  plug: '<path d="M9 3v6M15 3v6"/><path d="M7 9h10v3a5 5 0 0 1-10 0Z"/><path d="M12 17v4"/>',
-  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 3 2.5 14 0 17M12 3.5c-2.5 3-2.5 14 0 17"/>',
-};
-
 const comparisons = [
   {
+    icon: 'lucide:arrow-left-right',
     title: 'Obsidian Sync moves files',
     lead: 'Sync keeps vaults in step across devices — both directions, with version history, selective sync of settings and plugins, and shared vaults. It assumes you already have Obsidian open on each end.',
     verdict: 'Tephra is the end. It is a client, not a pipe — reachable from a machine that has no Obsidian at all.',
   },
   {
+    icon: 'lucide:users',
     title: 'Obsidian Publish is for other people',
     lead: 'Publish takes notes you pick and puts them on the open web with a custom domain, SEO and analytics — or one site-wide password if you want the whole thing closed.',
     verdict: 'Tephra is for you. The whole vault, on your infra, behind your login. There is no public mode to switch on.',
@@ -119,7 +107,7 @@ const comparisons = [
       <div class="wrap hero-inner">
         <div class="hero-copy">
           <span class="eyebrow">Obsidian, minus the install</span>
-          <h1>A lightweight <span class="grad">Obsidian</span>, running in the cloud.</h1>
+          <h1>A lightweight <em class="grad">Obsidian</em>, running in the cloud.</h1>
           <p class="lede">
             Tephra is an Obsidian-compatible client you host on your own infrastructure. It syncs
             with your Obsidian instances, then serves your whole vault at
@@ -128,12 +116,14 @@ const comparisons = [
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="https://github.com/championswimmer/tephra">
+              <Icon name="simple-icons:github" size="17" aria-hidden="true" />
               Get started
             </a>
             <a
               class="btn btn-ghost"
               href="https://github.com/championswimmer/tephra/blob/main/docs/GETTING_STARTED.md"
             >
+              <Icon name="lucide:book-open" size="17" aria-hidden="true" />
               Read the docs
             </a>
           </div>
@@ -161,19 +151,19 @@ const comparisons = [
         </p>
         <div class="flow">
           <div class="step">
-            <span class="num">1</span>
+            <span class="num"><Icon name="lucide:container" size="18" aria-hidden="true" /></span>
             <h3>Host it yourself</h3>
             <p>One container on your own infra, on a subdomain you pick.</p>
           </div>
-          <div class="arrow" aria-hidden="true">→</div>
+          <div class="arrow" aria-hidden="true"><Icon name="lucide:arrow-right" size="22" /></div>
           <div class="step">
-            <span class="num">2</span>
+            <span class="num"><Icon name="lucide:refresh-cw" size="18" aria-hidden="true" /></span>
             <h3>Sync your instances</h3>
             <p>The plugin runs in Obsidian on desktop and mobile and keeps Tephra current.</p>
           </div>
-          <div class="arrow" aria-hidden="true">→</div>
+          <div class="arrow" aria-hidden="true"><Icon name="lucide:arrow-right" size="22" /></div>
           <div class="step">
-            <span class="num">3</span>
+            <span class="num"><Icon name="lucide:app-window" size="18" aria-hidden="true" /></span>
             <h3>Open a browser</h3>
             <p>Log in from any machine and your vault is there — links, graph and all.</p>
           </div>
@@ -193,6 +183,7 @@ const comparisons = [
           {
             comparisons.map((block) => (
               <article class="card not-card">
+                <span class="not-icon"><Icon name={block.icon} size="20" aria-hidden="true" /></span>
                 <h3>{block.title}</h3>
                 <p class="not-lead">{block.lead}</p>
                 <p class="verdict">{block.verdict}</p>
@@ -220,7 +211,7 @@ const comparisons = [
               shipped.map((f) => (
                 <article class="feat feat-now">
                   <span class="feat-icon">
-                    <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons[f.icon]} />
+                    <Icon name={f.icon} size="20" aria-hidden="true" />
                   </span>
                   <h3>{f.title}</h3>
                   <p>{f.body}</p>
@@ -240,7 +231,7 @@ const comparisons = [
               upcoming.map((f) => (
                 <article class="feat feat-soon">
                   <span class="feat-icon">
-                    <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons[f.icon]} />
+                    <Icon name={f.icon} size="20" aria-hidden="true" />
                   </span>
                   <h3>{f.title}</h3>
                   <p>{f.body}</p>
@@ -266,7 +257,7 @@ const comparisons = [
         </div>
         <div>
           <span class="eyebrow">The name</span>
-          <h2>Tephra <span class="ipa">/ˈtɛfrə/</span></h2>
+          <h2>Tephra <span class="ipa">/ˈtɛfrə/</span> <span class="greek" lang="grc">τέφρα</span></h2>
           <p>
             <strong>Tephra</strong> is the ash a volcano throws skyward — from the Ancient Greek
             <em>τέφρα</em>. The cloud above the mountain.
@@ -293,6 +284,7 @@ const comparisons = [
         </p>
         <div class="cta">
           <a class="btn btn-primary" href="https://github.com/championswimmer/tephra">
+            <Icon name="simple-icons:github" size="17" aria-hidden="true" />
             Get Tephra on GitHub
           </a>
         </div>
@@ -305,6 +297,9 @@ const comparisons = [
 
 <style>
   .grad {
+    font-style: italic;
+    font-weight: 400;
+    padding-inline-end: 0.06em;
     background: linear-gradient(120deg, var(--crystal-500), var(--obsidian-900));
     -webkit-background-clip: text;
     background-clip: text;
@@ -373,6 +368,8 @@ const comparisons = [
   }
 
   .micro {
+    font-family: var(--mono);
+    letter-spacing: 0.02em;
     margin-top: 18px;
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -395,8 +392,9 @@ const comparisons = [
   .step {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 22px;
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-card);
   }
 
   .step p {
@@ -408,14 +406,13 @@ const comparisons = [
   .num {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
     background: var(--accent-soft);
     color: var(--accent);
-    font-weight: 700;
-    font-size: 0.85rem;
-    margin-bottom: 12px;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crystal-400) 35%, transparent);
+    margin-bottom: 14px;
   }
 
   .arrow {
@@ -447,8 +444,9 @@ const comparisons = [
   .scenarios li {
     position: relative;
     padding-inline-start: 26px;
-    font-size: clamp(1.05rem, 2vw, 1.2rem);
-    font-weight: 600;
+    font-family: var(--display);
+    font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+    font-weight: 400;
   }
 
   .scenarios li::before {
@@ -496,12 +494,13 @@ const comparisons = [
     display: inline-flex;
     align-items: center;
     gap: 9px;
-    font-size: 0.76rem;
-    font-weight: 700;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 500;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    border-radius: 999px;
-    padding: 8px 18px;
+    border-radius: 8px;
+    padding: 7px 14px;
     white-space: nowrap;
   }
 
@@ -536,6 +535,7 @@ const comparisons = [
     overflow: hidden;
     border-radius: var(--radius);
     padding: 22px 20px;
+    box-shadow: var(--shadow-card);
     transition:
       transform 0.18s ease,
       box-shadow 0.18s ease,
@@ -559,18 +559,10 @@ const comparisons = [
     place-items: center;
     width: 40px;
     height: 40px;
-    border-radius: 11px;
-    margin-bottom: 14px;
+    border-radius: 9px;
+    margin-bottom: 16px;
   }
 
-  .feat-icon svg {
-    width: 21px;
-    height: 21px;
-    fill: none;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
 
   /* Now */
   .feat-now {
@@ -605,12 +597,9 @@ const comparisons = [
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crystal-400) 34%, transparent);
   }
 
-  .feat-now .feat-icon svg {
-    stroke: currentColor;
-  }
-
   /* Soon */
   .feat-soon {
+    box-shadow: none;
     background: transparent;
     border: 1px dashed color-mix(in srgb, var(--crystal-400) 46%, transparent);
   }
@@ -630,11 +619,6 @@ const comparisons = [
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crystal-400) 40%, transparent);
   }
 
-  .feat-soon .feat-icon svg {
-    stroke: currentColor;
-    stroke-dasharray: 3 2.4;
-  }
-
   /* Not-grid */
   .not-grid {
     margin-top: 36px;
@@ -644,12 +628,23 @@ const comparisons = [
     margin-bottom: 0;
   }
 
-  .not-card {
-    border-inline-start: 4px solid var(--crystal-400);
+  .not-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    margin-bottom: 18px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crystal-400) 35%, transparent);
   }
 
   .not-card h3 {
-    font-size: 1.3rem;
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 1.45rem;
+    letter-spacing: -0.02em;
     margin-bottom: 10px;
   }
 
@@ -716,9 +711,20 @@ const comparisons = [
     color: var(--crystal-200);
   }
 
-  .ipa {
+  .greek {
+    display: block;
+    margin-top: 6px;
+    font-style: italic;
     font-weight: 400;
-    font-size: 0.5em;
+    font-size: 0.55em;
+    color: var(--crystal-300);
+  }
+
+  .ipa {
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 0.34em;
+    vertical-align: middle;
     color: var(--crystal-200);
     letter-spacing: 0;
   }
