@@ -4,10 +4,11 @@ const rawBase = import.meta.env.BASE_URL ?? '/';
 const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 
 const links = [
-  { href: '#what', label: 'Why Tephra' },
-  { href: '#not', label: 'vs Sync & Publish' },
-  { href: '#features', label: 'Features' },
-  { href: '#name', label: 'The name' },
+  { href: `${base}#what`, label: 'Why Tephra' },
+  { href: `${base}#not`, label: 'vs Sync & Publish' },
+  { href: `${base}#features`, label: 'Features' },
+  { href: `${base}#name`, label: 'The name' },
+  { href: `${base}#start`, label: 'Get started' },
 ];
 ---
 
@@ -76,7 +77,7 @@ const links = [
     font-size: 0.9rem;
   }
 
-  @media (min-width: 860px) {
+  @media (min-width: 960px) {
     .links {
       display: flex;
     }

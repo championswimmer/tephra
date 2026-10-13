@@ -1,0 +1,405 @@
+---
+import Base from '../../layouts/Base.astro';
+import Nav from '../../components/Nav.astro';
+import Footer from '../../components/Footer.astro';
+import InfraDiagram from '../../components/diagram/InfraDiagram.astro';
+import { Icon } from 'astro-icon/components';
+import { clouds, type Cloud } from '../../data/clouds';
+
+export function getStaticPaths() {
+  return clouds.map((cloud) => ({ params: { cloud: cloud.slug }, props: { cloud } }));
+}
+
+interface Props {
+  cloud: Cloud;
+}
+
+const { cloud } = Astro.props;
+const others = clouds.filter((c) => c.slug !== cloud.slug);
+const rawBase = import.meta.env.BASE_URL ?? '/';
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+---
+
+<Base
+  title={`Deploy Tephra on ${cloud.name}`}
+  description={`Put Tephra, the self-hosted web app for your Obsidian vault, on ${cloud.name} in ${cloud.time.replace('~', 'about ')}.`}
+>
+  <Nav />
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <a class="back" href={`${base}#start`}>
+          <Icon name="lucide:arrow-left" size="15" aria-hidden="true" />Getting started
+        </a>
+        <div class="hero-head">
+          <span class="logo" style={`color:${cloud.brand}`}>
+            <Icon name={cloud.icon} size="30" aria-hidden="true" />
+          </span>
+          <div>
+            <span class="eyebrow">Step 1 · {cloud.time}</span>
+            <h1>Tephra on <em class="grad">{cloud.name}</em></h1>
+          </div>
+        </div>
+        <p class="lede">{cloud.blurb}</p>
+
+        <div class="needs">
+          <span class="needs-label">You'll need</span>
+          {cloud.needs.map((n) => <span class="need"><Icon name="lucide:check" size="14" aria-hidden="true" /><span set:html={n} /></span>)}
+        </div>
+
+        {
+          cloud.launch && (
+            <a class="btn btn-primary launch" href={cloud.launch.href} target="_blank" rel="noopener">
+              <Icon name="lucide:square-terminal" size="17" aria-hidden="true" />
+              {cloud.launch.label}
+            </a>
+          )
+        }
+      </div>
+    </section>
+
+    <section class="pic">
+      <div class="wrap">
+        <InfraDiagram cloud={cloud} />
+      </div>
+    </section>
+
+    <section class="steps-sec">
+      <div class="wrap narrow">
+        <ol class="steps">
+          {
+            cloud.steps.map((s, i) => (
+              <li class="step">
+                <span class="n">{i + 1}</span>
+                <div class="step-body">
+                  <h2>{s.title}</h2>
+                  {s.body && <p set:html={s.body} />}
+                  {s.cmd && (
+                    <pre class="cmd" title="Click to select"><span class="prompt" aria-hidden="true">$</span><code>{s.cmd}</code></pre>
+                  )}
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+
+        <a class="next" href={`${base}#login`}>
+          <span>
+            <span class="next-kicker">That's it for {cloud.name}</span>
+            <span class="next-title">Next: create your login</span>
+          </span>
+          <Icon name="lucide:arrow-right" size="24" aria-hidden="true" />
+        </a>
+
+        <p class="aside">
+          Want every detail, every knob? The <a href={cloud.doc}>full {cloud.name} guide</a> is on GitHub.
+        </p>
+
+        <div class="others">
+          <span>Prefer somewhere else?</span>
+          {
+            others.map((o) => (
+              <a href={`${base}deploy/${o.slug}/`}>
+                <span style={`color:${o.brand}`}>
+                  <Icon name={o.icon} size="15" aria-hidden="true" />
+                </span>
+                {o.name}
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Base>
+
+<style>
+  .grad {
+    font-style: italic;
+    font-weight: 400;
+    padding-inline-end: 0.06em;
+    background: linear-gradient(120deg, var(--crystal-500), var(--obsidian-900));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding-top: clamp(32px, 6vw, 64px);
+    padding-bottom: 28px;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset-block-start: -300px;
+    inset-inline-end: -200px;
+    width: 620px;
+    height: 620px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--crystal-300), transparent 66%);
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .hero .wrap {
+    position: relative;
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: 28px;
+  }
+
+  .back:hover {
+    color: var(--accent);
+  }
+
+  .hero-head {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .hero-head .eyebrow {
+    margin-bottom: 10px;
+  }
+
+  .hero-head h1 {
+    margin: 0;
+  }
+
+  .logo {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 72px;
+    height: 72px;
+    border-radius: 20px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .lede {
+    margin-top: 22px;
+  }
+
+  .needs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .needs-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-inline-end: 4px;
+  }
+
+  .need {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    font-size: 0.88rem;
+    color: var(--accent);
+  }
+
+  .need > span {
+    color: var(--text);
+  }
+
+  .launch {
+    margin-top: 24px;
+  }
+
+  .pic {
+    padding: 12px 0 0;
+  }
+
+  .narrow {
+    max-width: 780px;
+  }
+
+  .steps-sec {
+    padding-top: clamp(40px, 6vw, 64px);
+  }
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0;
+  }
+
+  .step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 20px;
+    padding-bottom: 34px;
+  }
+
+  .step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 21px;
+    top: 48px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(var(--crystal-400), color-mix(in srgb, var(--crystal-400) 15%, transparent));
+  }
+
+  .n {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--crystal-500), var(--obsidian-900));
+    color: #fff;
+    font-family: var(--display);
+    font-size: 1.3rem;
+    box-shadow: 0 10px 20px -10px var(--crystal-700);
+  }
+
+  .step-body {
+    min-width: 0;
+    padding-top: 8px;
+  }
+
+  .step h2 {
+    font-family: var(--font);
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+
+  .step p {
+    color: var(--text-muted);
+    margin: 0 0 12px;
+    font-size: 0.97rem;
+  }
+
+  .cmd {
+    display: flex;
+    gap: 12px;
+    margin: 0;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: linear-gradient(165deg, #1a1029, var(--obsidian-950));
+    border: 1px solid #3a2760;
+    box-shadow: 0 14px 28px -20px rgba(42, 27, 69, 0.8);
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.86rem;
+    line-height: 1.6;
+  }
+
+  .prompt {
+    color: var(--crystal-400);
+    user-select: none;
+  }
+
+  .cmd code {
+    all: unset;
+    color: #f1ecfa;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: all;
+    cursor: text;
+  }
+
+  .next {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 12px;
+    padding: 24px 28px;
+    border-radius: 18px;
+    background:
+      radial-gradient(80% 140% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
+      linear-gradient(135deg, var(--crystal-500), var(--obsidian-900));
+    color: #fff;
+    text-decoration: none;
+    box-shadow: 0 22px 40px -24px var(--crystal-700);
+    transition: transform 0.18s ease;
+  }
+
+  .next:hover {
+    transform: translateY(-2px);
+  }
+
+  .next > span {
+    display: grid;
+    gap: 2px;
+  }
+
+  .next-kicker {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+
+  .next-title {
+    font-family: var(--display);
+    font-size: clamp(1.4rem, 3vw, 1.75rem);
+    letter-spacing: -0.02em;
+  }
+
+  .aside {
+    margin-top: 22px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .others {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .others a {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .others a:hover {
+    color: var(--accent);
+  }
+</style>

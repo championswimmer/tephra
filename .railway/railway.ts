@@ -1,7 +1,7 @@
 // Railway Infrastructure as Code for the Tephra single-user profile.
 //
 // Deploy with: railway config plan && railway config apply
-// (run `railway login` and `railway link` first).
+// (run `railway login` and `railway init` or `railway link` first).
 //
 // This declares one service plus its persistent volume in a single file.
 // Secrets are intentionally NOT stored here: TEPHRA_SESSION_SECRET and

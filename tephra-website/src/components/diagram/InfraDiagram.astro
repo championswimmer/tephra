@@ -1,0 +1,401 @@
+---
+// Hand-drawn "infra at a glance" diagram for a cloud deploy page. Same shape for every cloud:
+// you -> your domain -> the cloud's front door -> (Caddy) -> Tephra, with a disk and secrets.
+import { Icon } from 'astro-icon/components';
+import Node from './Node.astro';
+import type { Cloud } from '../../data/clouds';
+
+interface Props {
+  cloud: Cloud;
+}
+
+const { cloud } = Astro.props;
+const d = cloud.diagram;
+const rawBase = import.meta.env.BASE_URL ?? '/';
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
+const CY = 232;
+const H = 92;
+const rowY = CY - H / 2;
+
+const user = { x: 16, w: 148 };
+const dns = { x: 194, w: 142 };
+const region = { x: 368, y: 18, w: 616, h: 434 };
+const gw = { x: 396, w: 150 };
+const box = { x: 578, y: 124, w: 388, h: 216 };
+const proxy = d.proxy ? { x: 598, w: 136 } : undefined;
+const app = { x: d.proxy ? 764 : 742, y: CY - 56, w: 184, h: 112 };
+const appCx = app.x + app.w / 2;
+const sec = { x: appCx - 106, y: 40, w: 212, h: 60 };
+const store = { top: 368, w: 178, h: 56, ry: 11 };
+const extra = d.extra ? { x: 396, y: 366, w: 196, h: 60 } : undefined;
+
+// Request path segments, left to right.
+const hops: [number, number][] = [
+  [user.x + user.w, dns.x],
+  [dns.x + dns.w, gw.x],
+  [gw.x + gw.w, proxy ? proxy.x : app.x],
+  ...(proxy ? ([[proxy.x + proxy.w, app.x]] as [number, number][]) : []),
+];
+
+const sx = appCx - store.w / 2;
+const cylinder = `M${sx} ${store.top} v${store.h} a${store.w / 2} ${store.ry} 0 0 0 ${store.w} 0 v-${store.h}`;
+---
+
+<figure class="diagram">
+  <div class="scroll">
+    <svg
+      viewBox="0 0 1000 470"
+      role="img"
+      aria-label={`How Tephra runs on ${cloud.name}: your browser and Obsidian reach your domain, which points at ${d.gateway.title}${d.proxy ? `, then ${d.proxy.title}` : ''}, then the Tephra app. Tephra keeps your notes on ${d.storage.title} and reads its secrets from ${d.secrets.title}.`}
+    >
+      <defs>
+        <linearGradient id="g-app" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#955ce4" />
+          <stop offset="1" stop-color="#5d359c" />
+        </linearGradient>
+        <linearGradient id="g-region" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" class="rg-a" />
+          <stop offset="1" class="rg-b" />
+        </linearGradient>
+        <linearGradient id="g-disk" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" class="dk-a" />
+          <stop offset="1" class="dk-b" />
+        </linearGradient>
+        <radialGradient id="g-halo">
+          <stop offset="0" stop-color="#aa75ed" stop-opacity="0.55" />
+          <stop offset="1" stop-color="#aa75ed" stop-opacity="0" />
+        </radialGradient>
+        <marker id="m-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M1 1 L9 5 L1 9" class="arrow" />
+        </marker>
+      </defs>
+
+      <!-- The cloud itself -->
+      <rect class="region" x={region.x} y={region.y} width={region.w} height={region.h} rx="30" />
+      <g style={`color:${cloud.brand}`} class="brand">
+        <Icon name={cloud.icon} x={region.x + 26} y={region.y + 20} width="20" height="20" />
+      </g>
+      <text class="region-label" x={region.x + 56} y={region.y + 35}>{d.region}</text>
+
+      <!-- The machine Tephra runs on -->
+      <rect class="box" x={box.x} y={box.y} width={box.w} height={box.h} rx="22" />
+      <g class="box-ic">
+        <Icon name={d.compute.icon} x={box.x + 18} y={box.y + 15} width="15" height="15" />
+      </g>
+      <text class="box-label" x={box.x + 40} y={box.y + 27}>{d.compute.title}</text>
+
+      <!-- Request path -->
+      {
+        hops.map(([a, b]) => (
+          <g>
+            <line class="wire" x1={a} y1={CY} x2={b - 3} y2={CY} marker-end="url(#m-arrow)" />
+            <line class="flow" x1={a + 4} y1={CY} x2={b - 10} y2={CY} />
+          </g>
+        ))
+      }
+      <g class="chip">
+        <rect x={user.x + user.w + 2} y={CY - 30} width="28" height="16" rx="8" />
+        <Icon name="lucide:lock" x={user.x + user.w + 10} y={CY - 27} width="10" height="10" />
+      </g>
+
+      <!-- Secrets feed the app -->
+      <line class="cfg" x1={appCx} y1={sec.y + sec.h} x2={appCx} y2={app.y - 4} marker-end="url(#m-arrow)" />
+
+      <!-- App reads and writes the disk -->
+      <line class="mount" x1={appCx} y1={app.y + app.h} x2={appCx} y2={store.top - store.ry} />
+      <circle class="mount-dot" cx={appCx} cy={app.y + app.h + 1} r="4" />
+      <circle class="mount-dot" cx={appCx} cy={store.top - store.ry} r="4" />
+      <text class="edge-label" x={appCx + 12} y={store.top - 36}>reads + writes</text>
+
+      {
+        extra && d.extra && (
+          <g>
+            <path class="cfg" d={`M${extra.x + extra.w} ${extra.y + extra.h / 2} H${box.x + 70} V${box.y + box.h + 4}`} fill="none" marker-end="url(#m-arrow)" />
+            <text class="edge-label" x={box.x + 80} y={extra.y + extra.h / 2 - 6}>{d.extra.link}</text>
+          </g>
+        )
+      }
+
+      <!-- Nodes -->
+      <Node x={user.x} y={rowY} w={user.w} h={H} icon="lucide:monitor-smartphone" title="You" sub="browser + Obsidian" />
+      <Node x={dns.x} y={rowY} w={dns.w} h={H} icon="lucide:globe" title="Your domain" sub="notes.you.com" />
+      <Node x={gw.x} y={rowY} w={gw.w} h={H} {...d.gateway} />
+      {proxy && d.proxy && <Node x={proxy.x} y={rowY} w={proxy.w} h={H} {...d.proxy} />}
+      <Node x={sec.x} y={sec.y} w={sec.w} h={sec.h} layout="row" {...d.secrets} />
+      {extra && d.extra && <Node x={extra.x} y={extra.y} w={extra.w} h={extra.h} layout="row" {...d.extra} />}
+
+      <!-- Tephra -->
+      <ellipse class="halo" cx={appCx} cy={CY} rx={app.w * 0.78} ry={app.h * 0.95} fill="url(#g-halo)" />
+      <rect class="app" x={app.x} y={app.y} width={app.w} height={app.h} rx="20" fill="url(#g-app)" />
+      <rect class="app-shine" x={app.x + 1} y={app.y + 1} width={app.w - 2} height={app.h / 2} rx="19" />
+      <image href={`${base}logo-main.svg`} x={appCx - 22} y={app.y + 10} width="44" height="44" />
+      <text class="app-t" x={appCx} y={app.y + 76} text-anchor="middle">Tephra</text>
+      <text class="app-s" x={appCx} y={app.y + 95} text-anchor="middle">web app + sync API</text>
+
+      <!-- Disk -->
+      <path class="disk" d={cylinder} fill="url(#g-disk)" />
+      <ellipse class="disk-top" cx={appCx} cy={store.top} rx={store.w / 2} ry={store.ry} />
+      <text class="t" x={appCx} y={store.top + 30} text-anchor="middle">{d.storage.title}</text>
+      <text class="s" x={appCx} y={store.top + 47} text-anchor="middle">{d.storage.sub}</text>
+    </svg>
+  </div>
+  <figcaption>
+    <span class="swipe">swipe to see it all →</span>
+    <span><i class="k k-flow"></i>your requests</span>
+    <span><i class="k k-cfg"></i>settings it reads</span>
+    <span><i class="k k-disk"></i>where your notes live</span>
+  </figcaption>
+</figure>
+
+<style>
+  .diagram {
+    margin: 0;
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    background:
+      radial-gradient(60% 80% at 85% 10%, color-mix(in srgb, var(--crystal-300) 22%, transparent), transparent 70%),
+      radial-gradient(50% 70% at 0% 100%, color-mix(in srgb, var(--crystal-500) 12%, transparent), transparent 70%),
+      var(--bg);
+    box-shadow: var(--shadow-card);
+    padding: 18px 18px 14px;
+    overflow: hidden;
+  }
+
+  .scroll {
+    overflow-x: auto;
+  }
+
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 760px;
+    height: auto;
+  }
+
+  .region {
+    fill: url(#g-region);
+    stroke: color-mix(in srgb, var(--crystal-400) 55%, transparent);
+    stroke-width: 1.4;
+    stroke-dasharray: 7 7;
+  }
+
+  .rg-a {
+    stop-color: var(--crystal-300);
+    stop-opacity: 0.16;
+  }
+  .rg-b {
+    stop-color: var(--crystal-500);
+    stop-opacity: 0.04;
+  }
+
+  .region-label {
+    fill: var(--accent);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .box {
+    fill: color-mix(in srgb, var(--bg-raised) 55%, transparent);
+    stroke: var(--crystal-400);
+    stroke-opacity: 0.5;
+    stroke-width: 1.2;
+  }
+
+  .box-ic {
+    color: var(--text-muted);
+  }
+
+  .box-label {
+    fill: var(--text-muted);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .wire {
+    stroke: color-mix(in srgb, var(--crystal-400) 45%, transparent);
+    stroke-width: 2;
+  }
+
+  .flow {
+    stroke: var(--crystal-500);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 0.1 13;
+    animation: flow 0.9s linear infinite;
+  }
+
+  @keyframes flow {
+    to {
+      stroke-dashoffset: -13.1;
+    }
+  }
+
+  .arrow {
+    fill: none;
+    stroke: var(--crystal-500);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .chip rect {
+    fill: var(--accent-soft);
+    stroke: color-mix(in srgb, var(--crystal-400) 45%, transparent);
+  }
+
+  .chip {
+    color: var(--accent);
+  }
+
+  .cfg {
+    stroke: var(--crystal-400);
+    stroke-width: 1.6;
+    stroke-dasharray: 3 5;
+    stroke-linecap: round;
+  }
+
+  .mount {
+    stroke: var(--crystal-500);
+    stroke-width: 3;
+  }
+
+  .mount-dot {
+    fill: var(--bg-raised);
+    stroke: var(--crystal-500);
+    stroke-width: 2;
+  }
+
+  .edge-label {
+    fill: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+
+  .halo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: breathe 3.6s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.94);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.04);
+    }
+  }
+
+  .app {
+    filter: drop-shadow(0 16px 22px rgba(93, 53, 156, 0.4));
+  }
+
+  .app-shine {
+    fill: rgba(255, 255, 255, 0.1);
+  }
+
+  .app-t {
+    fill: #fff;
+    font-family: var(--display);
+    font-size: 21px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .app-s {
+    fill: rgba(255, 255, 255, 0.78);
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+
+  .disk {
+    stroke: var(--crystal-400);
+    stroke-width: 1.4;
+    filter: drop-shadow(0 10px 14px rgba(42, 27, 69, 0.14));
+  }
+
+  .dk-a {
+    stop-color: var(--accent-soft);
+  }
+  .dk-b {
+    stop-color: var(--bg-raised);
+  }
+
+  .disk-top {
+    fill: color-mix(in srgb, var(--crystal-300) 45%, var(--bg-raised));
+    stroke: var(--crystal-400);
+    stroke-width: 1.4;
+  }
+
+  .t {
+    fill: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .s {
+    fill: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+
+  figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 22px;
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    color: var(--text-muted);
+  }
+
+  figcaption span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .swipe {
+    flex-basis: 100%;
+    justify-content: center;
+    color: var(--accent);
+  }
+
+  @media (min-width: 820px) {
+    .swipe {
+      display: none !important;
+    }
+  }
+
+  .k {
+    display: inline-block;
+    width: 22px;
+    height: 0;
+  }
+
+  .k-flow {
+    border-top: 4px dotted var(--crystal-500);
+  }
+
+  .k-cfg {
+    border-top: 2px dashed var(--crystal-400);
+  }
+
+  .k-disk {
+    width: 14px;
+    height: 12px;
+    border: 1.4px solid var(--crystal-400);
+    border-radius: 7px / 3px;
+    background: var(--accent-soft);
+  }
+</style>

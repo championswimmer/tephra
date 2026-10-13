@@ -16,8 +16,8 @@ cannot be managed by both systems at once.
 
 ## One-command deploy (IaC CLI path)
 
-Prerequisite: the Railway CLI installed, `railway login` and `railway link`
-completed (pick or create the target project).
+Prerequisite: the Railway CLI installed, `railway login` and `railway init`
+completed (or `railway link` to use an existing project).
 
 From the repository root:
 

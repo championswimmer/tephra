@@ -32,7 +32,7 @@ function fail(message) {
 }
 
 if (railway(['whoami'], { capture: true }).status !== 0) {
-  fail('not logged in. Run `railway login`, then `railway link`, then retry.');
+  fail('not logged in. Run `railway login`, then `railway init` (or `railway link` for an existing project), then retry.');
 }
 
 console.log('Applying .railway/railway.ts (service + volume + settings)...');

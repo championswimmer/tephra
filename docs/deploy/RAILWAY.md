@@ -39,10 +39,10 @@ flowchart LR
 
 Colors: blue = users, orange = network edge, green = compute, red = data, purple = secrets, gray = DNS/meta.
 
-1. Install the Railway CLI, then log in and link a project:
+1. Install the Railway CLI, then log in and create a project (`railway link` instead if the project already exists):
 
    ```bash
-   railway login && railway link
+   railway login && railway init
    ```
 
 2. Deploy from the repo root. This creates the service and volume, then generates the secrets once:
