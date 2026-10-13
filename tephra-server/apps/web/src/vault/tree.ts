@@ -78,8 +78,8 @@ export function collectFolderPaths(nodes: readonly TreeNode[]): Set<string> {
   visit(nodes);
   return paths;
 }
-export function toggleCollapsed(collapsed: ReadonlySet<string>, path: string): Set<string> {
-  const next = new Set(collapsed);
+export function toggleFolder(paths: ReadonlySet<string>, path: string): Set<string> {
+  const next = new Set(paths);
   if (!next.delete(path)) next.add(path);
   return next;
 }

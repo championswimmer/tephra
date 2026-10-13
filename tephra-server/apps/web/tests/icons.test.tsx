@@ -24,7 +24,8 @@ vi.mock('@tephra/graph-renderer/pure', async () => {
 describe('Lucide icon pack', () => {
   it('renders the file-tree search, folder, and file icons as Lucide SVGs', () => {
     const files: VaultFile[] = [
-      { fileId: '1', path: 'Projects/Tephra.md', kind: 'markdown', size: 10, mtime: 1 },
+      { fileId: '1', path: 'Projects/Plan.md', kind: 'markdown', size: 10, mtime: 1 },
+      { fileId: '3', path: 'Tephra.md', kind: 'markdown', size: 10, mtime: 1 },
       {
         fileId: '2',
         path: 'cover.png',

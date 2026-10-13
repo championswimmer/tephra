@@ -264,6 +264,7 @@ export function VaultWorkspace() {
           </div>
           <FileBrowser
             files={files}
+            vaultId={vaultId}
             {...(selected === undefined ? {} : { selectedPath: selected.path })}
             onSelect={open}
           />

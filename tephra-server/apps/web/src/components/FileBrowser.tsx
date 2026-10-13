@@ -1,12 +1,15 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronsDownUp, ChevronsUpDown, Search } from 'lucide-react';
 import type { VaultFile } from '../api/types';
-import { buildTree, collectFolderPaths, filterTree, toggleCollapsed } from '../vault/tree';
+import { buildTree, collectFolderPaths, filterTree, toggleFolder } from '../vault/tree';
+import { loadExpandedFolders, pruneExpanded, saveExpandedFolders } from '../vault/tree-state';
 import { FileTree } from './FileTree';
 
 export interface FileBrowserProps {
   files: readonly VaultFile[];
   selectedPath?: string;
+  /** When set, folder expansion state is persisted per vault in localStorage. */
+  vaultId?: string;
   onSelect: (path: string) => void;
 }
 
@@ -14,27 +17,53 @@ export interface FileBrowserProps {
  * File browser container: owns the search query, memoizes tree building +
  * filtering so typing only recomputes the visible tree, and delegates
  * rendering to the memoized {@link FileTree}. `.obsidian` system files are
- * excluded here so the tree never sees them.
+ * excluded here so the tree never sees them. Folders start collapsed; the
+ * expanded set is persisted per vault and pruned to folders that still exist.
  */
 export const FileBrowser = memo(function FileBrowser({
   files,
   selectedPath,
+  vaultId,
   onSelect,
 }: FileBrowserProps) {
   const [query, setQuery] = useState('');
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const { allNodes, nodes, filtering } = useMemo(() => {
-    const trimmed = query.trim();
-    const visible = files.filter((file) => !file.path.split('/').includes('.obsidian'));
-    const all = buildTree(visible);
-    return { allNodes: all, nodes: filterTree(all, query), filtering: trimmed.length > 0 };
-  }, [files, query]);
-  const onToggleFolder = useCallback(
-    (path: string) => setCollapsed((current) => toggleCollapsed(current, path)),
+  const [state, setState] = useState(() => ({
+    vaultId,
+    expanded: (vaultId ? loadExpandedFolders(vaultId) : new Set()) as ReadonlySet<string>,
+  }));
+  // Switching vaults re-reads that vault's persisted state during render.
+  if (state.vaultId !== vaultId)
+    setState({ vaultId, expanded: vaultId ? loadExpandedFolders(vaultId) : new Set() });
+  const expanded = state.expanded;
+  const setExpanded = useCallback(
+    (update: (current: ReadonlySet<string>) => ReadonlySet<string>) =>
+      setState((current) => {
+        const next = update(current.expanded);
+        return next === current.expanded ? current : { ...current, expanded: next };
+      }),
     [],
   );
-  const collapseAll = () => setCollapsed(collectFolderPaths(allNodes));
-  const expandAll = () => setCollapsed(new Set());
+  const { allNodes, folderPaths } = useMemo(() => {
+    const visible = files.filter((file) => !file.path.split('/').includes('.obsidian'));
+    const all = buildTree(visible);
+    return { allNodes: all, folderPaths: collectFolderPaths(all) };
+  }, [files]);
+  const filtering = query.trim().length > 0;
+  const nodes = useMemo(() => filterTree(allNodes, query), [allNodes, query]);
+  // Silently drop stored paths for folders that no longer exist. Skipped
+  // while the file list is still empty (e.g. loading) so state isn't wiped.
+  useEffect(() => {
+    if (files.length) setExpanded((current) => pruneExpanded(current, folderPaths));
+  }, [files.length, folderPaths, setExpanded]);
+  useEffect(() => {
+    if (state.vaultId) saveExpandedFolders(state.vaultId, state.expanded);
+  }, [state]);
+  const onToggleFolder = useCallback(
+    (path: string) => setExpanded((current) => toggleFolder(current, path)),
+    [setExpanded],
+  );
+  const collapseAll = () => setExpanded(() => new Set());
+  const expandAll = () => setExpanded(() => folderPaths);
 
   return (
     <div className="file-browser">
@@ -74,7 +103,7 @@ export const FileBrowser = memo(function FileBrowser({
           selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={filtering}
-          collapsed={collapsed}
+          expanded={expanded}
           onToggleFolder={onToggleFolder}
         />
       ) : (

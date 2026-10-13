@@ -103,12 +103,14 @@ test('vault reading flow: login, files, wikilink, graph', async ({ page, request
   // 6. Expand/collapse folders, then open the Home note from the tree.
   const filesPane = page.getByRole('complementary', { name: 'Vault files' });
   const notesFolder = filesPane.getByRole('button', { name: 'Notes', exact: true });
-  await expect(notesFolder).toHaveAttribute('aria-expanded', 'true');
-  await notesFolder.click();
+  // Folders start collapsed.
   await expect(notesFolder).toHaveAttribute('aria-expanded', 'false');
   await expect(filesPane.getByRole('button', { name: /Target Note/ })).toBeHidden();
   await notesFolder.click();
   await expect(notesFolder).toHaveAttribute('aria-expanded', 'true');
+  await expect(filesPane.getByRole('button', { name: /Target Note/ })).toBeVisible();
+  await notesFolder.click();
+  await expect(notesFolder).toHaveAttribute('aria-expanded', 'false');
   await filesPane.getByRole('button', { name: /Home\.md/ }).click();
   await expect(page).toHaveURL(/#\/Home\.md/);
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();

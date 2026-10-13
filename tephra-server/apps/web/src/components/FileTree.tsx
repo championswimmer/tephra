@@ -10,7 +10,7 @@ export interface FileTreeProps {
   selectedPath: string | undefined;
   onSelect: (path: string) => void;
   forceOpen: boolean;
-  collapsed: ReadonlySet<string>;
+  expanded: ReadonlySet<string>;
   onToggleFolder: (path: string) => void;
 }
 
@@ -43,44 +43,44 @@ const FolderRow = memo(function FolderRow({
   selectedPath,
   onSelect,
   forceOpen,
-  collapsed,
+  expanded,
   onToggleFolder,
 }: {
   node: Extract<TreeNode, { type: 'folder' }>;
   selectedPath: string | undefined;
   onSelect: (path: string) => void;
   forceOpen: boolean;
-  collapsed: ReadonlySet<string>;
+  expanded: ReadonlySet<string>;
   onToggleFolder: (path: string) => void;
 }) {
-  const expanded = forceOpen || !collapsed.has(node.path);
+  const open = forceOpen || expanded.has(node.path);
   return (
     <li>
       <button
         className="tree-folder"
         type="button"
-        aria-expanded={expanded}
+        aria-expanded={open}
         onClick={() => onToggleFolder(node.path)}
       >
-        {expanded ? (
+        {open ? (
           <ChevronDown size={14} aria-hidden="true" focusable="false" className="icon" />
         ) : (
           <ChevronRight size={14} aria-hidden="true" focusable="false" className="icon" />
         )}
-        {expanded ? (
+        {open ? (
           <FolderOpen size={14} aria-hidden="true" focusable="false" className="icon" />
         ) : (
           <Folder size={14} aria-hidden="true" focusable="false" className="icon" />
         )}
         <span>{node.name}</span>
       </button>
-      {expanded && (
+      {open && (
         <TreeBranch
           nodes={node.children}
           selectedPath={selectedPath}
           onSelect={onSelect}
           forceOpen={forceOpen}
-          collapsed={collapsed}
+          expanded={expanded}
           onToggleFolder={onToggleFolder}
         />
       )}
@@ -98,7 +98,7 @@ export const TreeBranch = memo(function TreeBranch({
   selectedPath,
   onSelect,
   forceOpen,
-  collapsed,
+  expanded,
   onToggleFolder,
 }: Omit<FileTreeProps, 'files'>) {
   return (
@@ -111,7 +111,7 @@ export const TreeBranch = memo(function TreeBranch({
             selectedPath={selectedPath}
             onSelect={onSelect}
             forceOpen={forceOpen}
-            collapsed={collapsed}
+            expanded={expanded}
             onToggleFolder={onToggleFolder}
           />
         ) : (
@@ -132,7 +132,7 @@ export const FileTree = memo(function FileTree({
   selectedPath,
   onSelect,
   forceOpen,
-  collapsed,
+  expanded,
   onToggleFolder,
 }: Omit<FileTreeProps, 'files'>) {
   return (
@@ -141,7 +141,7 @@ export const FileTree = memo(function FileTree({
       selectedPath={selectedPath}
       onSelect={onSelect}
       forceOpen={forceOpen}
-      collapsed={collapsed}
+      expanded={expanded}
       onToggleFolder={onToggleFolder}
     />
   );
