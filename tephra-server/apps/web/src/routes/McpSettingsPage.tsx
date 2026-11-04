@@ -60,13 +60,14 @@ export function agentGuides(url: string): AgentGuide[] {
       id: 'pi',
       name: 'Pi',
       steps: [
-        'Pi core has no built-in MCP client; install an MCP extension such as pi-mcp-adapter, then register the server in ~/.pi/agent/mcp.json.',
-        'Follow the extension’s auth command to complete the browser sign-in.',
+        'Add the server (Pi has native MCP support), then sign in. Pi opens your browser and receives the result on a localhost callback.',
+        'Check the connection with pi mcp list. Inside a Pi session you can also use /mcp login tephra.',
       ],
       snippets: [
-        { label: '~/.pi/agent/mcp.json', code: JSON.stringify({ mcpServers: { tephra: { url } } }, null, 2) },
+        { label: 'Terminal', code: `pi mcp add tephra ${url}\npi mcp login tephra` },
+        { label: 'or ~/.pi/agent/mcp.json', code: JSON.stringify({ mcpServers: { tephra: { url } } }, null, 2) },
       ],
-      note: 'Config format depends on the extension you pick; if it cannot do OAuth, use a manually created API token via a headers/bearer option.',
+      note: 'Credentials are stored in ~/.pi/agent/mcp-auth.json; remove them with pi mcp logout tephra. Use pi mcp add -l to save the server to the current project (.pi/mcp.json) instead. Exact flags may vary by Pi version — check pi mcp --help.',
     },
   ];
 }

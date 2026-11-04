@@ -19,7 +19,7 @@ describe('MCP settings page', () => {
       await user.click(screen.getByRole('tab', { name }));
       expect(screen.getByRole('heading', { name })).toBeInTheDocument();
     }
-    expect(screen.getByText(/pi-mcp-adapter/)).toBeInTheDocument();
+    expect(screen.getByText(/pi mcp login tephra/)).toBeInTheDocument();
   });
 });
 
