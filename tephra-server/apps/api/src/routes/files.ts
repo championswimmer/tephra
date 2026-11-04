@@ -4,6 +4,7 @@ import type { CurrentVaultFile } from '@tephra/vault-model';
 import { fail } from '../http/errors.js';
 import { ownedVault } from '../http/auth.js';
 import { fileDto } from '../http/dto.js';
+import { searchVault } from '../http/search.js';
 import type { ApiApp, ApiDependencies, AppContext } from '../http/types.js';
 
 export function registerFileRoutes(app: ApiApp, dependencies: ApiDependencies): void {
@@ -18,12 +19,7 @@ export function registerFileRoutes(app: ApiApp, dependencies: ApiDependencies): 
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const query = z.string().trim().min(1).max(200).parse(c.req.query('q'));
     const limit = Math.min(Number(c.req.query('limit') ?? 50) || 50, 100);
-    const results = dependencies.indexService?.search
-      ? await dependencies.indexService.search({ vaultId: vault.id, query, limit })
-      : (await dependencies.database.vaultFiles.listByVault(vault.id))
-          .filter((file) => file.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
-          .slice(0, limit)
-          .map(fileDto);
+    const results = await searchVault(dependencies, vault.id, query, limit);
     return c.json({ revision: vault.latestRevision, results });
   });
 

@@ -34,6 +34,10 @@ Each button opens a guide or a prefilled shell rather than deploying blindly: Te
 - The plugin remembers which note is which across renames using one of three [identity modes](tephra-plugin/README.md#behavior-and-privacy). The default sidecar mode never modifies your notes.
 - Vaults are private, plugin tokens are scoped to one vault, blobs are SHA-256 verified, and Markdown is sanitized before display. See the [threat model](docs/THREAT_MODEL.md).
 
+## MCP for AI agents
+
+Every server exposes an MCP endpoint at `/mcp` (HTTP, Bearer API token) with tools to search, read, create and edit notes (edits by unified diff or full replacement). Create a token with `vault:read-metadata` and `vault:write` scopes in the web app, then e.g. `claude mcp add --transport http tephra https://<host>/mcp --header "Authorization: Bearer <token>"`. Full docs are served at `/llms.txt`.
+
 ## Roadmap
 
 A browser-safe subset of community plugin support, and optional publishing of chosen parts of a vault.

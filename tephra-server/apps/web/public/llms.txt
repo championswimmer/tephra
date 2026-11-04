@@ -1,0 +1,50 @@
+# Tephra
+
+> Tephra is a self-hosted server and web app for Obsidian vaults, with revisioned sync and an MCP endpoint so AI agents can search, read, create and edit notes.
+
+## MCP server
+
+Every Tephra server exposes a Model Context Protocol endpoint at `/mcp` (Streamable HTTP, stateless, JSON responses; MCP protocol versions 2025-06-18, 2025-03-26 and 2024-11-05).
+
+- URL: `https://<your-tephra-host>/mcp` (`POST` only; `GET` returns 405)
+- Auth: `Authorization: Bearer <API token>`. Cookie sessions are not accepted.
+- Create a token in the web app: open a vault, then Tokens. Scopes: `vault:read-metadata` for search/read, `vault:write` for create/update. A token is bound to one vault, so the `vault` argument is optional.
+- Every write is a new vault revision (history is kept). Never put tokens in note contents.
+
+Client config example (Claude Code):
+
+    claude mcp add --transport http tephra https://<your-tephra-host>/mcp --header "Authorization: Bearer <token>"
+
+Generic config:
+
+    { "mcpServers": { "tephra": { "type": "http", "url": "https://<your-tephra-host>/mcp", "headers": { "Authorization": "Bearer <token>" } } } }
+
+### Tools
+
+- `list_vaults` — vaults the token can access. Returns `id`, `name`, `latestRevision`.
+- `search_notes` — args: `query` (required), `limit` (1-100, default 20), `vault`. Case-insensitive match on note path and title. Returns `results` with `path`, `fileId`, `blobHash`.
+- `read_note` — args: `path` (required, e.g. `Projects/Plan.md`), `vault`. Returns `content`, `blobHash`, `revision`, `size`, `mtime`.
+- `create_note` — args: `path` (required, must end in `.md`, canonical vault-relative path, must not already exist case-insensitively), `content` (required), `vault`. Parent folders are implicit.
+- `update_note` — args: `path`, `vault`, plus exactly one of:
+  - `patch`: a unified diff (`@@ -a,b +c,d @@` hunks; ` ` context, `-` removed, `+` added lines). Context and removed lines must match the current note exactly; line numbers are only hints. `---`/`+++` headers are optional.
+  - `content`: the full new note. `baseHash` is then required.
+  `baseHash` is the `blobHash` returned by `read_note`; if the note has changed since, the call fails with an edit conflict and you should re-read and retry.
+
+Errors from tools are returned as MCP results with `isError: true` and a message. Authentication failures are HTTP 401.
+
+### Recommended edit flow
+
+1. `search_notes` to find the path, 2. `read_note` to get `content` and `blobHash`, 3. `update_note` with a `patch` (small changes) or `content` + `baseHash` (rewrites).
+
+Example patch for changing line 4 of a note:
+
+    @@ -3,3 +3,3 @@
+     one
+    -two
+    +TWO
+     three
+
+## Other docs
+
+- Repository: https://github.com/championswimmer/tephra
+- REST API base: `/api/v1` (used by the web app and the Obsidian plugin; same API tokens)

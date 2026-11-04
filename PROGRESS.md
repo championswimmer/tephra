@@ -209,3 +209,9 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       skips genuinely corrupt blobs; the vault is never written with
       unverified bytes. Full `npm run check` green (166 plugin tests),
       rebuilt + synced to Obsidian vault via `npm run sync:plugin`
+- [x] MCP server (plan 021): stateless Streamable-HTTP endpoint `POST /mcp`
+      (Bearer token only) with `list_vaults`, `search_notes`, `read_note`,
+      `create_note`, `update_note` (unified diff or full content with
+      `baseHash` conflict check); each write is one revision via the same
+      ledger path as web edits. `/llms.txt` served by the web app and the
+      website. 6 new API tests; full `npm run check` green

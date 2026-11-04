@@ -12,6 +12,7 @@ import { registerWebEditRoutes } from './routes/web-edit.js';
 import { registerChangesRoutes } from './routes/changes.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerGraphRoutes } from './routes/graph.js';
+import { registerMcpRoutes } from './mcp/server.js';
 
 export type { ApiDependencies, IndexService } from './http/types.js';
 
@@ -35,6 +36,7 @@ export function createApp(dependencies: ApiDependencies): ApiApp {
   registerChangesRoutes(app, dependencies);
   registerFileRoutes(app, dependencies);
   registerGraphRoutes(app, dependencies);
+  registerMcpRoutes(app, dependencies);
 
   return app;
 }

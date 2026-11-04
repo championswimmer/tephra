@@ -17,7 +17,7 @@ export function bearer(c: AppContext): string | null {
   return value?.startsWith('Bearer ') ? value.slice(7) : null;
 }
 
-async function authenticate(c: AppContext, dependencies: ApiDependencies): Promise<AuthPrincipal> {
+export async function authenticate(c: AppContext, dependencies: ApiDependencies): Promise<AuthPrincipal> {
   const rawBearer = bearer(c);
   if (rawBearer !== null) {
     const tokenHash = await hashOpaqueToken(rawBearer);
