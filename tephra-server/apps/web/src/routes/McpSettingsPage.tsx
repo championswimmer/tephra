@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Copy } from 'lucide-react';
+import { api } from '../api/client';
+import type { ApiToken } from '../api/types';
+import { ErrorState, Loading } from '../components/Status';
 
 interface AgentGuide {
   id: string;
@@ -87,6 +90,83 @@ function CodeBlock({ label, code }: { label: string; code: string }) {
   );
 }
 
+interface AuthorizedAgent {
+  vaultId: string;
+  vaultName: string;
+  token: ApiToken;
+}
+
+export const MCP_TOKEN_PREFIX = 'MCP: ';
+
+/** Tokens issued through the browser sign-in flow, across all of the user's vaults. */
+export function AuthorizedAgents() {
+  const [agents, setAgents] = useState<AuthorizedAgent[] | null>(null);
+  const [error, setError] = useState<unknown>();
+  const load = useCallback(async () => {
+    setError(undefined);
+    try {
+      const { vaults } = await api.vaults();
+      const lists = await Promise.all(
+        vaults.map(async (vault) =>
+          (await api.tokens(vault.id)).tokens
+            .filter((t) => t.name.startsWith(MCP_TOKEN_PREFIX) && !t.revokedAt)
+            .map((token) => ({ vaultId: vault.id, vaultName: vault.name, token })),
+        ),
+      );
+      setAgents(lists.flat().sort((a, b) => b.token.createdAt - a.token.createdAt));
+    } catch (caught) {
+      setError(caught);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function revoke(agent: AuthorizedAgent) {
+    const label = agent.token.name.slice(MCP_TOKEN_PREFIX.length);
+    if (!window.confirm(`Revoke access for “${label}” to ${agent.vaultName}?`)) return;
+    try {
+      await api.revokeToken(agent.vaultId, agent.token.id);
+      setAgents((current) => current?.filter((a) => a.token.id !== agent.token.id) ?? null);
+    } catch (caught) {
+      setError(caught);
+    }
+  }
+
+  return (
+    <section className="settings-card">
+      <h2>Authorized agents</h2>
+      {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
+      {!agents && error === undefined ? (
+        <Loading label="Loading authorized agents…" />
+      ) : agents?.length === 0 ? (
+        <p className="muted">No agents have been authorized yet.</p>
+      ) : (
+        <ul className="token-list">
+          {agents?.map((agent) => (
+            <li key={agent.token.id}>
+              <div>
+                <strong>{agent.token.name.slice(MCP_TOKEN_PREFIX.length)}</strong>
+                <span>
+                  {agent.vaultName} ·{' '}
+                  {agent.token.scopes?.includes('vault:write') ? 'read & edit' : 'read only'} ·
+                  authorized {new Date(agent.token.createdAt).toLocaleDateString()}
+                  {agent.token.lastUsedAt
+                    ? ` · last used ${new Date(agent.token.lastUsedAt).toLocaleDateString()}`
+                    : ''}
+                </span>
+              </div>
+              <button className="danger subtle" type="button" onClick={() => void revoke(agent)}>
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function McpSettingsPage() {
   const url = `${window.location.origin}/mcp`;
   const guides = agentGuides(url);
@@ -116,6 +196,7 @@ export function McpSettingsPage() {
           Issued tokens appear as “MCP: …” in each vault’s Tokens list, where you can revoke them.
         </p>
       </section>
+      <AuthorizedAgents />
       <section className="settings-card">
         <div role="tablist" aria-label="Agents" className="agent-tabs">
           {guides.map((g) => (

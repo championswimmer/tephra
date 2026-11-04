@@ -221,3 +221,4 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       token exchange issuing a vault-bound revocable API token; `/mcp` 401 now
       advertises the flow. Settings -> AI agents (MCP) page with setup for Claude
       Code, Codex, Cursor, Antigravity and Pi. New `oauth_codes` table (migration 006)
+- [x] Settings -> AI agents (MCP) lists authorized agents (MCP-issued tokens across all vaults, with vault, access level and date) and lets the user revoke any of them

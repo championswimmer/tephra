@@ -65,6 +65,7 @@ export interface ApiToken {
   id: string;
   name: string;
   createdAt: number;
+  scopes?: string[];
   lastUsedAt?: number | null;
   revokedAt?: number | null;
 }

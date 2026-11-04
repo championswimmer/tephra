@@ -4,10 +4,44 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
 import { ConnectAgentPage } from '../src/routes/ConnectAgentPage';
-import { McpSettingsPage } from '../src/routes/McpSettingsPage';
+import { AuthorizedAgents, McpSettingsPage } from '../src/routes/McpSettingsPage';
+
+describe('Authorized agents', () => {
+  it('lists MCP tokens across vaults and revokes one', async () => {
+    vi.spyOn(api, 'vaults').mockResolvedValue({
+      vaults: [
+        { id: 'v1', name: 'Notes', latestRevision: 1 },
+        { id: 'v2', name: 'Work', latestRevision: 1 },
+      ],
+    });
+    vi.spyOn(api, 'tokens').mockImplementation(async (id) => ({
+      tokens:
+        id === 'v1'
+          ? [
+              { id: 't1', name: 'MCP: Claude Code', createdAt: 2, scopes: ['vault:read-metadata', 'vault:write'] },
+              { id: 't2', name: 'Plugin', createdAt: 1 },
+              { id: 't3', name: 'MCP: Old', createdAt: 1, revokedAt: 5 },
+            ]
+          : [{ id: 't4', name: 'MCP: Codex', createdAt: 3, scopes: ['vault:read-metadata'] }],
+    }));
+    const revoke = vi.spyOn(api, 'revokeToken').mockResolvedValue(undefined);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<AuthorizedAgents />);
+    expect(await screen.findByText('Claude Code')).toBeInTheDocument();
+    expect(screen.getByText('Codex')).toBeInTheDocument();
+    expect(screen.queryByText('Plugin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Old')).not.toBeInTheDocument();
+    expect(screen.getByText(/Work · read only/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Revoke' })[1]!);
+    expect(revoke).toHaveBeenCalledWith('v1', 't1');
+    expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+  });
+});
 
 describe('MCP settings page', () => {
   it('shows per-agent setup for the supported agents', async () => {
+    vi.spyOn(api, 'vaults').mockResolvedValue({ vaults: [] });
     const user = userEvent.setup();
     render(
       <MemoryRouter>
