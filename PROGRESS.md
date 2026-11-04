@@ -222,3 +222,8 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       advertises the flow. Settings -> AI agents (MCP) page with setup for Claude
       Code, Codex, Cursor, Antigravity and Pi. New `oauth_codes` table (migration 006)
 - [x] Settings -> AI agents (MCP) lists authorized agents (MCP-issued tokens across all vaults, with vault, access level and date) and lets the user revoke any of them
+- [x] Resizable workspace sidebars: drag or use keyboard separators to adjust
+      independent saved widths; file and folder names stay on one line and clip
+      to the file browser width. Mobile drawer and tablet layout retained.
+      Full `npm run check` green; 4 new unit tests and 5 Chromium browser tests
+      cover persistence, bounds, cancellation, clipping/reveal, and responsive layout.

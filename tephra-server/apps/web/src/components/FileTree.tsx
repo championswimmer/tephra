@@ -28,11 +28,12 @@ const FileRow = memo(function FileRow({
       <button
         type="button"
         className={`tree-file ${selected ? 'selected' : ''}`}
+        title={node.file.path}
         aria-current={selected ? 'page' : undefined}
         onClick={() => onSelect(node.file.path)}
       >
         <FileIcon file={node.file} />
-        <span>{node.name}</span>
+        <span className="tree-label">{node.name}</span>
       </button>
     </li>
   );
@@ -59,6 +60,7 @@ const FolderRow = memo(function FolderRow({
       <button
         className="tree-folder"
         type="button"
+        title={node.path}
         aria-expanded={open}
         onClick={() => onToggleFolder(node.path)}
       >
@@ -72,7 +74,7 @@ const FolderRow = memo(function FolderRow({
         ) : (
           <Folder size={14} aria-hidden="true" focusable="false" className="icon" />
         )}
-        <span>{node.name}</span>
+        <span className="tree-label">{node.name}</span>
       </button>
       {open && (
         <TreeBranch
