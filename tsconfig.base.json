@@ -16,6 +16,8 @@
         "tephra-server/packages/blob-store/filesystem/src/index.ts"
       ],
       "@tephra/markdown": ["tephra-server/packages/markdown/src/index.ts"],
+      "@tephra/markdown-editor": ["tephra-server/packages/markdown-editor/src/index.ts"],
+      "@tephra/markdown-editor/pure": ["tephra-server/packages/markdown-editor/src/pure.ts"],
       "@tephra/link-resolver": ["tephra-server/packages/link-resolver/src/index.ts"],
       "@tephra/indexer": ["tephra-server/packages/indexer/src/index.ts"],
       "@tephra/auth": ["tephra-server/packages/auth/src/index.ts"],

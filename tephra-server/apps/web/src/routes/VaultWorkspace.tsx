@@ -338,14 +338,25 @@ export function VaultWorkspace() {
                   </p>
                 )}
                 {selected.kind === 'markdown' ? (
-                  <NoteViewer
-                    vaultId={vaultId}
-                    fileId={selected.fileId}
-                    file={selected}
-                    onOpen={open}
-                    onSaved={refreshAfterSave}
-                    getPathForFileId={(fileId) => pathByFileId.get(fileId)}
-                  />
+                  <>
+                    <NoteViewer
+                      vaultId={vaultId}
+                      fileId={selected.fileId}
+                      file={selected}
+                      onOpen={open}
+                      onSaved={refreshAfterSave}
+                      getPathForFileId={(fileId) => pathByFileId.get(fileId)}
+                    />
+                    <section className="local-graph" aria-label="Local graph panel">
+                      <GraphView
+                        vaultId={vaultId}
+                        onOpen={open}
+                        rootId={selected.fileId}
+                        scope="local"
+                        selectedId={selected.fileId}
+                      />
+                    </section>
+                  </>
                 ) : (
                   <AttachmentViewer vaultId={vaultId} file={selected} />
                 )}

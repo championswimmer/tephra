@@ -98,16 +98,26 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   await expect(local.getByText('2 neighbours within depth 1')).toBeVisible({ timeout: 30_000 });
 
   // Global graph with the e2e debug hook enabled via query param.
-  // The hand-rolled canvas renderer mounts exactly one <canvas> per view.
+  // Each renderer has a drawing canvas and a non-interactive label overlay.
+  // Keyboard and pointer input belongs to their shared focusable host.
   await page.goto(`/v/${encodeURIComponent(VAULT_NAME)}/graph?e2eGraph=1`);
   const graph = page.getByRole('region', { name: 'Vault graph' });
-  const canvas = graph.locator('canvas');
-  await expect(canvas).toBeVisible({ timeout: 30_000 });
-  await expect(canvas).toHaveCount(1);
-  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 30_000 });
-  await page.waitForFunction(() => (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount === 3, null, {
-    timeout: 30_000,
+  const renderer = graph.getByLabel('Graph view. Use arrow keys to pan, plus and minus to zoom.', {
+    exact: true,
   });
+  await expect(renderer).toBeVisible({ timeout: 30_000 });
+  await expect(renderer).toHaveCount(1);
+  await expect(renderer.locator('canvas')).toHaveCount(2);
+  await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 30_000 });
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount ===
+      3,
+    null,
+    {
+      timeout: 30_000,
+    },
+  );
   const noteButtons = graph.getByRole('list', { name: 'Notes in graph' }).getByRole('button');
   await expect(noteButtons).toHaveCount(3);
   const hookCount = await page.evaluate(
@@ -116,14 +126,25 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
   expect(hookCount, 'debug hook nodeCount matches the DOM note buttons').toBe(3);
 
   // The settings search filters the model, the hook, and the header counts
-  // live (the accessible fallback list always keeps every note).
+  // live (the accessible fallback list always keeps every note). Search
+  // leaves Deep isolated, so the default orphan filter hides it until enabled.
   await graph.getByRole('button', { name: 'Graph settings' }).click();
   await graph.getByLabel('Search').fill('Deep');
+  await expect(graph.getByText(/0 notes · 0 connections/)).toBeVisible();
+  await graph.getByLabel('Orphans').check();
   await expect(graph.getByText(/1 notes · 0 connections/)).toBeVisible({ timeout: 15_000 });
-  await page.waitForFunction(() => (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount === 1, null, {
-    timeout: 15_000,
-  });
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { __tephraGraph?: { nodeCount: number } }).__tephraGraph?.nodeCount ===
+      1,
+    null,
+    {
+      timeout: 15_000,
+    },
+  );
   await expect(noteButtons).toHaveCount(3);
+  await graph.getByLabel('Orphans').uncheck();
+  await expect(graph.getByText(/0 notes · 0 connections/)).toBeVisible();
   await graph.getByLabel('Search').fill('');
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
 
@@ -136,17 +157,17 @@ test('graph pass: local neighbourhood, debug counts, search filter', async ({
 
   // Keyboard pan/zoom on the focused canvas keeps the renderer alive and
   // the counts unchanged.
-  await canvas.focus();
+  await renderer.focus();
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('+');
   await page.keyboard.press('-');
-  await expect(canvas).toBeVisible();
+  await expect(renderer).toBeVisible();
   await expect(graph.getByText(/3 notes · 4 connections/)).toBeVisible({ timeout: 15_000 });
 
   // Clicking empty canvas space (top-left corner) neither crashes nor
   // navigates away from the graph.
-  await canvas.click({ position: { x: 5, y: 5 } });
+  await renderer.click({ position: { x: 5, y: 5 } });
   await expect(page).toHaveURL(new RegExp(`/v/${encodeURIComponent(VAULT_NAME)}/graph`));
-  await expect(canvas).toBeVisible();
+  await expect(renderer).toBeVisible();
 });

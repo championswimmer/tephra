@@ -227,3 +227,8 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       to the file browser width. Mobile drawer and tablet layout retained.
       Full `npm run check` green; 4 new unit tests and 5 Chromium browser tests
       cover persistence, bounds, cancellation, clipping/reveal, and responsive layout.
+- [x] CI regressions fixed: clean-checkout typechecking resolves Markdown editor
+      source without generated declarations; Markdown notes again show their local
+      graph, with workspace integration tests for selection and navigation.
+      Graph browser checks cover both canvas layers and default orphan filtering.
+      Full `npm run check` and all 9 Chromium end-to-end tests pass.

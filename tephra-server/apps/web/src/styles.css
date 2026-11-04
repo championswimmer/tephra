@@ -1158,6 +1158,14 @@ html.theme-dark .vault-grid a {
   margin-top: 1rem;
   border: 1px solid var(--background-modifier-border);
 }
+.local-graph {
+  margin-top: 2rem;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 1rem;
+}
+.local-graph .graph-canvas {
+  min-height: 22rem;
+}
 .graph-view canvas {
   display: block;
 }
