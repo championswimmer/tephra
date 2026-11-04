@@ -1360,3 +1360,10 @@ html.theme-dark .vault-grid a {
   height: 100%;
   min-height: 22rem;
 }
+
+.agent-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}

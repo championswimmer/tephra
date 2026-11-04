@@ -4,7 +4,14 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [react()],
   server: {
-    proxy: { '/api': 'http://localhost:3000' },
+    proxy: {
+      '/api': 'http://localhost:3000',
+      '/mcp': 'http://localhost:3000',
+      '/oauth/authorize': 'http://localhost:3000',
+      '/oauth/token': 'http://localhost:3000',
+      '/oauth/register': 'http://localhost:3000',
+      '/.well-known': 'http://localhost:3000',
+    },
   },
   test: {
     environment: 'jsdom',

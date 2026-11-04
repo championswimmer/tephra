@@ -237,6 +237,23 @@ export class ApiClient {
       `/vaults/${encodeURIComponent(vaultIdOrName)}/tokens/${encodeURIComponent(tokenId)}`,
       { method: 'DELETE' },
     );
+  oauthClient = (clientId: string, redirectUri: string) =>
+    this.request<{ name: string; redirectHost: string }>(
+      `/oauth/client?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+    );
+  oauthDecision = (input: {
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state?: string;
+    decision: 'approve' | 'deny';
+    vaultId?: string;
+    access?: 'read' | 'write';
+  }) =>
+    this.request<{ redirectUrl: string }>('/oauth/authorize', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
 }
 
 export const api = new ApiClient();

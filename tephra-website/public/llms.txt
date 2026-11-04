@@ -8,6 +8,7 @@ Every Tephra server exposes a Model Context Protocol endpoint at `/mcp` (Streama
 
 - URL: `https://<your-tephra-host>/mcp` (`POST` only; `GET` returns 405)
 - Auth: `Authorization: Bearer <API token>`. Cookie sessions are not accepted.
+- Browser sign-in (recommended): the server implements MCP OAuth 2.1 (authorization code + PKCE, dynamic client registration, loopback redirect). Add the URL to an OAuth-capable agent and authenticate; the agent opens `https://<your-tephra-host>/oauth/authorize`, you sign in and choose a vault and access level, and the agent receives its own API token. Discovery: `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`. Issued tokens (named `MCP: <client>`) can be revoked in the vault's Tokens list.
 - Create a token in the web app: open a vault, then Tokens. Scopes: `vault:read-metadata` for search/read, `vault:write` for create/update. A token is bound to one vault, so the `vault` argument is optional.
 - Every write is a new vault revision (history is kept). Never put tokens in note contents.
 

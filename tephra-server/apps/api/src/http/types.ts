@@ -21,6 +21,8 @@ export interface ApiDependencies {
   secureCookies?: boolean;
   sessionCookieName?: string;
   maxBlobBytes?: number;
+  /** Externally visible origin (e.g. https://notes.example.com); derived from the request when unset. */
+  publicUrl?: string;
 }
 
 export type Variables = {

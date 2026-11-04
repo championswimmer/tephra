@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
 import { ThemeSelector } from '../components/ThemeSelector';
 export function SettingsPage() {
@@ -35,6 +35,14 @@ export function SettingsPage() {
           device.
         </p>
         <ThemeSelector />
+      </section>
+      <section className="settings-card">
+        <h2>AI agents (MCP)</h2>
+        <p>
+          Let Claude Code, Codex, Cursor and other coding agents search and edit your notes.
+          Sign-in happens in your browser — no token copy-pasting.
+        </p>
+        <Link to="/settings/mcp">Connect an AI agent →</Link>
       </section>
       <section className="settings-card">
         <h2>Read-only mirror</h2>

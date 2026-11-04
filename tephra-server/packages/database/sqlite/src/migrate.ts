@@ -11,6 +11,7 @@ const MIGRATIONS = [
   { version: 3, file: '003_vault_files_path_fold.sql' },
   { version: 4, file: '004_graph_cache.sql' },
   { version: 5, file: '005_revision_manifest_hash_index.sql' },
+  { version: 6, file: '006_oauth_codes.sql' },
 ] as const;
 
 export function migrate(db: DatabaseSync, migrationFile: string | URL | undefined): void {

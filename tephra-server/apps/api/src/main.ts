@@ -24,6 +24,7 @@ if ((process.env.TEPHRA_BLOB_DRIVER ?? 'filesystem') !== 'filesystem') {
 }
 
 const bootstrapToken = process.env.TEPHRA_BOOTSTRAP_TOKEN;
+const publicUrl = process.env.TEPHRA_PUBLIC_URL;
 
 const clock = new SystemClock();
 const ids = new UuidV7Generator(clock);
@@ -38,6 +39,7 @@ const app = createApp({
   passwordHasher: new ScryptPasswordHasher(),
   ...(bootstrapToken === undefined ? {} : { bootstrapToken }),
   indexService,
+  ...(publicUrl === undefined || publicUrl === '' ? {} : { publicUrl }),
   secureCookies: process.env.NODE_ENV === 'production',
   maxBlobBytes: integerEnvironment('TEPHRA_MAX_BLOB_BYTES', 100 * 1024 * 1024),
 });

@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from '../components/AppShell';
 import { LoginPage, SetupPage } from '../routes/AuthPages';
+import { ConnectAgentPage } from '../routes/ConnectAgentPage';
+import { McpSettingsPage } from '../routes/McpSettingsPage';
 import { SettingsPage } from '../routes/SettingsPage';
 import { VaultListPage } from '../routes/VaultListPage';
 import { VaultWorkspace } from '../routes/VaultWorkspace';
@@ -18,6 +20,8 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/vaults" element={<VaultListPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/mcp" element={<McpSettingsPage />} />
+          <Route path="/connect" element={<ConnectAgentPage />} />
           <Route path="/v/:vaultSlug/*" element={<VaultWorkspace />} />
         </Route>
       </Route>

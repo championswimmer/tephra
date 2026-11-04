@@ -4,6 +4,7 @@ import { isCanonicalVaultPath } from '@tephra/protocol';
 import type { ApiTokenScope, CurrentVaultFile, Vault } from '@tephra/vault-model';
 import { authenticate, bearer, findVaultByIdOrName } from '../http/auth.js';
 import { ApiFailure } from '../http/errors.js';
+import { mcpChallenge } from '../oauth/server.js';
 import { searchVault } from '../http/search.js';
 import type { ApiApp, ApiDependencies } from '../http/types.js';
 import { commitNote } from './commit.js';
@@ -284,11 +285,17 @@ export function registerMcpRoutes(app: ApiApp, dependencies: ApiDependencies): v
   app.delete('/mcp', (c) => c.body(null, 405, { Allow: 'POST' }));
   app.post('/mcp', async (c) => {
     // Bearer API tokens only: cookie sessions are refused so the endpoint has no CSRF surface.
-    if (bearer(c) === null)
-      return c.json({ error: 'A Bearer API token is required.' }, 401, {
-        'WWW-Authenticate': 'Bearer realm="tephra"',
-      });
-    const principal = await authenticate(c, dependencies);
+    // The challenge points OAuth-capable agents at the authorization flow (plan 022).
+    const challenge = { 'WWW-Authenticate': mcpChallenge(c, dependencies) };
+    if (bearer(c) === null) return c.json({ error: 'A Bearer API token is required.' }, 401, challenge);
+    let principal: Principal;
+    try {
+      principal = await authenticate(c, dependencies);
+    } catch (error) {
+      if (error instanceof ApiFailure && error.status === 401)
+        return c.json({ error: error.message }, 401, challenge);
+      throw error;
+    }
     let body: unknown;
     try {
       body = await c.req.json();

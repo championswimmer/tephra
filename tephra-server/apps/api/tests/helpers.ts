@@ -2,6 +2,7 @@ import { expect } from 'vitest';
 import type {
   Database,
   GraphCacheEntry,
+  OAuthCode,
   Repositories,
   TransactionRepositories,
 } from '@tephra/database-core';
@@ -54,6 +55,7 @@ export class MemoryDatabase implements Database {
     revisions: [] as VaultRevision[],
     versions: [] as FileVersion[],
     graphCacheEntries: new Map<string, GraphCacheEntry>(),
+    oauthCodes: new Map<string, OAuthCode>(),
   };
   users = {
     count: async () => this.state.users.size,
@@ -237,6 +239,25 @@ export class MemoryDatabase implements Database {
     getState: async () => null,
     setState: async () => undefined,
   };
+  oauthCodes = {
+    insert: async (code: OAuthCode) => {
+      this.state.oauthCodes.set(code.codeHash, code);
+    },
+    consume: async (codeHash: string) => {
+      const code = this.state.oauthCodes.get(codeHash) ?? null;
+      this.state.oauthCodes.delete(codeHash);
+      return code;
+    },
+    deleteExpired: async (now: number) => {
+      let removed = 0;
+      for (const [hash, code] of this.state.oauthCodes)
+        if (code.expiresAt <= now) {
+          this.state.oauthCodes.delete(hash);
+          removed++;
+        }
+      return removed;
+    },
+  };
   graphCache = {
     find: async (vaultId: string) => this.state.graphCacheEntries.get(vaultId) ?? null,
     upsert: async (entry: GraphCacheEntry) => {
@@ -284,6 +305,7 @@ export class MemoryDatabase implements Database {
       vaults: this.vaults,
       devices: this.devices,
       apiTokens: this.apiTokens,
+      oauthCodes: this.oauthCodes,
       blobs: this.blobs,
       vaultFiles: this.vaultFiles,
       vaultRevisions: this.vaultRevisions,

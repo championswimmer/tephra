@@ -690,7 +690,7 @@ describe('SQLite database adapter', () => {
   });
 
   it.each([1, 2, 3, 4])(
-    'upgrades a user_version %i database through 005 with foreign_key_check clean',
+    'upgrades a user_version %i database through 006 with foreign_key_check clean',
     async (startVersion) => {
       // Build a genuinely old database by applying migrations 001..N with a
       // raw connection (openSqliteDatabase would migrate straight to
@@ -776,7 +776,7 @@ describe('SQLite database adapter', () => {
       try {
         expect(
           (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        ).toBe(5);
+        ).toBe(6);
         expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
         expect(
           raw
@@ -796,4 +796,27 @@ describe('SQLite database adapter', () => {
       }
     },
   );
+
+  it('consumes OAuth codes exactly once and purges expired ones', async () => {
+    const { db } = await database();
+    await seed(db);
+    const code = {
+      codeHash: 'h1',
+      userId: 'user-1',
+      vaultId: 'vault-1',
+      clientId: 'c',
+      clientName: 'Claude Code',
+      redirectUri: 'http://127.0.0.1:1/cb',
+      codeChallenge: 'x'.repeat(43),
+      scopes: ['vault:read-metadata' as const],
+      createdAt: 10,
+      expiresAt: 70,
+    };
+    await db.oauthCodes.insert(code);
+    await db.oauthCodes.insert({ ...code, codeHash: 'h2', expiresAt: 20 });
+    expect(await db.oauthCodes.consume('h1')).toEqual(code);
+    expect(await db.oauthCodes.consume('h1')).toBeNull();
+    expect(await db.oauthCodes.deleteExpired(30)).toBe(1);
+    expect(await db.oauthCodes.consume('h2')).toBeNull();
+  });
 });

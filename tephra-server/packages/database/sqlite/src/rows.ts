@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-import type { GraphCacheEntry } from '@tephra/database-core';
+import type { GraphCacheEntry, OAuthCode } from '@tephra/database-core';
 import type {
   ApiToken,
   ApiTokenScope,
@@ -127,4 +127,8 @@ export function first(db: DatabaseSync, sql: string, ...params: SqliteValue[]): 
 }
 export function all(db: DatabaseSync, sql: string, ...params: SqliteValue[]): Row[] {
   return rows(db.prepare(sql).all(...params));
+}
+
+export function oauthCode(row: Row): OAuthCode {
+  return { codeHash: requiredString(row, 'code_hash'), userId: requiredString(row, 'user_id'), vaultId: requiredString(row, 'vault_id'), clientId: requiredString(row, 'client_id'), clientName: requiredString(row, 'client_name'), redirectUri: requiredString(row, 'redirect_uri'), codeChallenge: requiredString(row, 'code_challenge'), scopes: scopesFromRow(row), createdAt: requiredNumber(row, 'created_at'), expiresAt: requiredNumber(row, 'expires_at') };
 }

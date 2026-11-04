@@ -36,7 +36,7 @@ Each button opens a guide or a prefilled shell rather than deploying blindly: Te
 
 ## MCP for AI agents
 
-Every server exposes an MCP endpoint at `/mcp` (HTTP, Bearer API token) with tools to search, read, create and edit notes (edits by unified diff or full replacement). Create a token with `vault:read-metadata` and `vault:write` scopes in the web app, then e.g. `claude mcp add --transport http tephra https://<host>/mcp --header "Authorization: Bearer <token>"`. Full docs are served at `/llms.txt`.
+Every server exposes an MCP endpoint at `/mcp` (HTTP, Bearer API token) with tools to search, read, create and edit notes (edits by unified diff or full replacement). Easiest: `claude mcp add --transport http tephra https://<host>/mcp`, then authenticate from the agent - it opens Tephra in your browser for sign-in and approval (OAuth + PKCE with a localhost callback; see Settings -> AI agents in the web app for Claude Code, Codex, Cursor, Antigravity and Pi). Or create a token with `vault:read-metadata` and `vault:write` scopes in the web app, then e.g. `claude mcp add --transport http tephra https://<host>/mcp --header "Authorization: Bearer <token>"`. Full docs are served at `/llms.txt`.
 
 ## Roadmap
 

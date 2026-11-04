@@ -4,7 +4,7 @@ import type { TransactionRepositories } from '@tephra/database-core';
 import type { VaultIndexState } from '@tephra/vault-model';
 
 import {
-  all, blob, device, fileVersion, first, graphCache, json, noteLink, noteMetadata, nullableString,
+  all, blob, device, fileVersion, first, graphCache, json, noteLink, noteMetadata, nullableString, oauthCode,
   requiredNumber, requiredString, revision, scopesJson, session, token, user, vault, vaultFile,
 } from './rows.js';
 
@@ -44,6 +44,11 @@ export function makeRepositories(db: DatabaseSync): TransactionRepositories {
       async insert(v) { db.prepare('INSERT INTO api_tokens VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(v.id, v.userId, v.vaultId, v.deviceId, v.tokenHash, v.name, scopesJson(v.scopes), v.createdAt, v.lastUsedAt, v.expiresAt, v.revokedAt); },
       async update(v) { db.prepare('UPDATE api_tokens SET user_id=?, vault_id=?, device_id=?, token_hash=?, name=?, scopes_json=?, created_at=?, last_used_at=?, expires_at=?, revoked_at=? WHERE id=?').run(v.userId, v.vaultId, v.deviceId, v.tokenHash, v.name, scopesJson(v.scopes), v.createdAt, v.lastUsedAt, v.expiresAt, v.revokedAt, v.id); },
       async delete(id) { db.prepare('DELETE FROM api_tokens WHERE id=?').run(id); },
+    },
+    oauthCodes: {
+      async insert(v) { db.prepare('INSERT INTO oauth_codes (code_hash, user_id, vault_id, client_id, client_name, redirect_uri, code_challenge, scopes_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(v.codeHash, v.userId, v.vaultId, v.clientId, v.clientName, v.redirectUri, v.codeChallenge, scopesJson(v.scopes), v.createdAt, v.expiresAt); },
+      async consume(hash) { const row = first(db, 'DELETE FROM oauth_codes WHERE code_hash=? RETURNING *', hash); return row && oauthCode(row); },
+      async deleteExpired(now) { return Number(db.prepare('DELETE FROM oauth_codes WHERE expires_at <= ?').run(now).changes); },
     },
     blobs: {
       async findByHash(hash) { const row = first(db, 'SELECT * FROM blobs WHERE hash=?', hash); return row && blob(row); },

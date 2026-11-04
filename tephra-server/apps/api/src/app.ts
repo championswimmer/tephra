@@ -13,6 +13,7 @@ import { registerChangesRoutes } from './routes/changes.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerGraphRoutes } from './routes/graph.js';
 import { registerMcpRoutes } from './mcp/server.js';
+import { registerOAuthRoutes } from './oauth/server.js';
 
 export type { ApiDependencies, IndexService } from './http/types.js';
 
@@ -26,6 +27,7 @@ export function createApp(dependencies: ApiDependencies): ApiApp {
   registerHealthRoutes(app, dependencies);
   registerPublicAuthRoutes(app, dependencies);
   registerAuthMiddleware(app, dependencies);
+  registerOAuthRoutes(app, dependencies);
   registerSessionAuthRoutes(app, dependencies);
   registerVaultListRoutes(app, dependencies);
   registerVaultScopeMiddleware(app, dependencies);

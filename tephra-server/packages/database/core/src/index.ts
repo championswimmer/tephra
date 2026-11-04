@@ -1,5 +1,6 @@
 import type {
   ApiToken,
+  ApiTokenScope,
   BlobMetadata,
   CurrentVaultFile,
   Device,
@@ -51,6 +52,27 @@ export interface ApiTokenRepository {
   insert(token: ApiToken): Promise<void>;
   update(token: ApiToken): Promise<void>;
   delete(id: string): Promise<void>;
+}
+
+/** A pending MCP/OAuth authorization (stored by code hash; single use). */
+export interface OAuthCode {
+  codeHash: string;
+  userId: string;
+  vaultId: string;
+  clientId: string;
+  clientName: string;
+  redirectUri: string;
+  codeChallenge: string;
+  scopes: ApiTokenScope[];
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface OAuthCodeRepository {
+  insert(code: OAuthCode): Promise<void>;
+  /** Atomically removes and returns the code, or null when unknown. */
+  consume(codeHash: string): Promise<OAuthCode | null>;
+  deleteExpired(now: number): Promise<number>;
 }
 
 export interface BlobRepository {
@@ -141,6 +163,7 @@ export interface Repositories {
   vaults: VaultRepository;
   devices: DeviceRepository;
   apiTokens: ApiTokenRepository;
+  oauthCodes: OAuthCodeRepository;
   blobs: BlobRepository;
   vaultFiles: VaultFileRepository;
   vaultRevisions: VaultRevisionRepository;

@@ -33,6 +33,7 @@ under `/data`.
 | `TEPHRA_PUBLIC_URL`      | Browser-visible origin, including scheme      | required in production         |
 | `TEPHRA_SESSION_SECRET`  | Signs/protects browser sessions               | required; no safe default      |
 | `TEPHRA_BOOTSTRAP_TOKEN` | One-time proof used to create the first admin | required for first setup       |
+| `TEPHRA_PUBLIC_URL`      | Public origin (e.g. `https://notes.example.com`) used in MCP OAuth discovery metadata; set behind a reverse proxy | derived from the request |
 | `TEPHRA_DATABASE_DRIVER` | Must be `sqlite` (only live database)         | `sqlite`                       |
 | `TEPHRA_SQLITE_PATH`     | SQLite database file                          | `/data/tephra.db` in the image |
 | `TEPHRA_BLOB_DRIVER`     | Must be `filesystem` (only live blob store)   | `filesystem`                   |
