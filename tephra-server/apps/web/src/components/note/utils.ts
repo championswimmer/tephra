@@ -1,5 +1,6 @@
 import type { ConflictOutcome } from '@tephra/markdown-editor';
 import type { EditConflictCurrent } from '../../api/types';
+import { highlightCodeBlocks } from './highlight';
 
 /** Markdown files larger than this open read-only; the editor stays off. */
 export const MAX_EDIT_BYTES = 1024 * 1024;
@@ -32,6 +33,7 @@ export function containServerHtml(html: string): string {
         element.removeAttribute(attribute.name);
     }
   });
+  highlightCodeBlocks(documentNode.body);
   return documentNode.body.innerHTML;
 }
 
