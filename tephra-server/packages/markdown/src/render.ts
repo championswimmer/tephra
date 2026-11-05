@@ -5,10 +5,22 @@ import { parseTableDelimiter, splitTableRow, type TableAlign } from './table.js'
 import { escapeHtml, slugify } from './text.js';
 import type { MarkdownRenderOptions, RenderedNote } from './types.js';
 
+/** First word of a fence info string, limited to safe class-name characters. */
+function fenceLanguage(info: string): string {
+  const word = info.trim().split(/\s+/)[0] ?? '';
+  return /^[\w+#.-]+$/.test(word) ? word : '';
+}
+
+function renderCodeBlock(code: string[], language: string): string {
+  const cls = language ? ` class="language-${language}"` : '';
+  return `<pre><code${cls}>${escapeHtml(code.join('\n'))}</code></pre>`;
+}
+
 function renderBlocks(lines: string[], options: MarkdownRenderOptions): string[] {
   const html: string[] = [];
   let inFence = false;
   let fence = '';
+  let fenceLang = '';
   let code: string[] = [];
   let paragraph: string[] = [];
   let quoteBuffer: string[] = [];
@@ -53,10 +65,11 @@ function renderBlocks(lines: string[], options: MarkdownRenderOptions): string[]
       quoteBuffer.push(quote[1] ?? '');
       continue;
     }
-    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    const fenceMatch = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    const marker = fenceMatch?.[1];
     if (marker) {
-      if (!inFence) { flushParagraph(); flushQuote(); flushList(); inFence = true; fence = marker.charAt(0); code = []; }
-      else if (marker.charAt(0) === fence) { html.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`); inFence = false; }
+      if (!inFence) { flushParagraph(); flushQuote(); flushList(); inFence = true; fence = marker.charAt(0); fenceLang = fenceLanguage(fenceMatch?.[2] ?? ''); code = []; }
+      else if (marker.charAt(0) === fence) { html.push(renderCodeBlock(code, fenceLang)); inFence = false; }
       continue;
     }
     if (inFence) { code.push(line); continue; }
@@ -131,7 +144,7 @@ function renderBlocks(lines: string[], options: MarkdownRenderOptions): string[]
   flushParagraph();
   flushQuote();
   flushList();
-  if (inFence) html.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+  if (inFence) html.push(renderCodeBlock(code, fenceLang));
   return html;
 }
 

@@ -141,4 +141,15 @@ describe('renderMarkdown', () => {
     expect(rendered.html).toContain('data-callout="bogus"');
     expect(rendered.html).toContain('callout-title-inner">Bogus</div>');
   });
+
+  it('passes the fence language to the code element as a class', async () => {
+    const render = async (markdown: string) =>
+      (await renderMarkdown({ markdown, sourcePath: 'Home.md' })).html;
+    expect(await render('```ts title="a"\nconst a = 1;\n```')).toContain(
+      '<pre><code class="language-ts">const a = 1;</code></pre>',
+    );
+    expect(await render('~~~python\nprint(1)\n~~~')).toContain('class="language-python"');
+    expect(await render('```\nplain\n```')).toContain('<pre><code>plain</code></pre>');
+    expect(await render('```"><script>\nx\n```')).toContain('<pre><code>x</code></pre>');
+  });
 });
