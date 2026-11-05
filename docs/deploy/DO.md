@@ -70,3 +70,27 @@ Set `DNS_ZONE=example.com` to also create the A record (domain must be in DO DNS
 1. Open `https://notes.example.com/setup` and create the owner account with the bootstrap token.
 2. Delete `TEPHRA_BOOTSTRAP_TOKEN` from `tephra.env`, then `docker compose --env-file tephra.env up -d`.
 3. Back up the Volume (enable DO snapshots).
+
+## Environment variables
+
+The deploy script generates the secrets and writes `/opt/tephra/tephra.env` (mode 600) on
+the Droplet; Compose loads it with `--env-file`.
+
+| Variable                 | Needed          | Value here                  | Purpose                                                     |
+| ------------------------ | --------------- | --------------------------- | ----------------------------------------------------------- |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.example.com` | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_SESSION_SECRET`  | always          | generated, 32 random bytes  | Signs and protects browser sessions                         |
+| `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | generated, 32 random bytes  | Creates the first admin; delete it after setup              |
+| `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`           | Database file on the Volume                                 |
+| `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`               | Attachment store on the Volume                              |
+
+Do not set `TEPHRA_DATABASE_DRIVER` or `TEPHRA_BLOB_DRIVER` to anything except `sqlite`
+and `filesystem`. The complete list, including defaults, is in
+[`tephra-server/README.md`](../../tephra-server/README.md#configuration).
+
+After setup, remove the one-time token and restart:
+
+```bash
+ssh root@YOUR_IP "sed -i '/BOOTSTRAP_TOKEN/d' /opt/tephra/tephra.env && \
+  cd /opt/tephra && docker compose --env-file tephra.env up -d"
+```

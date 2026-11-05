@@ -26,19 +26,20 @@ under `/data`.
 
 ## Configuration
 
-| Variable                 | Purpose                                       | Default                        |
-| ------------------------ | --------------------------------------------- | ------------------------------ |
-| `HOST`                   | HTTP bind address                             | `0.0.0.0` in the image         |
-| `PORT`                   | Single API/web HTTP port                      | `8080`                         |
-| `TEPHRA_PUBLIC_URL`      | Browser-visible origin, including scheme      | required in production         |
-| `TEPHRA_SESSION_SECRET`  | Signs/protects browser sessions               | required; no safe default      |
-| `TEPHRA_BOOTSTRAP_TOKEN` | One-time proof used to create the first admin | required for first setup       |
-| `TEPHRA_PUBLIC_URL`      | Public origin (e.g. `https://notes.example.com`) used in MCP OAuth discovery metadata; set behind a reverse proxy | derived from the request |
-| `TEPHRA_DATABASE_DRIVER` | Must be `sqlite` (only live database)         | `sqlite`                       |
-| `TEPHRA_SQLITE_PATH`     | SQLite database file                          | `/data/tephra.db` in the image |
-| `TEPHRA_BLOB_DRIVER`     | Must be `filesystem` (only live blob store)   | `filesystem`                   |
-| `TEPHRA_BLOB_PATH`       | Filesystem blob root                          | `/data/blobs` in the image     |
-| `TEPHRA_MAX_BLOB_BYTES`  | Maximum accepted blob size                    | `104857600` (100 MiB)          |
+| Variable                 | Purpose                                                                                       | Default                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `HOST`                   | HTTP bind address                                                                             | `0.0.0.0` in the image                          |
+| `PORT`                   | Single API/web HTTP port                                                                      | `8080`                                          |
+| `NODE_ENV`               | Set to `production` to mark session cookies `Secure`                                          | `production` in the image                       |
+| `TEPHRA_PUBLIC_URL`      | Browser-visible origin, including scheme; used for redirects, cookies and MCP OAuth discovery | required in production                          |
+| `TEPHRA_SESSION_SECRET`  | Signs/protects browser sessions                                                               | required; no safe default                       |
+| `TEPHRA_BOOTSTRAP_TOKEN` | One-time proof used to create the first admin                                                 | required for first setup                        |
+| `TEPHRA_DATABASE_DRIVER` | Must be `sqlite` (only live database)                                                         | `sqlite`                                        |
+| `TEPHRA_SQLITE_PATH`     | SQLite database file                                                                          | `/data/tephra.db` in the image                  |
+| `TEPHRA_BLOB_DRIVER`     | Must be `filesystem` (only live blob store)                                                   | `filesystem`                                    |
+| `TEPHRA_BLOB_PATH`       | Filesystem blob root                                                                          | `/data/blobs` in the image                      |
+| `TEPHRA_MAX_BLOB_BYTES`  | Maximum accepted blob size                                                                    | `104857600` (100 MiB)                           |
+| `TEPHRA_WEB_ROOT`        | Directory of the built web app served by the API process                                      | `/app/tephra-server/apps/web/dist` in the image |
 
 Never commit a real `.env`. Generate independent high-entropy session and bootstrap
 secrets, for example with `openssl rand -hex 32`. Platform request limits can be lower

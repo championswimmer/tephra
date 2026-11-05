@@ -63,4 +63,32 @@ Colors: blue = users, orange = network edge, green = compute, red = data, purple
    ```
 7. Backup: `gcloud compute disks snapshot tephra-data --zone us-central1-a`.
 
+## Environment variables
+
+The deploy script creates the two secrets in Secret Manager and writes
+`/opt/tephra/tephra.env` on the VM at first boot. Change a value with
+`gcloud secrets versions add <secret> --data-file=-` (then restart the container) or by
+editing `tephra.env`.
+
+| Variable                 | Needed          | Value here                              | Purpose                                                     |
+| ------------------------ | --------------- | --------------------------------------- | ----------------------------------------------------------- |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.example.com`             | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_SESSION_SECRET`  | always          | Secret Manager `tephra-session-secret`  | Signs and protects browser sessions                         |
+| `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | Secret Manager `tephra-bootstrap-token` | Creates the first admin; delete it after setup              |
+| `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                       | Database file on the Persistent Disk                        |
+| `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`                           | Attachment store on the Persistent Disk                     |
+
+Do not set `TEPHRA_DATABASE_DRIVER` or `TEPHRA_BLOB_DRIVER` to anything except `sqlite`
+and `filesystem`. The complete list, including defaults, is in
+[`tephra-server/README.md`](../../tephra-server/README.md#configuration).
+
+After setup, remove the line from `tephra.env`, restart the container, then delete the
+one-time secret:
+
+```sh
+gcloud compute ssh tephra --zone us-central1-a --command \
+  "cd /opt/tephra && sudo sed -i '/BOOTSTRAP_TOKEN/d' tephra.env && sudo docker-compose up -d --force-recreate tephra"
+gcloud secrets delete tephra-bootstrap-token
+```
+
 Never attach one disk to two VMs.
