@@ -32,6 +32,18 @@ Text [[Folder/Note#Heading|note]], [other](../Other.md#Part), and ![[image.png]]
 });
 
 describe('renderMarkdown', () => {
+  it('renders GFM angle-bracket autolinks and leaves non-autolinks and unsafe schemes alone', async () => {
+    const rendered = await renderMarkdown({
+      markdown: 'See <https://example.com/a?b=1&c=2> or <me@example.com>, not <a link>, <javascript:alert(1)> or `<https://code.example>`.',
+      sourcePath: 'Auto.md',
+    });
+    expect(rendered.html).toContain('<a href="https://example.com/a?b=1&amp;c=2" rel="noopener noreferrer">https://example.com/a?b=1&amp;c=2</a>');
+    expect(rendered.html).toContain('<a href="mailto:me@example.com" rel="noopener noreferrer">me@example.com</a>');
+    expect(rendered.html).toContain('&lt;a link&gt;');
+    expect(rendered.html).not.toContain('href="javascript:');
+    expect(rendered.html).toContain('<code>&lt;https://code.example&gt;</code>');
+  });
+
   it('escapes raw HTML and blocks dangerous URL schemes', async () => {
     const rendered = await renderMarkdown({
       markdown: '# Safe\n<script>alert(1)</script> [bad](java\nscript:alert(1)) ![bad](data:text/html,x)',

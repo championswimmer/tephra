@@ -55,6 +55,15 @@ export function renderInline(value: string, options: MarkdownRenderOptions): str
     if (bang === '!') return store(`<img src="${escapeHtml(href)}" alt="${escapeHtml(label)}">`);
     return store(`<a href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
   });
+  // CommonMark/GFM autolinks: <scheme:uri> and <email@host>. Anything else in angle brackets is not a link.
+  output = output.replace(/<([^\s<>]+)>/g, (raw, inner: string) => {
+    const isUri = /^[a-z][a-z\d+.-]{1,31}:\S*$/i.test(inner);
+    const isEmail = /^[a-z\d.!#$%&'*+/=?^_`{|}~-]+@[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)*$/i.test(inner);
+    if (!isUri && !isEmail) return raw;
+    const href = safeHref(isEmail ? `mailto:${inner}` : inner);
+    if (href === null) return raw;
+    return store(`<a href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(inner)}</a>`);
+  });
   output = escapeHtml(output)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');
