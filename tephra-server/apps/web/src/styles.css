@@ -546,23 +546,61 @@ html.theme-dark .vault-grid a {
 }
 .workspace-grid {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  grid-template-columns: min(var(--sidebar-left-width, 240px), 40vw) minmax(0, 1fr) min(
+      var(--sidebar-right-width, 220px),
+      40vw
+    );
   min-height: 0;
   flex: 1;
 }
 .workspace-grid.hide-left {
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) min(var(--sidebar-right-width, 220px), 40vw);
 }
 .workspace-grid.hide-right {
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: min(var(--sidebar-left-width, 240px), 40vw) minmax(0, 1fr);
 }
 .workspace-grid.hide-left.hide-right {
   grid-template-columns: minmax(0, 1fr);
 }
+.sidebar-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.sidebar-pane.collapsed {
+  display: none;
+}
+.sidebar-pane > aside {
+  height: 100%;
+  min-width: 0;
+}
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.sidebar-resize-left {
+  right: -4px;
+}
+.sidebar-resize-right {
+  left: -4px;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:focus-visible,
+.sidebar-resize-handle.is-resizing {
+  background: var(--interactive-accent);
+}
 .tree-pane {
   background: var(--background-secondary);
   border-right: 1px solid var(--background-modifier-border);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .tree-pane.collapsed {
   display: none;
@@ -637,6 +675,18 @@ html.theme-dark .vault-grid a {
   align-items: center;
   color: var(--text-muted);
   font-size: 0.86rem;
+}
+.tree-file,
+.tree-folder {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tree-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
 }
 .tree-file:hover,
 .tree-folder:hover {
@@ -1108,6 +1158,14 @@ html.theme-dark .vault-grid a {
   margin-top: 1rem;
   border: 1px solid var(--background-modifier-border);
 }
+.local-graph {
+  margin-top: 2rem;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 1rem;
+}
+.local-graph .graph-canvas {
+  min-height: 22rem;
+}
 .graph-view canvas {
   display: block;
 }
@@ -1198,13 +1256,13 @@ html.theme-dark .vault-grid a {
 }
 @media (max-width: 900px) {
   .workspace-grid {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: min(var(--sidebar-left-width, 240px), 40vw) minmax(0, 1fr);
   }
   .workspace-grid.hide-left,
   .workspace-grid.hide-left.hide-right {
     grid-template-columns: minmax(0, 1fr);
   }
-  .links-panel {
+  .right-sidebar {
     display: none;
   }
   .user-email {
@@ -1230,15 +1288,21 @@ html.theme-dark .vault-grid a {
     display: block;
     position: relative;
   }
-  .tree-pane {
+  .left-sidebar {
     display: none;
     position: absolute;
     z-index: 5;
     inset: 0 15% 0 0;
     box-shadow: 8px 0 30px rgba(0, 0, 0, 0.2);
   }
-  .tree-pane.open {
+  .left-sidebar.open {
     display: block;
+  }
+  .left-sidebar .tree-pane {
+    display: block;
+  }
+  .sidebar-resize-handle {
+    display: none;
   }
   .mobile-tree-button {
     display: inline-block;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   KeyRound,
@@ -19,7 +19,9 @@ import { LinksPanel } from '../components/LinksPanel';
 import { NoteViewer } from '../components/NoteViewer';
 import { EmptyState, ErrorState, IndexPending, Loading } from '../components/Status';
 import { TokenManager } from '../components/TokenManager';
+import { SidebarResizeHandle } from '../components/SidebarResizeHandle';
 import { useSidebarPref } from '../hooks/useSidebarPref';
+import { useSidebarWidths } from '../hooks/useSidebarWidths';
 import { encodePathForHash, parseHashView } from '../vault/path-url';
 
 type ResolveState =
@@ -52,6 +54,7 @@ export function VaultWorkspace() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [leftOpen, toggleLeft] = useSidebarPref('tephra:sidebar-left', true);
   const [rightOpen, toggleRight] = useSidebarPref('tephra:sidebar-right', true);
+  const sidebarWidths = useSidebarWidths();
   async function load() {
     setError(undefined);
     try {
@@ -252,23 +255,44 @@ export function VaultWorkspace() {
       </header>
       <div
         className={`workspace-grid ${leftOpen ? '' : 'hide-left'} ${showLinksPanel && rightOpen ? '' : 'hide-right'}`}
+        style={
+          {
+            '--sidebar-left-width': `${sidebarWidths.left.width}px`,
+            '--sidebar-right-width': `${sidebarWidths.right.width}px`,
+          } as CSSProperties
+        }
       >
-        <aside
-          id="vault-files-pane"
-          className={`tree-pane ${treeOpen ? 'open' : ''} ${leftOpen ? '' : 'collapsed'}`}
-          aria-label="Vault files"
+        <div
+          className={`sidebar-pane left-sidebar ${treeOpen ? 'open' : ''} ${leftOpen ? '' : 'collapsed'}`}
         >
-          <div className="pane-title">
-            <strong>Files</strong>
-            <span>{files.length}</span>
-          </div>
-          <FileBrowser
-            files={files}
-            vaultId={vaultId}
-            {...(selected === undefined ? {} : { selectedPath: selected.path })}
-            onSelect={open}
-          />
-        </aside>
+          <aside
+            id="vault-files-pane"
+            className={`tree-pane ${treeOpen ? 'open' : ''} ${leftOpen ? '' : 'collapsed'}`}
+            aria-label="Vault files"
+          >
+            <div className="pane-title">
+              <strong>Files</strong>
+              <span>{files.length}</span>
+            </div>
+            <FileBrowser
+              files={files}
+              vaultId={vaultId}
+              {...(selected === undefined ? {} : { selectedPath: selected.path })}
+              onSelect={open}
+            />
+          </aside>
+          {leftOpen && (
+            <SidebarResizeHandle
+              side="left"
+              controls="vault-files-pane"
+              label="Resize file browser"
+              width={sidebarWidths.left.width}
+              minWidth={sidebarWidths.minWidth}
+              maxWidth={sidebarWidths.maxWidth}
+              onResize={sidebarWidths.left.resize}
+            />
+          )}
+        </div>
         <section className="content-pane">
           {pending && <IndexPending />}
           {view.type === 'home' &&
@@ -314,14 +338,25 @@ export function VaultWorkspace() {
                   </p>
                 )}
                 {selected.kind === 'markdown' ? (
-                  <NoteViewer
-                    vaultId={vaultId}
-                    fileId={selected.fileId}
-                    file={selected}
-                    onOpen={open}
-                    onSaved={refreshAfterSave}
-                    getPathForFileId={(fileId) => pathByFileId.get(fileId)}
-                  />
+                  <>
+                    <NoteViewer
+                      vaultId={vaultId}
+                      fileId={selected.fileId}
+                      file={selected}
+                      onOpen={open}
+                      onSaved={refreshAfterSave}
+                      getPathForFileId={(fileId) => pathByFileId.get(fileId)}
+                    />
+                    <section className="local-graph" aria-label="Local graph panel">
+                      <GraphView
+                        vaultId={vaultId}
+                        onOpen={open}
+                        rootId={selected.fileId}
+                        scope="local"
+                        selectedId={selected.fileId}
+                      />
+                    </section>
+                  </>
                 ) : (
                   <AttachmentViewer vaultId={vaultId} file={selected} />
                 )}
@@ -329,12 +364,23 @@ export function VaultWorkspace() {
             ))}
         </section>
         {showLinksPanel && rightOpen && (
-          <LinksPanel
-            id="vault-links-pane"
-            links={links?.links ?? []}
-            backlinks={links?.backlinks ?? []}
-            onOpen={openFileId}
-          />
+          <div className="sidebar-pane right-sidebar">
+            <LinksPanel
+              id="vault-links-pane"
+              links={links?.links ?? []}
+              backlinks={links?.backlinks ?? []}
+              onOpen={openFileId}
+            />
+            <SidebarResizeHandle
+              side="right"
+              controls="vault-links-pane"
+              label="Resize links panel"
+              width={sidebarWidths.right.width}
+              minWidth={sidebarWidths.minWidth}
+              maxWidth={sidebarWidths.maxWidth}
+              onResize={sidebarWidths.right.resize}
+            />
+          </div>
         )}
       </div>
     </main>
