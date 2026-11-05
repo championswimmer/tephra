@@ -119,7 +119,9 @@ export function GraphView({
   // state changes — which re-render this section — do not rebuild it.
   const graphNodes = graph?.nodes;
   const fallbackList = useMemo(() => {
-    if (!graphNodes) return null;
+    // The local graph is a per-note panel; a vault-wide note list under it
+    // reads as unrelated "tags", so only the global graph keeps the fallback.
+    if (!graphNodes || rootId) return null;
     const noteNodes = graphNodes.filter((node) => node.kind === 'note');
     const shown = noteNodes.slice(0, FALLBACK_LIST_LIMIT);
     const hidden = noteNodes.length - shown.length;
@@ -139,7 +141,7 @@ export function GraphView({
         {hidden > 0 && <li>…and {hidden} more — use search to open a note</li>}
       </ul>
     );
-  }, [graphNodes, selectedId, onOpen]);
+  }, [graphNodes, selectedId, onOpen, rootId]);
 
   // Stale-while-revalidate (plan 016, Lane B): paint the IndexedDB snapshot
   // instantly when present, then revalidate in the background. When the
@@ -288,7 +290,7 @@ export function GraphView({
         <div
           className="graph-canvas"
           role="img"
-          aria-label={`Interactive note relationship graph with ${visible?.nodes.length ?? 0} notes and ${visible?.links.length ?? 0} connections. The note list below offers the same notes as buttons.`}
+          aria-label={`Interactive note relationship graph with ${visible?.nodes.length ?? 0} notes and ${visible?.links.length ?? 0} connections. ${rootId ? '' : 'The note list below offers the same notes as buttons.'}`}
           data-testid="graph-canvas"
         >
           <TephraGraph

@@ -114,6 +114,13 @@ describe('local graph', () => {
     expect(screen.getByTestId('tephra-graph-canvas')).toHaveAttribute('tabindex', '0');
   });
 
+  it('does not render the vault-wide note list under the local graph', async () => {
+    vi.mocked(api.graph).mockResolvedValue(chainFixture);
+    renderLocal(<LocalGraph vaultId="vault-1" fileId="b" onOpen={vi.fn()} />);
+    await ready();
+    expect(screen.queryByRole('list', { name: 'Notes in graph' })).not.toBeInTheDocument();
+  });
+
   it('honours the persisted local depth without touching global settings', async () => {
     window.localStorage.setItem(
       'tephra:graph:vault-1:local',
