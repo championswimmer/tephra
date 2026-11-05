@@ -92,7 +92,7 @@ export function VaultListPage() {
         <div>
           <p className="eyebrow">Library</p>
           <h1>Your vaults</h1>
-          <p>Read-only mirrors synchronized from Obsidian.</p>
+          <p>Synced with Obsidian. Edit in the browser or on your device.</p>
         </div>
         <form className="create-vault" onSubmit={create}>
           <label htmlFor="vault-name" className="sr-only">

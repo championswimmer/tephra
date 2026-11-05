@@ -1,9 +1,9 @@
 # Tephra Server
 
-Tephra Stage 1 is a private, read-only web mirror for vaults uploaded by the Tephra
-Obsidian plugin. The primary self-hosted profile is one Node.js container serving both the
-API and built web application, with SQLite and content-addressed blobs persisted under
-`/data`.
+Tephra Stage 1 is a private web mirror for vaults synced from the Tephra Obsidian
+plugin, with in-browser note editing. The primary self-hosted profile is one Node.js
+container serving both the API and built web application, with SQLite and
+content-addressed blobs persisted under `/data`.
 
 ## Local development
 
@@ -166,7 +166,7 @@ numbered migration file plus code that understands the previous version.
 
 | Client / platform              | Status                                             |
 | ------------------------------ | -------------------------------------------------- |
-| Desktop Obsidian plugin        | Tested (Stage 1 sync and read-only web mirror)     |
+| Desktop Obsidian plugin        | Tested (Stage 1 sync and in-browser editing)       |
 | Evergreen desktop browsers     | Tested (current Chrome, Firefox, Safari, Edge)     |
 | Mobile browsers (Web Crypto)   | Supported via the mobile-path Web Crypto code path |
 | Physical mobile device testing | Pending — manual test on a real phone not yet done |

@@ -4,7 +4,7 @@
 
 **Operator:** [name and contact]
 
-This Tephra instance stores account identifiers, authentication records, device metadata, vault paths and metadata, Markdown content, attachments, and revision history supplied by authorized users and their Obsidian plugins. It processes this data only to synchronize and provide authenticated read-only web access to the selected vaults.
+This Tephra instance stores account identifiers, authentication records, device metadata, vault paths and metadata, Markdown content, attachments, and revision history supplied by authorized users and their Obsidian plugins. It processes this data only to synchronize the selected vaults and provide authenticated web access, including in-browser editing, to their owners.
 
 Data is stored in [hosting location/provider]. It is not sold or used for advertising. Infrastructure subprocessors are [list providers]. Server logs retain [describe request metadata and retention] and must not contain passwords, session values, upload tokens, or vault content.
 

@@ -3,7 +3,7 @@
  *
  * Obsidian ships a single built-in "Default" theme with two base color
  * schemes (light / dark). Additional looks come from community themes, which
- * are out of scope for Stage 1 (read-only mirror). The values below mirror
+ * are out of scope for Stage 1. The values below mirror
  * Obsidian's bundled `app.css` for `.theme-light` / `.theme-dark` so the web
  * vault and the website match the default Obsidian appearance.
  */

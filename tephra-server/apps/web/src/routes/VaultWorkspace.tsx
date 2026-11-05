@@ -299,7 +299,6 @@ export function VaultWorkspace() {
             (files.length ? (
               <EmptyState title={`Welcome to ${vault.name}`}>
                 <p>Select a file from the tree or open the graph.</p>
-                <p className="readonly-badge">Read-only mirror</p>
               </EmptyState>
             ) : (
               <EmptyState title="This vault is empty">
