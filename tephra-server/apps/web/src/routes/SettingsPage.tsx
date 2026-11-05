@@ -44,13 +44,6 @@ export function SettingsPage() {
         </p>
         <Link to="/settings/mcp">Connect an AI agent →</Link>
       </section>
-      <section className="settings-card">
-        <h2>Read-only mirror</h2>
-        <p>
-          Vault content can only be changed from your local Obsidian vault. This web application
-          never writes into it.
-        </p>
-      </section>
     </main>
   );
 }

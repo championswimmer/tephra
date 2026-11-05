@@ -1,8 +1,8 @@
 # Getting Started: Sync Your Obsidian Vault to Your Tephra Server
 
 This guide walks you from a freshly hosted Tephra server on your personal VPS
-to a working Obsidian sync. By the end, your vault will be mirrored as a
-private, read-only website you can browse from any browser.
+to a working Obsidian sync. By the end, your vault will be mirrored to a
+private website you can browse and edit from any browser.
 
 **What you need before starting**
 
@@ -22,11 +22,12 @@ private, read-only website you can browse from any browser.
 3. You create an **upload token** for that vault (scoped to that vault only).
 4. You install the **Tephra Sync** plugin in Obsidian and paste in the
    server URL, vault ID, and token.
-5. The plugin uploads your notes and attachments. The web UI becomes your
-   read-only mirror.
+5. The plugin syncs your notes and attachments. The web UI shows your vault,
+   and edits you make there flow back into Obsidian on the next sync.
 
-> Stage 1 is upload-only: the server never writes back into your Obsidian
-> vault. Your local vault stays the source of truth.
+> Sync runs both ways: the plugin uploads local changes, and pulls down edits
+> made in the web UI or by an AI agent. Your local vault is still the copy you
+> open every day.
 
 ---
 
@@ -133,16 +134,16 @@ If the vault still shows empty, see Troubleshooting below.
 - **Normal edits just sync.** The plugin also reconciles automatically after
   startup, on local file changes, on settings changes, and every ten minutes.
 - **Renames are safe.** The plugin tags Markdown notes with a `tephra-file-id`
-  frontmatter property to preserve identity across renames — this is its only
-  write to your vault, and it is harmless.
+  frontmatter property to preserve identity across renames. That tag and
+  applying edits made elsewhere are the only writes it makes to your vault.
 - **Syncing a second device (e.g. your phone):** create a second token in the
   Tokens tab (Step 3), install the plugin in mobile Obsidian (Step 4), and
   enter the same server URL and vault ID with the new token (Step 5). Both
   devices mirror into the same server-side vault.
 - **Revoking access:** open the Tokens tab, click **Revoke** next to the lost
   or retired device's token.
-- **Backups:** your Obsidian folder is still the source of truth — keep
-  backing it up as before. For the server side, back up the whole `/data`
+- **Backups:** your Obsidian folder is still where you do most of your work —
+  keep backing it up as before. For the server side, back up the whole `/data`
   volume; see "Persistence and backup" in `tephra-server/README.md`.
 
 ---

@@ -1013,14 +1013,6 @@ html.theme-dark .vault-grid a {
   margin: 0.75rem 0;
   white-space: pre-wrap;
 }
-.readonly-badge {
-  display: inline-block;
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
 
 /* Settings modal */
 .modal-backdrop {
