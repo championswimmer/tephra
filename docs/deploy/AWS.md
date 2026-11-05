@@ -82,6 +82,29 @@ DOMAIN=notes.example.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
 8. Open `https://notes.example.com/setup`, create the first user with the bootstrap token.
 9. Remove `TEPHRA_BOOTSTRAP_TOKEN` from `.env` / SSM, then `docker compose up -d`.
 
+## Environment variables
+
+The one-command script and the CloudFormation stack write these for you. On the EC2 path
+they live in `/opt/tephra/.env` (mode 600) and are loaded by Compose; on the
+CloudFormation path the two secrets are generated in Secrets Manager and injected at boot.
+
+| Variable                 | Needed          | Value here                                              | Purpose                                                     |
+| ------------------------ | --------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.example.com`                             | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_SESSION_SECRET`  | always          | generated, 32 random bytes                              | Signs and protects browser sessions                         |
+| `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | generated; also in `~/.tephra-aws-<domain>.env` locally | Creates the first admin; delete it after setup              |
+| `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                                       | Database file on the EBS volume                             |
+| `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`                                           | Attachment store on the EBS volume                          |
+
+Do not set `TEPHRA_DATABASE_DRIVER` or `TEPHRA_BLOB_DRIVER` to anything except `sqlite`
+and `filesystem`. The complete list, including defaults, is in
+[`tephra-server/README.md`](../../tephra-server/README.md#configuration).
+
+After setup, delete the `TEPHRA_BOOTSTRAP_TOKEN` line from `/opt/tephra/.env` and run
+`docker compose up -d` in `/opt/tephra`. Both AWS paths expose only ports 80/443, so add
+temporary SSH or SSM access first (the bootstrap endpoint is disabled permanently once a
+user exists).
+
 ## Notes
 
 - Back up by snapshotting the EBS volume. Keep one instance only (SQLite).

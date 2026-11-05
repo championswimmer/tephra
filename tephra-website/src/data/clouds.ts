@@ -14,6 +14,17 @@ export interface CloudStep {
   cmd?: string;
 }
 
+export interface CloudEnv {
+  /** Where the variables live on this cloud. Short HTML. */
+  where: string;
+  /** Command that prints the current values. */
+  cmd?: string;
+  /** What the deploy script already filled in. Short HTML. */
+  note?: string;
+  /** How to remove the one-time bootstrap token after first login. Short HTML. */
+  remove: string;
+}
+
 export interface Cloud {
   slug: string;
   name: string;
@@ -26,6 +37,7 @@ export interface Cloud {
   needs: string[];
   launch?: { href: string; label: string };
   steps: CloudStep[];
+  env: CloudEnv;
   doc: string;
   diagram: {
     region: string;
@@ -78,6 +90,13 @@ export const clouds: Cloud[] = [
         cmd: 'railway variable list --service tephra --kv | grep BOOTSTRAP',
       },
     ],
+    env: {
+      where:
+        'Service → <strong>Variables</strong> in Railway, or <code>railway variable set NAME=value --service tephra</code>.',
+      cmd: 'railway variable list --service tephra --kv | grep TEPHRA_',
+      note: 'The deploy command fills in every value below. <code>TEPHRA_PUBLIC_URL</code> tracks the Railway domain; set it yourself once you attach a custom domain. Do not set <code>PORT</code> — Railway injects it.',
+      remove: 'Run <code>railway variable delete TEPHRA_BOOTSTRAP_TOKEN --service tephra</code>.',
+    },
     doc: `${repo}/blob/main/docs/deploy/RAILWAY.md`,
     diagram: {
       region: 'Railway project',
@@ -112,6 +131,14 @@ export const clouds: Cloud[] = [
         cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.example.com.env',
       },
     ],
+    env: {
+      where:
+        'The <code>/opt/tephra/.env</code> file on the instance (mode 600), loaded by Docker Compose. The CloudFormation path keeps the two secrets in Secrets Manager and writes them into that file at boot.',
+      cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.example.com.env',
+      note: 'The one-command script sets <code>TEPHRA_PUBLIC_URL</code> and both secrets, and keeps a local copy of the secrets in <code>~/.tephra-aws-&lt;domain&gt;.env</code>.',
+      remove:
+        'Delete the <code>TEPHRA_BOOTSTRAP_TOKEN</code> line from <code>/opt/tephra/.env</code> and run <code>docker compose up -d</code> in <code>/opt/tephra</code>. Both AWS paths expose only ports 80/443, so add temporary SSH or SSM access first. The bootstrap endpoint is disabled permanently once a user exists.',
+    },
     doc: `${repo}/blob/main/docs/deploy/AWS.md`,
     diagram: {
       region: 'AWS account',
@@ -151,6 +178,14 @@ export const clouds: Cloud[] = [
         cmd: 'gcloud secrets versions access latest --secret=tephra-bootstrap-token',
       },
     ],
+    env: {
+      where:
+        'Secret Manager for the two secrets, plus <code>/opt/tephra/tephra.env</code> on the VM, written at first boot. The script creates <code>tephra-session-secret</code> and <code>tephra-bootstrap-token</code> for you.',
+      cmd: 'gcloud secrets versions access latest --secret=tephra-bootstrap-token',
+      note: 'The deploy script sets <code>TEPHRA_PUBLIC_URL=https://&lt;domain&gt;</code> and reads both secrets from Secret Manager on every boot.',
+      remove:
+        'Remove the <code>TEPHRA_BOOTSTRAP_TOKEN</code> line from <code>/opt/tephra/tephra.env</code> and restart the container, then delete the secret in Secret Manager.',
+    },
     doc: `${repo}/blob/main/docs/deploy/GCP.md`,
     diagram: {
       region: 'Google Cloud project',
@@ -159,7 +194,12 @@ export const clouds: Cloud[] = [
       proxy: caddy,
       storage: { icon: 'lucide:hard-drive', title: 'Persistent Disk', sub: '/data · your notes' },
       secrets: { icon: 'lucide:key-round', title: 'Secret Manager', sub: 'session + setup token' },
-      extra: { icon: 'lucide:package', title: 'Artifact Registry', sub: 'Tephra image', link: 'pulls' },
+      extra: {
+        icon: 'lucide:package',
+        title: 'Artifact Registry',
+        sub: 'Tephra image',
+        link: 'pulls',
+      },
     },
   },
   {
@@ -191,6 +231,14 @@ export const clouds: Cloud[] = [
         cmd: 'ssh root@YOUR_IP grep BOOTSTRAP /opt/tephra/tephra.env',
       },
     ],
+    env: {
+      where:
+        '<code>/opt/tephra/tephra.env</code> on the Droplet (mode 600), loaded by Docker Compose.',
+      cmd: "ssh root@YOUR_IP 'grep TEPHRA_ /opt/tephra/tephra.env'",
+      note: 'The deploy script generates both secrets and sets <code>TEPHRA_PUBLIC_URL</code> for you.',
+      remove:
+        'Run <code>ssh root@YOUR_IP "sed -i \'/BOOTSTRAP_TOKEN/d\' /opt/tephra/tephra.env && cd /opt/tephra && docker compose --env-file tephra.env up -d"</code>.',
+    },
     doc: `${repo}/blob/main/docs/deploy/DO.md`,
     diagram: {
       region: 'DigitalOcean',

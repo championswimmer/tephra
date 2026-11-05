@@ -5,6 +5,7 @@ import Footer from '../../components/Footer.astro';
 import InfraDiagram from '../../components/diagram/InfraDiagram.astro';
 import { Icon } from 'astro-icon/components';
 import { clouds, type Cloud } from '../../data/clouds';
+import { envStatusLabel, envVars } from '../../data/env';
 
 export function getStaticPaths() {
   return clouds.map((cloud) => ({ params: { cloud: cloud.slug }, props: { cloud } }));
@@ -83,6 +84,66 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
             ))
           }
         </ol>
+
+        <section class="env-sec" id="env">
+          <div class="env-head">
+            <span class="eyebrow">Reference</span>
+            <h2>Environment variables</h2>
+            <p class="env-lede">
+              The steps above already set everything Tephra needs. This is the complete list for a
+              manual install, a different host, or a change later on.
+            </p>
+          </div>
+
+          <div class="env-where">
+            <div class="env-where-title">
+              <Icon name="lucide:key-round" size="16" aria-hidden="true" />
+              <span>Where they live on {cloud.name}</span>
+            </div>
+            <p set:html={cloud.env.where} />
+            {
+              cloud.env.cmd && (
+                <pre class="cmd" title="Click to select"><span class="prompt" aria-hidden="true">$</span><code>{cloud.env.cmd}</code></pre>
+              )
+            }
+            {cloud.env.note && <p class="env-note" set:html={cloud.env.note} />}
+          </div>
+
+          <div class="env-table-wrap">
+            <table class="env-table">
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">When</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  envVars.map((v) => (
+                    <tr>
+                      <th scope="row"><code>{v.name}</code></th>
+                      <td><span class={`env-tag env-tag-${v.status}`}>{envStatusLabel[v.status]}</span></td>
+                      <td class="env-default">
+                        {v.fallback ? <code>{v.fallback}</code> : <span class="env-dash">none</span>}
+                      </td>
+                      <td set:html={v.purpose} />
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="env-callout">
+            <Icon name="lucide:triangle-alert" size="18" aria-hidden="true" />
+            <p>
+              <strong>Delete <code>TEPHRA_BOOTSTRAP_TOKEN</code> after your first login.</strong>
+              {' '}It only exists to create the first admin. <span set:html={cloud.env.remove} />
+            </p>
+          </div>
+        </section>
 
         <a class="next" href={`${base}#login`}>
           <span>
@@ -331,6 +392,178 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
     overflow-wrap: anywhere;
     user-select: all;
     cursor: text;
+  }
+
+  /* Environment variables */
+  .env-sec {
+    margin-top: 56px;
+    padding-top: 40px;
+    border-top: 1px solid var(--border);
+  }
+
+  .env-head .eyebrow {
+    margin-bottom: 14px;
+  }
+
+  .env-head h2 {
+    margin-bottom: 8px;
+  }
+
+  .env-lede {
+    max-width: 62ch;
+    margin-bottom: 0;
+    color: var(--text-muted);
+  }
+
+  .env-where {
+    margin: 26px 0 22px;
+    padding: 20px 22px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .env-where-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .env-where p {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  .env-where p:last-child {
+    margin-bottom: 0;
+  }
+
+  .env-where .cmd {
+    margin-bottom: 12px;
+  }
+
+  .env-note {
+    font-size: 0.9rem;
+  }
+
+  .env-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-card);
+  }
+
+  .env-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    text-align: left;
+  }
+
+  .env-table thead th {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .env-table tbody th,
+  .env-table tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .env-table tbody tr:last-child th,
+  .env-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .env-table tbody th {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .env-table tbody td {
+    color: var(--text-muted);
+  }
+
+  .env-table code {
+    white-space: nowrap;
+  }
+
+  .env-default code {
+    white-space: normal;
+  }
+
+  .env-dash {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+
+  .env-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .env-tag-required {
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--crystal-400) 40%, transparent);
+    color: var(--accent);
+  }
+
+  .env-tag-setup {
+    border: 1px dashed var(--crystal-400);
+    color: var(--text-muted);
+  }
+
+  .env-tag-default {
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .env-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 18px;
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--crystal-400) 45%, transparent);
+    background: var(--accent-soft);
+  }
+
+  .env-callout > :global(svg) {
+    flex: none;
+    margin-top: 3px;
+    color: var(--accent);
+  }
+
+  .env-callout p {
+    margin: 0;
+    font-size: 0.93rem;
+  }
+
+  .env-callout strong {
+    color: var(--accent);
   }
 
   .next {

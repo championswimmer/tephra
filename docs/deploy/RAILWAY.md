@@ -81,4 +81,30 @@ Colors: blue = users, orange = network edge, green = compute, red = data, purple
    railway variable delete TEPHRA_BOOTSTRAP_TOKEN --service tephra
    ```
 
+## Environment variables
+
+`npm run deploy:railway` sets every variable below. Inspect them with
+`railway variable list --service tephra --kv`; change one with
+`railway variable set NAME=value --service tephra`.
+
+| Variable                 | Needed          | Value here                                                          | Purpose                                                     |
+| ------------------------ | --------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://${{RAILWAY_PUBLIC_DOMAIN}}` (override for a custom domain) | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_SESSION_SECRET`  | always          | generated, 32 random bytes                                          | Signs and protects browser sessions                         |
+| `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | generated, 32 random bytes                                          | Creates the first admin; delete it after setup              |
+| `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                                                   | Database file on the volume                                 |
+| `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`                                                       | Attachment store on the volume                              |
+| `TEPHRA_MAX_BLOB_BYTES`  | no              | `104857600` (100 MiB)                                               | Largest accepted attachment                                 |
+
+Do not set `PORT`: Railway injects it and the app binds `0.0.0.0:$PORT`.
+`TEPHRA_DATABASE_DRIVER` must stay `sqlite` and `TEPHRA_BLOB_DRIVER` must stay
+`filesystem` (both are pinned in `.railway/railway.ts`). The complete list,
+including defaults, is in [`tephra-server/README.md`](../../tephra-server/README.md#configuration).
+
+After the first account exists, remove the one-time token:
+
+```bash
+railway variable delete TEPHRA_BOOTSTRAP_TOKEN --service tephra
+```
+
 Details: `tephra-server/deploy/railway/README.md`.
