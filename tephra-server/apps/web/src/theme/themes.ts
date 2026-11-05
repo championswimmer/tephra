@@ -44,6 +44,17 @@ export const DEFAULT_LIGHT_VARIABLES: Record<string, string> = {
   '--interactive-accent-hover': '#8f7ee6',
   '--code-background': '#f2f3f5',
   '--code-normal': '#2e3338',
+  // Syntax highlighting for rendered code blocks (sugar-high tokens).
+  '--sh-keyword': '#d53984',
+  '--sh-string': '#08915a',
+  '--sh-class': '#d9730d',
+  '--sh-property': '#086ddd',
+  '--sh-entity': '#a07800',
+  '--sh-jsxliterals': '#7852ee',
+  '--sh-identifier': '#2e3338',
+  '--sh-sign': '#71747b',
+  '--sh-comment': '#a3a6ad',
+  '--sh-space': 'inherit',
   '--graph-node': '#000000',
   '--graph-line': '#d1d1d1',
   '--graph-node-tag': '#7f6df2',
@@ -74,6 +85,17 @@ export const DEFAULT_DARK_VARIABLES: Record<string, string> = {
   '--interactive-accent-hover': '#8f7ee6',
   '--code-background': '#161616',
   '--code-normal': '#dcddde',
+  // Syntax highlighting for rendered code blocks (sugar-high tokens).
+  '--sh-keyword': '#fb7ab4',
+  '--sh-string': '#44cf6e',
+  '--sh-class': '#e9973f',
+  '--sh-property': '#5aa8ff',
+  '--sh-entity': '#e0de71',
+  '--sh-jsxliterals': '#a882ff',
+  '--sh-identifier': '#dcddde',
+  '--sh-sign': '#999999',
+  '--sh-comment': '#666666',
+  '--sh-space': 'inherit',
   '--graph-node': '#5dbcd2',
   '--graph-line': '#4b4b4b',
   '--graph-node-tag': '#5dbcd2',
@@ -110,10 +132,7 @@ export function getThemeById(id: string): ObsidianThemeDefinition {
 }
 
 /** Resolve a base setting ('light' | 'dark' | 'system') to a concrete theme. */
-export function resolveBaseScheme(
-  base: ThemeBase,
-  prefersDark: boolean,
-): ObsidianThemeDefinition {
+export function resolveBaseScheme(base: ThemeBase, prefersDark: boolean): ObsidianThemeDefinition {
   if (base === 'dark' || (base === 'system' && prefersDark)) {
     return getThemeById('obsidian-dark');
   }

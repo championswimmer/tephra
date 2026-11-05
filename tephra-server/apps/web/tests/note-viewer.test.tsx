@@ -79,3 +79,23 @@ describe('NoteViewer', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Note not found: Missing');
   });
 });
+
+describe('code block highlighting', () => {
+  it('highlights fenced code blocks and escapes their content', async () => {
+    vi.spyOn(api, 'rendered').mockResolvedValue({
+      title: 'Code',
+      html: '<pre><code>const a = &quot;&lt;b&gt;&quot;; // hi</code></pre><p><code>inline</code></p>',
+    });
+    const { container } = render(
+      <NoteViewer vaultId="vault-1" fileId="file-1" onOpen={vi.fn()} />,
+      { wrapper },
+    );
+    await screen.findByRole('heading', { name: 'Code' });
+    const block = container.querySelector('pre > code')!;
+    expect(block.querySelector('.sh__token--keyword')).toHaveTextContent('const');
+    expect(block.querySelector('.sh__token--comment')).toHaveTextContent('// hi');
+    expect(block.querySelector('b')).toBeNull();
+    expect(block.textContent).toBe('const a = "<b>"; // hi');
+    expect(container.querySelector('p > code')?.querySelector('span')).toBeNull();
+  });
+});
