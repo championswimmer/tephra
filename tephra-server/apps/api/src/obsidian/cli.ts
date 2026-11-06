@@ -18,6 +18,20 @@ const cli = process.argv[1];
 const secrets = JSON.parse(fs.readFileSync(0, 'utf8'));
 process.argv = [process.execPath, cli, ...process.argv.slice(2),
   ...Object.entries(secrets).flatMap(([key, value]) => ['--' + key, value])];
+// Match normal script invocation for Commander's automatic argument parsing.
+// Leaving --eval here makes it treat the CLI path in argv[1] as a command.
+process.execArgv = [];
+// obsidian-headless 0.0.14 sign-in can receive HTTP 504 with fetch's default
+// Accept-Language: *. Keep the official request and supply a real language.
+// https://github.com/obsidianmd/obsidian-headless/issues/58
+if (process.argv[2] === 'login') {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init = {}) => {
+    const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+    if (!headers.has('Accept-Language')) headers.set('Accept-Language', 'en-US');
+    return originalFetch(input, { ...init, headers });
+  };
+}
 createRequire(cli)(cli);
 `;
 

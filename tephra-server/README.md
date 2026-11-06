@@ -106,6 +106,10 @@ prebuilt `better-sqlite3` addon; platforms without an available prebuild need
 native compilation tools. Installation failures are shown in Settings and can
 be retried without affecting Tephra plugin vaults.
 
+The login subprocess supplies an explicit `Accept-Language` header to avoid
+the [upstream 0.0.14 sign-in timeout](https://github.com/obsidianmd/obsidian-headless/issues/58).
+The installed official CLI package remains unmodified.
+
 The installation cache is disposable. On boot, enabled vaults are resumed and
 the client is installed again if its cached executable has disappeared. No
 installation occurs on boot when there are no enabled native vaults. If the
@@ -145,9 +149,16 @@ pause the client, check the base hash, atomically replace the local file, import
 the change, and restart Sync. Stale edits return a conflict. Editing is disabled
 for paused, unhealthy, initial-sync or download-only native vaults.
 
-Tephra plugin uploads are rejected for native vaults. Use only official
-Obsidian Sync for those vaults on your devices. Obsidian configuration/plugin
-sync is disabled, and hidden/configuration files are excluded from Tephra's
+Direct device sync requests (`POST .../sync/plan`, `PUT .../blobs/:hash`, and
+`POST .../sync/commit`) return HTTP 409 with code `VAULT_SYNC_MODE_MISMATCH`
+and a message explaining that official Obsidian Sync is enabled for the vault.
+This also applies before setup, while paused, or after a Sync error, including
+requests using previously issued upload tokens. Upload token creation is
+rejected with the same reason; read and agent tokens remain available.
+Plugin read APIs and MCP tools remain available under their usual scopes;
+browser and agent edits still require an active, healthy two-way connection.
+Use official Obsidian Sync for those vaults on your devices. Obsidian
+configuration/plugin sync is disabled, and hidden/configuration files are excluded from Tephra's
 content import. Run one service process per local data volume; shared network
 filesystems and multiple replicas are unsupported.
 

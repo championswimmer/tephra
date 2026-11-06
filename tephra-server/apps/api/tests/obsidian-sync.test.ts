@@ -233,7 +233,7 @@ describe('official client adapter and runtime installer', () => {
       const capture = join(root, 'capture.json');
       await writeFile(
         cli,
-        `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify({ argv: process.argv, osCommand: fs.readFileSync('/proc/self/cmdline', 'utf8') }));`,
+        `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify({ argv: process.argv, execArgv: process.execArgv, osCommand: fs.readFileSync('/proc/self/cmdline', 'utf8') }));`,
       );
       const installer = new RuntimeInstaller(root);
       vi.spyOn(installer, 'ensure').mockResolvedValue(cli);
@@ -245,8 +245,14 @@ describe('official client adapter and runtime installer', () => {
       });
       const result = JSON.parse(await readFile(capture, 'utf8')) as {
         argv: string[];
+        execArgv: string[];
         osCommand: string;
       };
+      // The official CLI's Commander parser auto-detects eval mode from
+      // execArgv and would interpret argv[1] (the CLI path) as the command.
+      expect(result.execArgv).not.toContain('--eval');
+      expect(result.execArgv).not.toContain('-e');
+      expect(result.argv.slice(0, 3)).toEqual([process.execPath, cli, 'login']);
       expect(result.argv).toContain(' password with spaces  ');
       expect(result.argv).toContain('123456');
       expect(result.osCommand).not.toMatch(/password with spaces|user@example.com|123456/);
@@ -272,6 +278,69 @@ describe('official client adapter and runtime installer', () => {
         env: clientEnvironment(root),
       }),
     ).rejects.toMatchObject({ code: 'OBSIDIAN_SYNC_FAILED' });
+  });
+  it('sets an explicit login language while preserving the official request and explicit language', async () => {
+    const root = await temporary();
+    const cli = join(root, 'fake-official.cjs');
+    const preload = join(root, 'fetch-stub.cjs');
+    const capture = join(root, 'requests.json');
+    await writeFile(
+      preload,
+      `
+      const fs = require('node:fs');
+      const requests = [];
+      globalThis.fetch = async (input, init) => {
+        const headers = Object.fromEntries(new Headers(init.headers));
+        requests.push({ input, ...init, headers });
+        fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify(requests));
+        return new Response(null, { status: headers['accept-language'] ? 200 : 504 });
+      };
+    `,
+    );
+    await writeFile(
+      cli,
+      `
+      async function main() {
+        for (const language of [undefined, 'fr-FR']) {
+          const response = await fetch('https://api.obsidian.md/user/signin', {
+            method: 'POST',
+            headers: {
+              Origin: 'https://obsidian.md',
+              'Content-Type': 'application/json',
+              ...(language ? { 'Accept-Language': language } : {}),
+            },
+            body: 'original-request-body',
+          });
+          if (!response.ok) process.exitCode = 2;
+        }
+      }
+      main().catch(() => { process.exitCode = 2; });
+    `,
+    );
+    const installer = new RuntimeInstaller(root);
+    vi.spyOn(installer, 'ensure').mockResolvedValue(cli);
+    const client = new HeadlessClient(installer, (input) =>
+      runProcess({
+        ...input,
+        args: ['--require', preload, ...input.args],
+      }),
+    );
+    await client.login(vaultPaths(root, 'vault-1'), {
+      email: 'user@example.com',
+      password: 'test-password',
+    });
+    expect(JSON.parse(await readFile(capture, 'utf8'))).toEqual(
+      ['en-US', 'fr-FR'].map((language) => ({
+        input: 'https://api.obsidian.md/user/signin',
+        method: 'POST',
+        headers: {
+          origin: 'https://obsidian.md',
+          'content-type': 'application/json',
+          'accept-language': language,
+        },
+        body: 'original-request-body',
+      })),
+    );
   });
 });
 
@@ -616,36 +685,212 @@ describe('owner setup API and protocol separation', () => {
     expect(created.status).toBe(201);
     expect((await created.json()).vault.syncMode).toBe('obsidian');
   });
-  it('rejects plugin uploads and commits, including credentials created before native setup', async () => {
-    const context = await nativeFixture();
-    const prefix = `/api/v1/vaults/${context.vault.id}`;
-    const headers = {
-      authorization: `Bearer ${context.token}`,
-      'content-type': 'application/json',
-    };
-    const files: never[] = [];
-    const manifestHash = await hashManifest(files);
-    for (const endpoint of ['plan', 'commit']) {
-      const response = await context.app.request(`${prefix}/sync/${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ deviceId: 'plugin', manifestHash, files }),
+  it.each(['not-connected', 'bidirectional', 'pull-only', 'paused', 'error'] as const)(
+    'rejects direct sync with the reason in state %s, including old credentials',
+    async (state) => {
+      const context = await nativeFixture();
+      if (state !== 'not-connected') {
+        await connect(context, state === 'pull-only' ? 'pull-only' : 'bidirectional');
+        if (state === 'paused' || state === 'error')
+          await context.service.enable(context.vault, false);
+        if (state === 'error')
+          await context.database.obsidianSync.upsert({
+            ...(await context.service.status(context.vault)),
+            phase: 'error',
+            lastErrorCode: 'OBSIDIAN_SYNC_FAILED',
+          });
+      }
+      const headers = {
+        authorization: `Bearer ${context.token}`,
+        'content-type': 'application/json',
+      };
+      const beforeFiles = await context.database.vaultFiles.listByVault(context.vault.id);
+      const beforeRevisions = await context.database.vaultRevisions.list(context.vault.id);
+      const beforeBlobs = context.blobStore.values.size;
+      const beforeTokens = await context.database.apiTokens.listByVault(context.vault.id);
+      const files: never[] = [];
+      const manifestHash = await hashManifest(files);
+      const bytes = new TextEncoder().encode('Direct device upload');
+      const hash = await sha256Hex(bytes);
+      const expectSyncReason = async (response: Response) => {
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          error: {
+            code: 'VAULT_SYNC_MODE_MISMATCH',
+            message: expect.stringMatching(
+              /Official Obsidian Sync is enabled.*Direct device sync.*disabled/,
+            ),
+          },
+        });
+      };
+      for (const vaultRef of [context.vault.id, context.vault.name]) {
+        const prefix = `/api/v1/vaults/${encodeURIComponent(vaultRef)}`;
+        for (const endpoint of ['plan', 'commit']) {
+          for (const body of [JSON.stringify({ deviceId: 'plugin', manifestHash, files }), '{}'])
+            await expectSyncReason(
+              await context.app.request(`${prefix}/sync/${endpoint}`, {
+                method: 'POST',
+                headers,
+                body,
+              }),
+            );
+        }
+        await expectSyncReason(
+          await context.app.request(`${prefix}/blobs/${hash}`, {
+            method: 'PUT',
+            headers: { ...headers, 'x-tephra-blob-size': String(bytes.byteLength) },
+            body: bytes,
+          }),
+        );
+        await expectSyncReason(
+          await context.app.request(`${prefix}/tokens`, {
+            method: 'POST',
+            headers: context.browserHeaders,
+            body: JSON.stringify({ name: 'bad plugin' }),
+          }),
+        );
+      }
+      expect(await context.database.vaultFiles.listByVault(context.vault.id)).toEqual(beforeFiles);
+      expect(await context.database.vaultRevisions.list(context.vault.id)).toEqual(beforeRevisions);
+      expect(context.blobStore.values.size).toBe(beforeBlobs);
+      expect(await context.database.apiTokens.listByVault(context.vault.id)).toEqual(beforeTokens);
+    },
+  );
+
+  it.each(['sync', 'blobs'])(
+    'keeps plugin read APIs available for vault names and file IDs named %s',
+    async (name) => {
+      const context = await nativeFixture();
+      await context.database.vaults.update({ ...context.vault, name });
+      const bytes = new TextEncoder().encode('# Readable\n');
+      const hash = await sha256Hex(bytes);
+      await context.blobStore.put({ hash, bytes });
+      await context.database.vaultFiles.upsert({
+        vaultId: context.vault.id,
+        fileId: name,
+        path: 'Readable.md',
+        blobHash: hash,
+        size: bytes.byteLength,
+        mtime: 1,
+        kind: 'markdown',
+        updatedRevision: 0,
       });
-      expect(response.status).toBe(409);
-      expect((await response.json()).error.code).toBe('VAULT_SYNC_MODE_MISMATCH');
-    }
-    const upload = await context.app.request(`${prefix}/blobs/${'a'.repeat(64)}`, {
-      method: 'PUT',
-      headers: { ...headers, 'x-tephra-blob-size': '0' },
-      body: '',
-    });
-    expect(upload.status).toBe(409);
-    const token = await context.app.request(`${prefix}/tokens`, {
+      const prefix = `/api/v1/vaults/${name}`;
+      const issued = await context.app.request(`${prefix}/tokens`, {
+        method: 'POST',
+        headers: context.browserHeaders,
+        body: JSON.stringify({ name: 'reader', scopes: ['vault:read-metadata'] }),
+      });
+      expect(issued.status).toBe(201);
+      const { value: readToken, token } = await issued.json();
+      for (const credential of [context.token, readToken]) {
+        const headers = { authorization: `Bearer ${credential}` };
+        for (const suffix of [
+          '',
+          '/files',
+          '/tree',
+          '/resolve?path=Readable.md',
+          '/search?q=Readable',
+          '/changes?sinceRevision=0',
+          '/links',
+          `/files/${name}`,
+          `/files/${name}/links`,
+          `/files/${name}/backlinks`,
+        ]) {
+          const response = await context.app.request(`${prefix}${suffix}`, { headers });
+          expect(response.status, suffix).toBe(200);
+        }
+        for (const suffix of [
+          `/files/${name}/content`,
+          `/files/${name}/raw`,
+          `/attachments/${name}`,
+        ]) {
+          const response = await context.app.request(`${prefix}${suffix}`, { headers });
+          expect(response.status, suffix).toBe(200);
+          expect(await response.text()).toBe('# Readable\n');
+        }
+      }
+      expect(
+        (await context.app.request(`${prefix}/tokens`, { headers: context.browserHeaders })).status,
+      ).toBe(200);
+      expect(
+        (
+          await context.app.request(`${prefix}/tokens/${token.id}`, {
+            method: 'DELETE',
+            headers: context.browserHeaders,
+          })
+        ).status,
+      ).toBe(204);
+    },
+  );
+
+  it('keeps MCP tools and scoped content edits working through official Sync', async () => {
+    const context = await nativeFixture();
+    context.vault = { ...context.vault, name: 'sync' };
+    await context.database.vaults.update(context.vault);
+    await connect(context);
+    const prefix = '/api/v1/vaults/sync';
+    const issued = await context.app.request(`${prefix}/tokens`, {
       method: 'POST',
       headers: context.browserHeaders,
-      body: JSON.stringify({ name: 'bad plugin' }),
+      body: JSON.stringify({ name: 'agent', scopes: ['vault:read-metadata', 'vault:write'] }),
     });
-    expect(token.status).toBe(409);
-    expect(context.blobStore.values.size).toBe(0);
+    expect(issued.status).toBe(201);
+    const { value: token } = await issued.json();
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+    const call = async (name: string, args: Record<string, unknown> = {}) => {
+      const response = await context.app.request('/mcp', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name, arguments: args },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.error).toBeUndefined();
+      expect(body.result.isError).toBeUndefined();
+      return body.result.structuredContent;
+    };
+    expect((await call('list_vaults')).vaults).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: context.vault.id })]),
+    );
+    expect((await call('read_note', { path: 'Note.md' })).content).toContain('# Original');
+    expect(await call('create_note', { path: 'Agent.md', content: '# Agent\n' })).toMatchObject({
+      status: 'committed',
+    });
+    const read = await call('read_note', { path: 'Agent.md' });
+    expect(
+      await call('update_note', {
+        path: 'Agent.md',
+        baseHash: read.blobHash,
+        content: '# Updated by MCP\n',
+      }),
+    ).toMatchObject({ status: 'committed' });
+    expect((await call('search_notes', { query: 'Agent' })).results).toHaveLength(1);
+    expect(await readFile(join(context.paths.vault, 'Agent.md'), 'utf8')).toBe(
+      '# Updated by MCP\n',
+    );
+    await expect
+      .poll(async () => (await context.service.status(context.vault)).phase)
+      .toBe('running');
+    const file = (await context.database.vaultFiles.findByPath(context.vault.id, 'Agent.md'))!;
+    const content = '# Updated by API\n';
+    const saved = await context.app.request(`${prefix}/files/${file.fileId}/content`, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'if-match': file.blobHash,
+        'x-tephra-content-size': String(new TextEncoder().encode(content).byteLength),
+      },
+      body: content,
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ status: 'committed', revision: 4 });
+    expect(await readFile(join(context.paths.vault, 'Agent.md'), 'utf8')).toBe(content);
+    await expect.poll(() => context.client.active).toBe(1);
   });
 });

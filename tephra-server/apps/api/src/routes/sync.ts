@@ -3,6 +3,7 @@ import { tokenIsActive } from '@tephra/auth';
 import { sha256Hex, sha256Schema, syncCommitBodySchema, syncPlanBodySchema } from '@tephra/protocol';
 import { diffRevision } from '@tephra/vault-model';
 import { fail } from '../http/errors.js';
+import { requireTephraSync } from '../http/sync-mode.js';
 import { jsonBody } from '../http/body.js';
 import { findVaultByIdOrName, ownedVault } from '../http/auth.js';
 import { DEFAULT_BLOB_LIMIT, storeBlobIfAbsent } from '../http/blob-write.js';
@@ -101,7 +102,7 @@ export function registerSyncRoutes(app: ApiApp, dependencies: ApiDependencies): 
       await repositories.lockVault(vaultId);
       const vault = await repositories.vaults.findById(vaultId);
       if (!vault) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
-      if (vault.syncMode === 'obsidian') fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'This vault uses official Obsidian Sync.');
+      requireTephraSync(vault);
       const principal = c.get('principal');
       if (principal.kind !== 'token')
         fail(403, 'VAULT_ACCESS_DENIED', 'An upload token is required.');

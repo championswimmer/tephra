@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createOpaqueToken, hashOpaqueToken } from '@tephra/auth';
 import { fail } from '../http/errors.js';
+import { requireTephraSync } from '../http/sync-mode.js';
 import { jsonBody } from '../http/body.js';
 import { ownedVault, requireSession } from '../http/auth.js';
 import type { ApiApp, ApiDependencies } from '../http/types.js';
@@ -35,8 +36,7 @@ export function registerTokenRoutes(app: ApiApp, dependencies: ApiDependencies):
     const principal = requireSession(c);
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const body = await jsonBody(c, tokenSchema);
-    if (vault.syncMode === 'obsidian' && body.scopes.includes('vault:upload'))
-      fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'Plugin uploads cannot write to an Obsidian Sync vault. Use read or agent access.');
+    if (body.scopes.includes('vault:upload')) requireTephraSync(vault);
     const now = dependencies.clock.now();
     let deviceId = body.deviceId ?? null;
     if (deviceId) {

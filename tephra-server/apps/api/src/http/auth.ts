@@ -10,6 +10,7 @@ import {
 import type { ApiTokenScope, Vault } from '@tephra/vault-model';
 import type { TransactionRepositories } from '@tephra/database-core';
 import { fail } from './errors.js';
+import { requireTephraSync } from './sync-mode.js';
 import type { ApiApp, ApiDependencies, AppContext } from './types.js';
 
 export function bearer(c: AppContext): string | null {
@@ -115,20 +116,22 @@ export function registerAuthMiddleware(app: ApiApp, dependencies: ApiDependencie
 /** Per-vault access check; the scope depends on which endpoint family is addressed. */
 export function registerVaultScopeMiddleware(app: ApiApp, dependencies: ApiDependencies): void {
   app.use('/api/v1/vaults/:vaultId/*', async (c, next) => {
+    // Match operations relative to the vault, so vault names and file IDs
+    // such as "sync" or "blobs" cannot change access checks or sync policy.
+    const vaultPath = c.req.path.split('/').slice(5).join('/');
+    const isDirectSync =
+      (c.req.method === 'POST' && /^sync\/(?:plan|commit)$/.test(vaultPath)) ||
+      (c.req.method === 'PUT' && /^blobs\/[^/]+$/.test(vaultPath));
     // The web content write endpoint needs `vault:write`, which neither
     // implies nor requires the neighbouring read/upload scopes; session
     // principals (the vault owner) satisfy every scope via canAccessVault.
-    const scope =
-      c.req.path.includes('/sync/') || c.req.path.includes('/blobs/')
-        ? 'vault:upload'
-        : c.req.method === 'PUT' &&
-            c.req.path.includes('/files/') &&
-            c.req.path.endsWith('/content')
-          ? 'vault:write'
-          : 'vault:read-metadata';
+    const scope = isDirectSync
+      ? 'vault:upload'
+      : c.req.method === 'PUT' && /^files\/[^/]+\/content$/.test(vaultPath)
+        ? 'vault:write'
+        : 'vault:read-metadata';
     const vault = await ownedVault(c, dependencies, scope);
-    if (vault.syncMode === 'obsidian' && (c.req.path.includes('/sync/') || c.req.path.includes('/blobs/')))
-      fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'This vault uses official Obsidian Sync. Use Obsidian Sync on your devices.');
+    if (isDirectSync) requireTephraSync(vault);
     return next();
   });
 }
