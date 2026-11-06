@@ -7,7 +7,7 @@ private website you can browse and edit from any browser.
 **What you need before starting**
 
 - Your Tephra server running and reachable at a URL you control
-  (for example `https://tephra.example.com`). If you have not deployed yet,
+  (for example `https://notes.yourname.com`). If you have not deployed yet,
   see `tephra-server/README.md` (Docker section) for the single-container setup.
 - The `TEPHRA_BOOTSTRAP_TOKEN` value you started the server with
   (only needed once, to create the first admin account).
@@ -33,7 +33,7 @@ private website you can browse and edit from any browser.
 
 ## Step 1 — Open your server and create the admin account
 
-1. In a browser, open your server URL (for example `https://tephra.example.com`).
+1. In a browser, open your server URL (for example `https://notes.yourname.com`).
 2. Because no users exist yet, Tephra shows the **bootstrap page**.
 3. Enter your `TEPHRA_BOOTSTRAP_TOKEN` and choose an admin username and password.
 4. Confirm you can log in.
@@ -60,7 +60,7 @@ docker start tephra
 3. Click the new vault to open it. It will be empty — that is expected.
 
 **Find your vault ID:** once the vault is open, look at the browser address bar.
-The URL looks like `https://tephra.example.com/v/<vault-id>` — the part after
+The URL looks like `https://notes.yourname.com/v/<vault-id>` — the part after
 `/v/` is your **vault ID**. Copy it; you will paste it into Obsidian in Step 4.
 
 ---
@@ -99,7 +99,7 @@ into `<vault>/.obsidian/plugins/tephra-sync/`, then enable **Tephra Sync** in
 1. Open **Settings → Tephra Sync**.
 2. Fill in:
    - **Server URL** — your server's base URL, exactly as you browse it
-     (for example `https://tephra.example.com`, no trailing slash needed).
+     (for example `https://notes.yourname.com`, no trailing slash needed).
      Use HTTPS for anything outside your home network.
    - **Vault ID** — the ID you copied from the browser address bar in Step 2.
    - **Upload token** — the token you copied in Step 3.

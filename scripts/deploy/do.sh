@@ -2,14 +2,14 @@
 # Deploy Tephra to DigitalOcean: Droplet + Volume (/data) + Reserved IP, Docker Compose + Caddy (auto HTTPS).
 # Needs: doctl (authenticated: `doctl auth init`), openssl, ssh key already added to your DO account.
 #
-# Usage:  DOMAIN=notes.example.com [REGION=nyc3] [SIZE=s-1vcpu-2gb] [NAME=tephra] \
-#         [VOLUME_GB=10] [DNS_ZONE=example.com] [REPO=https://github.com/championswimmer/tephra.git] \
+# Usage:  DOMAIN=notes.yourname.com [REGION=nyc3] [SIZE=s-1vcpu-2gb] [NAME=tephra] \
+#         [VOLUME_GB=10] [DNS_ZONE=yourname.com] [REPO=https://github.com/championswimmer/tephra.git] \
 #         [REF=main] ./scripts/deploy/do.sh
 #   DNS_ZONE: set only if that domain is hosted in DO DNS (creates the A record); otherwise add it yourself.
 # Secrets go only into the droplet's user-data (root-only 600 env file); they are never printed.
 set -euo pipefail
 
-: "${DOMAIN:?set DOMAIN, e.g. notes.example.com}"
+: "${DOMAIN:?set DOMAIN, e.g. notes.yourname.com}"
 REGION="${REGION:-nyc3}"
 SIZE="${SIZE:-s-1vcpu-2gb}"
 NAME="${NAME:-tephra}"

@@ -11,7 +11,7 @@ export function renderServerSection(ctx: SettingsContext, containerEl: HTMLEleme
     .setDesc('Base URL of your Tephra instance.')
     .addText((text) =>
       text
-        .setPlaceholder('https://tephra.example.com')
+        .setPlaceholder('https://notes.yourname.com')
         .setValue(plugin.state.settings.serverUrl)
         .onChange(async (value) => {
           plugin.state.settings.serverUrl = value.trim();

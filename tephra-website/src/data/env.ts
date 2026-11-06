@@ -24,7 +24,7 @@ export const envVars: EnvVar[] = [
     name: 'TEPHRA_PUBLIC_URL',
     status: 'required',
     purpose:
-      'Browser-visible origin, including the scheme (<code>https://notes.example.com</code>). Used for redirects, cookies and MCP OAuth discovery. It must match the address people open.',
+      'Browser-visible origin, including the scheme (<code>https://notes.yourname.com</code>). Used for redirects, cookies and MCP OAuth discovery. It must match the address people open.',
   },
   {
     name: 'TEPHRA_SESSION_SECRET',

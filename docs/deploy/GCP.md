@@ -46,13 +46,13 @@ Colors: blue = users, orange = network edge, green = compute, red = data, purple
 1. Open Cloud Shell with the button above (already logged in), or run `gcloud auth login`.
 2. Run the script (it builds the image on the VM; set `IMAGE=...` to pull a prebuilt one):
    ```sh
-   PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.example.com \
+   PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.yourname.com \
    scripts/deploy/gcp.sh
    ```
    It creates: static IP, firewall (80/443), 10 GB disk, 2 secrets (`TEPHRA_SESSION_SECRET`, `TEPHRA_BOOTSTRAP_TOKEN`, random via `openssl rand -hex 32`), and the VM.
-3. Add a DNS record at your registrar: `A notes.example.com -> <IP printed by script>`.
-4. Wait ~5 min (first boot builds the image). Caddy gets the TLS cert; `TEPHRA_PUBLIC_URL=https://notes.example.com` is set for you.
-5. Get the bootstrap token and open `https://notes.example.com/setup`:
+3. Add a DNS record at your registrar: `A notes.yourname.com -> <IP printed by script>`.
+4. Wait ~5 min (first boot builds the image). Caddy gets the TLS cert; `TEPHRA_PUBLIC_URL=https://notes.yourname.com` is set for you.
+5. Get the bootstrap token and open `https://notes.yourname.com/setup`:
    ```sh
    gcloud secrets versions access latest --secret=tephra-bootstrap-token
    ```
@@ -72,7 +72,7 @@ editing `tephra.env`.
 
 | Variable                 | Needed          | Value here                              | Purpose                                                     |
 | ------------------------ | --------------- | --------------------------------------- | ----------------------------------------------------------- |
-| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.example.com`             | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.yourname.com`            | Browser-visible origin for redirects, cookies and MCP OAuth |
 | `TEPHRA_SESSION_SECRET`  | always          | Secret Manager `tephra-session-secret`  | Signs and protects browser sessions                         |
 | `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | Secret Manager `tephra-bootstrap-token` | Creates the first admin; delete it after setup              |
 | `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                       | Database file on the Persistent Disk                        |

@@ -49,18 +49,18 @@ Template: `tephra-server/deploy/aws/cloudformation.yaml` (EC2, encrypted EBS, El
 # A) no hosting needed
 aws cloudformation deploy --stack-name tephra --capabilities CAPABILITY_IAM \
   --template-file tephra-server/deploy/aws/cloudformation.yaml \
-  --parameter-overrides DomainName=notes.example.com
+  --parameter-overrides DomainName=notes.yourname.com
 
 # B) host once, then the button above works (replace YOUR-BUCKET in its URL)
 aws s3 cp tephra-server/deploy/aws/cloudformation.yaml s3://YOUR-BUCKET/tephra.yaml
 ```
 
-Then: point `A notes.example.com` at the `ElasticIp` output, run the `BootstrapTokenCommand` output to get the setup token, and open `/setup`.
+Then: point `A notes.yourname.com` at the `ElasticIp` output, run the `BootstrapTokenCommand` output to get the setup token, and open `/setup`.
 
 ## Quick: one command
 
 ```sh
-DOMAIN=notes.example.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
+DOMAIN=notes.yourname.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
 ```
 
 `HOSTED_ZONE_ID` and `REGION` (default `us-east-1`) are optional. Skip to step 5.
@@ -70,16 +70,16 @@ DOMAIN=notes.example.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
 1. Launch Ubuntu 24.04, `t3.small`, add a 20 GB gp3 EBS volume.
 2. Security group: inbound TCP 80 and 443 only. No SSH.
 3. Allocate an Elastic IP and attach it to the instance.
-4. DNS: `A notes.example.com -> <Elastic IP>` (Route 53 or any DNS).
+4. DNS: `A notes.yourname.com -> <Elastic IP>` (Route 53 or any DNS).
 5. Secrets (never commit, never paste in chat):
    ```sh
    openssl rand -hex 32   # TEPHRA_SESSION_SECRET
    openssl rand -hex 24   # TEPHRA_BOOTSTRAP_TOKEN
    ```
    Keep them in `/opt/tephra/.env` (`chmod 600`). Prefer SSM Parameter Store SecureString if you use an instance role.
-6. Set `TEPHRA_PUBLIC_URL=https://notes.example.com` in the same file.
+6. Set `TEPHRA_PUBLIC_URL=https://notes.yourname.com` in the same file.
 7. Mount EBS at `/data`, build the image, run compose (see user-data in the script).
-8. Open `https://notes.example.com/setup`, create the first user with the bootstrap token.
+8. Open `https://notes.yourname.com/setup`, create the first user with the bootstrap token.
 9. Remove `TEPHRA_BOOTSTRAP_TOKEN` from `.env` / SSM, then `docker compose up -d`.
 
 ## Environment variables
@@ -90,7 +90,7 @@ CloudFormation path the two secrets are generated in Secrets Manager and injecte
 
 | Variable                 | Needed          | Value here                                              | Purpose                                                     |
 | ------------------------ | --------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
-| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.example.com`                             | Browser-visible origin for redirects, cookies and MCP OAuth |
+| `TEPHRA_PUBLIC_URL`      | always          | `https://notes.yourname.com`                            | Browser-visible origin for redirects, cookies and MCP OAuth |
 | `TEPHRA_SESSION_SECRET`  | always          | generated, 32 random bytes                              | Signs and protects browser sessions                         |
 | `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | generated; also in `~/.tephra-aws-<domain>.env` locally | Creates the first admin; delete it after setup              |
 | `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                                       | Database file on the EBS volume                             |

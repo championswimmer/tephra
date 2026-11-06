@@ -58,23 +58,23 @@ Colors: blue = users, orange = network edge, green = compute, red = data, purple
    printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_BOOTSTRAP_TOKEN --stdin --service tephra
    ```
 
-4. Custom subdomain: in Railway, Service > Settings > Networking > Custom Domain, add `tephra.example.com`. Add the CNAME it shows at your DNS provider:
+4. Custom subdomain: in Railway, Service > Settings > Networking > Custom Domain, add `notes.yourname.com`. Add the CNAME it shows at your DNS provider:
 
    ```text
-   tephra  CNAME  <value-from-railway>.up.railway.app
+   notes  CNAME  <value-from-railway>.up.railway.app
    ```
 
-   Or set `domains: ["tephra.example.com"]` on the service in `.railway/railway.ts`.
+   Or set `domains: ["notes.yourname.com"]` on the service in `.railway/railway.ts`.
 
 5. Set the public URL, then redeploy:
 
    ```bash
-   railway variable set TEPHRA_PUBLIC_URL=https://tephra.example.com --service tephra
+   railway variable set TEPHRA_PUBLIC_URL=https://notes.yourname.com --service tephra
    ```
 
    Note: re-running `deploy:railway` resets this to the Railway domain unless you edit `railway.ts`.
 
-6. First boot: open `https://tephra.example.com/setup`, enter the bootstrap token, create your account.
+6. First boot: open `https://notes.yourname.com/setup`, enter the bootstrap token, create your account.
 7. Delete the one-time token:
 
    ```bash

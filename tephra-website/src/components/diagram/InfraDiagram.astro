@@ -119,7 +119,7 @@ const cylinder = `M${sx} ${store.top} v${store.h} a${store.w / 2} ${store.ry} 0 
 
       <!-- Nodes -->
       <Node x={user.x} y={rowY} w={user.w} h={H} icon="lucide:monitor-smartphone" title="You" sub="browser + Obsidian" />
-      <Node x={dns.x} y={rowY} w={dns.w} h={H} icon="lucide:globe" title="Your domain" sub="notes.you.com" />
+      <Node x={dns.x} y={rowY} w={dns.w} h={H} icon="lucide:globe" title="Your domain" sub="notes.yourname.com" />
       <Node x={gw.x} y={rowY} w={gw.w} h={H} {...d.gateway} />
       {proxy && d.proxy && <Node x={proxy.x} y={rowY} w={proxy.w} h={H} {...d.proxy} />}
       <Node x={sec.x} y={sec.y} w={sec.w} h={sec.h} layout="row" {...d.secrets} />

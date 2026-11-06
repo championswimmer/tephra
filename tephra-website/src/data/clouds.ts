@@ -119,7 +119,7 @@ export const clouds: Cloud[] = [
       {
         title: 'Launch it',
         body: 'Swap in your own domain. The server, disk, IP and HTTPS are all set up for you.',
-        cmd: 'DOMAIN=notes.example.com scripts/deploy/aws.sh',
+        cmd: 'DOMAIN=notes.yourname.com scripts/deploy/aws.sh',
       },
       {
         ...pointDomain,
@@ -128,13 +128,13 @@ export const clouds: Cloud[] = [
       {
         title: 'Copy your setup token',
         body: "Give the server about 5 minutes to warm up. You'll paste the token once, when you create your login.",
-        cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.example.com.env',
+        cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.yourname.com.env',
       },
     ],
     env: {
       where:
         'The <code>/opt/tephra/.env</code> file on the instance (mode 600), loaded by Docker Compose. The CloudFormation path keeps the two secrets in Secrets Manager and writes them into that file at boot.',
-      cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.example.com.env',
+      cmd: 'grep BOOTSTRAP ~/.tephra-aws-notes.yourname.com.env',
       note: 'The one-command script sets <code>TEPHRA_PUBLIC_URL</code> and both secrets, and keeps a local copy of the secrets in <code>~/.tephra-aws-&lt;domain&gt;.env</code>.',
       remove:
         'Delete the <code>TEPHRA_BOOTSTRAP_TOKEN</code> line from <code>/opt/tephra/.env</code> and run <code>docker compose up -d</code> in <code>/opt/tephra</code>. Both AWS paths expose only ports 80/443, so add temporary SSH or SSM access first. The bootstrap endpoint is disabled permanently once a user exists.',
@@ -169,7 +169,7 @@ export const clouds: Cloud[] = [
       {
         title: 'Launch it',
         body: 'Swap in your project ID and domain.',
-        cmd: 'PROJECT=my-project ZONE=us-central1-a DOMAIN=notes.example.com scripts/deploy/gcp.sh',
+        cmd: 'PROJECT=my-project ZONE=us-central1-a DOMAIN=notes.yourname.com scripts/deploy/gcp.sh',
       },
       pointDomain,
       {
@@ -219,11 +219,11 @@ export const clouds: Cloud[] = [
       {
         title: 'Launch it',
         body: 'Swap in your own domain. The Droplet, Volume, IP and HTTPS are all set up for you.',
-        cmd: 'DOMAIN=notes.example.com ./scripts/deploy/do.sh',
+        cmd: 'DOMAIN=notes.yourname.com ./scripts/deploy/do.sh',
       },
       {
         ...pointDomain,
-        body: `${pointDomain.body} Domain already on DigitalOcean? Add <code>DNS_ZONE=example.com</code> to the command above and this is done for you.`,
+        body: `${pointDomain.body} Domain already on DigitalOcean? Add <code>DNS_ZONE=yourname.com</code> to the command above and this is done for you.`,
       },
       {
         title: 'Copy your setup token',

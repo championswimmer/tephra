@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy Tephra to one EC2 instance (+ EBS at /data, Elastic IP, Caddy HTTPS).
-# Usage: DOMAIN=notes.example.com [REGION=us-east-1] [HOSTED_ZONE_ID=Z123] \
+# Usage: DOMAIN=notes.yourname.com [REGION=us-east-1] [HOSTED_ZONE_ID=Z123] \
 #        [INSTANCE_TYPE=t3.small] [REPO=https://github.com/championswimmer/tephra.git] \
 #        scripts/deploy/aws.sh
 # Needs: aws CLI (configured), openssl. Uses the default VPC.
@@ -8,7 +8,7 @@
 # Note: secrets are passed via EC2 user-data (readable by account admins/IMDS).
 set -euo pipefail
 
-: "${DOMAIN:?set DOMAIN, e.g. notes.example.com}"
+: "${DOMAIN:?set DOMAIN, e.g. notes.yourname.com}"
 REGION="${REGION:-us-east-1}"
 HOSTED_ZONE_ID="${HOSTED_ZONE_ID:-}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t3.small}"

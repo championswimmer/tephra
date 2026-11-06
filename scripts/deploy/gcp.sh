@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy Tephra to one GCE VM + Persistent Disk, with Caddy for HTTPS.
-# Usage: PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.example.com \
+# Usage: PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.yourname.com \
 #        scripts/deploy/gcp.sh
 # Optional: NAME=tephra DISK_GB=10 MACHINE=e2-small
 #   IMAGE=us-docker.pkg.dev/my-proj/tephra/tephra:latest  (pull a prebuilt image;

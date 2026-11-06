@@ -56,7 +56,7 @@ The server is one Node.js container with SQLite and blobs on one persistent disk
 
 Required environment variables (the cloud deploy scripts generate the secrets and set them):
 
-- `TEPHRA_PUBLIC_URL` — browser-visible HTTPS origin, e.g. `https://notes.example.com`.
+- `TEPHRA_PUBLIC_URL` — browser-visible HTTPS origin, e.g. `https://notes.yourname.com`.
 - `TEPHRA_SESSION_SECRET` — at least 32 random bytes; signs browser sessions.
 - `TEPHRA_BOOTSTRAP_TOKEN` — one-time token for creating the first admin at `/setup`; delete it after that account exists.
 

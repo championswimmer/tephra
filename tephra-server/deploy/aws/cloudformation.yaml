@@ -7,7 +7,7 @@ Description: >-
 Parameters:
   DomainName:
     Type: String
-    Description: Hostname you will point at the Elastic IP, e.g. notes.example.com
+    Description: Hostname you will point at the Elastic IP, e.g. notes.yourname.com
     AllowedPattern: '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$'
   InstanceType:
     Type: String
