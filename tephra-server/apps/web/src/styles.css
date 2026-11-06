@@ -230,20 +230,11 @@ button:disabled {
   letter-spacing: 0.15em;
   margin: 0;
 }
-.create-vault,
 .inline-form {
   display: flex;
   align-items: end;
   gap: 0.5rem;
 }
-.create-vault {
-  flex-wrap: wrap;
-}
-.create-vault label:not(.sr-only) {
-  display: grid;
-  gap: 0.25rem;
-}
-.create-vault input,
 .inline-form input {
   min-width: 220px;
 }
@@ -267,35 +258,43 @@ input {
   background: var(--background-modifier-form-field);
   color: var(--text-normal);
 }
-.vault-grid {
+.new-vault-button {
+  align-self: center;
+  white-space: nowrap;
+}
+.vault-list {
   list-style: none;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 1rem;
+  margin: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.vault-list > li + li {
+  border-top: 1px solid var(--background-modifier-border);
 }
 .vault-card {
-  display: grid;
-  gap: 0.75rem;
+  display: flex;
+  align-items: center;
 }
 .vault-card-main {
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  flex: 1;
+  min-width: 0;
   padding: 1rem;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 0.2rem 0.8rem;
   text-decoration: none;
-  border-radius: 8px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
   color: var(--text-normal);
 }
-html.theme-dark .vault-card-main {
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+.vault-card-main strong {
+  overflow-wrap: anywhere;
 }
 .vault-card-main:hover {
-  border-color: var(--background-modifier-border-focus);
-  transform: translateY(-1px);
+  background: var(--background-modifier-hover);
+}
+.vault-card-main:focus-visible {
+  outline-offset: -3px;
 }
 .vault-card-main > span:last-child {
   color: var(--text-muted);
@@ -311,8 +310,19 @@ html.theme-dark .vault-card-main {
   width: 1.7rem;
   height: 1.7rem;
 }
-.vault-delete-button {
-  justify-self: end;
+.vault-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+.vault-card-actions a {
+  text-decoration: none;
+}
+.vault-card-actions .vault-delete-button {
+  font-size: 0.82rem;
+  padding: 0.2rem 0.55rem;
 }
 .status {
   min-height: 220px;
@@ -1084,6 +1094,27 @@ html.theme-dark .vault-card-main {
   gap: 0.75rem;
   margin-top: 0.5rem;
 }
+.create-vault-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.create-vault-dialog > p {
+  font-size: 0.88rem;
+  margin-block: 0.5rem 1.25rem;
+}
+.create-vault-dialog select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--text-normal);
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  padding: 0.4rem 0.6rem;
+}
+.create-vault-dialog .modal-form p {
+  font-size: 0.82rem;
+  margin: 0;
+}
 
 /* Theme selector */
 .theme-options {
@@ -1276,14 +1307,15 @@ html.theme-dark .vault-card-main {
     align-items: stretch;
     flex-direction: column;
   }
-  .create-vault {
+  .new-vault-button {
+    align-self: start;
+  }
+  .vault-card {
     flex-direction: column;
     align-items: stretch;
   }
-  .create-vault input,
-  .create-vault select {
-    min-width: 0;
-    width: 100%;
+  .vault-card-actions {
+    padding-top: 0;
   }
   .workspace-grid {
     display: block;

@@ -247,3 +247,8 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       Chromium Settings/create-vault flow and existing 18-file sample-vault sync,
       all 16 note renders and graph generation pass. Live paid-account sign-in,
       MFA and encrypted remote round trips still require manual account testing.
+- [x] Vault library cleanup: compact vault rows with settings and deletion actions;
+      New vault opens a native dialog for the name and sync method, with setup
+      guidance and the permanence notice inside the dialog. Creation errors stay
+      in the form; cancellation resets it and restores focus. Full `npm run check`
+      and Chromium desktop/mobile creation and existing deletion checks pass.

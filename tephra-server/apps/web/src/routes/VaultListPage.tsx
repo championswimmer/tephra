@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, X } from 'lucide-react';
+import { Archive, Plus, Settings, X } from 'lucide-react';
 import { api } from '../api/client';
 import type { Vault } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/Status';
@@ -15,13 +15,25 @@ export function VaultListPage() {
   const [error, setError] = useState<unknown>();
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createError, setCreateError] = useState<unknown>();
+  const createDialogRef = useRef<HTMLDialogElement | null>(null);
+  const createNameRef = useRef<HTMLInputElement | null>(null);
+  const createTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [syncMode, setSyncMode] = useState<'tephra' | 'obsidian'>('tephra');
   const [obsidianAvailable, setObsidianAvailable] = useState(false);
   const [createdHeadless, setCreatedHeadless] = useState<Vault | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void api.obsidianAvailable().then((result) => { if (!cancelled) setObsidianAvailable(result.available); }).catch(() => {});
-    return () => { cancelled = true; };
+    void api
+      .obsidianAvailable()
+      .then((result) => {
+        if (!cancelled) setObsidianAvailable(result.available);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const [deletingVault, setDeletingVault] = useState<Vault | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -80,20 +92,34 @@ export function VaultListPage() {
       clearTimeout(timer);
     };
   }, [hasHeadlessVault, load]);
+  useEffect(() => {
+    if (showCreateDialog) {
+      createDialogRef.current?.showModal();
+      createNameRef.current?.focus();
+    }
+  }, [showCreateDialog]);
+  function closeCreateDialog() {
+    createDialogRef.current?.close();
+    setShowCreateDialog(false);
+    setName('');
+    setSyncMode('tephra');
+    setCreateError(undefined);
+    createTriggerRef.current?.focus();
+  }
   async function create(event: FormEvent) {
     event.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || creating) return;
     setCreating(true);
-    setError(undefined);
+    setCreateError(undefined);
     try {
       const { vault } = await api.createVault(trimmed, syncMode);
       mutationVersion.current += 1;
       setVaults((current) => [...(current ?? []).filter((item) => item.id !== vault.id), vault]);
-      setName('');
       setCreatedHeadless(syncMode === 'obsidian' ? vault : null);
+      closeCreateDialog();
     } catch (caught) {
-      setError(caught);
+      setCreateError(caught);
     } finally {
       setCreating(false);
     }
@@ -147,41 +173,33 @@ export function VaultListPage() {
           <h1>Your vaults</h1>
           <p>Synced with Obsidian. Edit in the browser or on your device.</p>
         </div>
-        <form className="create-vault" onSubmit={create}>
-          <label htmlFor="vault-name" className="sr-only">
-            Vault name
-          </label>
-          <input
-            id="vault-name"
-            disabled={creating}
-            placeholder="New vault name"
-            aria-describedby="vault-creation-method"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <label>
-            Sync method
-            <select disabled={creating} value={syncMode} onChange={(event) => setSyncMode(event.target.value as 'tephra' | 'obsidian')}>
-              <option value="tephra">Direct Tephra plugin</option>
-              <option value="obsidian" disabled={!obsidianAvailable}>Official Obsidian Sync{!obsidianAvailable ? ' (unavailable)' : ''}</option>
-            </select>
-          </label>
-          <button className="primary" disabled={creating}>
-            {creating ? 'Creating…' : 'Create vault'}
-          </button>
-        </form>
+        <button
+          type="button"
+          className="primary icon-button new-vault-button"
+          ref={createTriggerRef}
+          onClick={() => setShowCreateDialog(true)}
+        >
+          <Plus aria-hidden="true" focusable="false" className="icon" />
+          New vault
+        </button>
       </div>
-      <p id="vault-creation-method">The sync method is permanent and cannot be changed after creation. Choose direct Tephra plugin sync or official Obsidian Sync. <Link to="/settings#obsidian-sync">Manage your Obsidian account →</Link></p>
-      {createdHeadless && <p role="status">Vault created. <Link to={`/v/${encodeURIComponent(createdHeadless.name)}/settings`}>Set up Obsidian Sync →</Link></p>}
+      {createdHeadless && (
+        <p role="status">
+          Vault created.{' '}
+          <Link to={`/v/${encodeURIComponent(createdHeadless.name)}/settings`}>
+            Set up Obsidian Sync →
+          </Link>
+        </p>
+      )}
       {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
       {!vaults && !error ? (
         <Loading label="Loading vaults…" />
       ) : vaults?.length === 0 ? (
         <EmptyState title="No vaults yet">
-          <p>Create a vault and choose its sync method above.</p>
+          <p>Select New vault to get started.</p>
         </EmptyState>
       ) : (
-        <ul className="vault-grid">
+        <ul className="vault-list" aria-label="Vaults">
           {vaults?.map((vault) => (
             <li key={vault.id}>
               <article className="vault-card">
@@ -190,25 +208,120 @@ export function VaultListPage() {
                     <Archive size={28} aria-hidden="true" focusable="false" className="icon" />
                   </span>
                   <strong>{vault.name}</strong>
-                  <span>{vault.syncMode === 'obsidian' ? syncStatus(vault) : `Revision ${vault.latestRevision}`}</span>
+                  <span>
+                    {vault.syncMode === 'obsidian'
+                      ? syncStatus(vault)
+                      : `Revision ${vault.latestRevision}`}
+                  </span>
                 </Link>
-                <Link to={`/v/${encodeURIComponent(vault.name)}/settings`} aria-label={`Settings for ${vault.name}`}>Vault settings</Link>
-                <button
-                  type="button"
-                  className="danger subtle vault-delete-button"
-                  onClick={(event) => {
-                    deleteTriggerRef.current = event.currentTarget;
-                    setDeletingVault(vault);
-                    setDeleteConfirmation('');
-                    setDeleteError(undefined);
-                  }}
-                >
-                  Delete vault
-                </button>
+                <div className="vault-card-actions">
+                  <Link
+                    className="topbar-button icon-button"
+                    to={`/v/${encodeURIComponent(vault.name)}/settings`}
+                    aria-label={`Settings for ${vault.name}`}
+                  >
+                    <Settings aria-hidden="true" focusable="false" className="icon" />
+                    Settings
+                  </Link>
+                  <button
+                    type="button"
+                    className="danger subtle vault-delete-button"
+                    onClick={(event) => {
+                      deleteTriggerRef.current = event.currentTarget;
+                      setDeletingVault(vault);
+                      setDeleteConfirmation('');
+                      setDeleteError(undefined);
+                    }}
+                  >
+                    Delete vault
+                  </button>
+                </div>
               </article>
             </li>
           ))}
         </ul>
+      )}
+      {showCreateDialog && (
+        <dialog
+          className="modal create-vault-dialog"
+          ref={createDialogRef}
+          aria-labelledby="create-vault-title"
+          onCancel={(event) => {
+            event.preventDefault();
+            if (!creating) closeCreateDialog();
+          }}
+        >
+          <div className="modal-header">
+            <h2 id="create-vault-title">Create vault</h2>
+            <button
+              type="button"
+              className="modal-close"
+              disabled={creating}
+              onClick={closeCreateDialog}
+              aria-label="Close create vault dialog"
+            >
+              <X aria-hidden="true" focusable="false" className="icon" />
+            </button>
+          </div>
+          <p className="muted">Give your vault a name and choose how to sync it.</p>
+          <form className="modal-form" onSubmit={create}>
+            <label htmlFor="vault-name">Vault name</label>
+            <input
+              id="vault-name"
+              ref={createNameRef}
+              required
+              disabled={creating}
+              placeholder="My vault"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <label htmlFor="vault-sync-method">Sync method</label>
+            <select
+              id="vault-sync-method"
+              disabled={creating}
+              value={syncMode}
+              aria-describedby="vault-sync-description vault-creation-method"
+              onChange={(event) => setSyncMode(event.target.value as 'tephra' | 'obsidian')}
+            >
+              <option value="tephra">Direct Tephra plugin</option>
+              <option value="obsidian" disabled={!obsidianAvailable}>
+                Official Obsidian Sync{!obsidianAvailable ? ' (unavailable)' : ''}
+              </option>
+            </select>
+            <p className="muted" id="vault-sync-description">
+              {syncMode === 'tephra'
+                ? 'Connect your vault using the Tephra plugin in Obsidian.'
+                : 'Connect an existing remote vault with your Obsidian Sync account. You’ll finish setup in vault settings.'}
+            </p>
+            <p className="muted" id="vault-creation-method">
+              The sync method cannot be changed after creation.
+            </p>
+            {(syncMode === 'obsidian' || !obsidianAvailable) && (
+              <p className="muted">
+                {!obsidianAvailable && 'Official Obsidian Sync is unavailable on this server. '}
+                <Link to="/settings#obsidian-sync">Manage your Obsidian account →</Link>
+              </p>
+            )}
+            {createError !== undefined && (
+              <p className="form-error" role="alert">
+                {errorMessage(createError)}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="topbar-button"
+                disabled={creating}
+                onClick={closeCreateDialog}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="primary" disabled={creating || !name.trim()}>
+                {creating ? 'Creating…' : 'Create vault'}
+              </button>
+            </div>
+          </form>
+        </dialog>
       )}
       {deletingVault && (
         <div className="modal-backdrop" onClick={closeDeleteModal} role="presentation">
