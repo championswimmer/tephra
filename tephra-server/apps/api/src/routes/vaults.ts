@@ -1,3 +1,6 @@
+import type { Vault } from '@tephra/vault-model';
+import { initialObsidianSettings } from '../obsidian/types.js';
+import { requireObsidianService } from './obsidian-sync.js';
 import { z } from 'zod';
 import { fail } from '../http/errors.js';
 import { jsonBody } from '../http/body.js';
@@ -19,7 +22,7 @@ const vaultNameSchema = z
       !/[\u0000-\u001f\u007f-\u009f]/.test(name),
     { message: 'Vault name must not contain slashes or control characters.' },
   );
-const vaultSchema = z.strictObject({ name: vaultNameSchema });
+const vaultSchema = z.strictObject({ name: vaultNameSchema, syncMode: z.enum(['tephra', 'obsidian']).default('tephra') });
 const deleteVaultSchema = z.strictObject({ confirmation: z.string().max(200) });
 
 function isVaultNameConflict(error: unknown): boolean {
@@ -37,10 +40,16 @@ function isVaultNameConflict(error: unknown): boolean {
   );
 }
 
+async function publicVault(vault: Vault, dependencies: ApiDependencies) {
+  if (vault.syncMode !== 'obsidian') return vault;
+  const settings = await dependencies.database.obsidianSync.find(vault.id);
+  return { ...vault, readOnly: !dependencies.obsidianSync || !settings?.enabled || settings.phase !== 'running' || settings.mode !== 'bidirectional' };
+}
+
 export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependencies): void {
   app.get('/api/v1/vaults', async (c) => {
     const principal = requireSession(c);
-    return c.json({ vaults: await dependencies.database.vaults.listByOwner(principal.user.id) });
+    return c.json({ vaults: await Promise.all((await dependencies.database.vaults.listByOwner(principal.user.id)).map(vault => publicVault(vault, dependencies))) });
   });
   app.post('/api/v1/vaults', async (c) => {
     const principal = requireSession(c);
@@ -50,6 +59,7 @@ export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependenci
       id: dependencies.ids.generate(),
       ownerUserId: principal.user.id,
       name: body.name,
+      syncMode: body.syncMode,
       latestRevision: 0,
       createdAt: now,
       updatedAt: now,
@@ -57,7 +67,11 @@ export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependenci
     if ((await dependencies.database.vaults.findByName(vault.name)) !== null)
       fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
     try {
-      await dependencies.database.vaults.insert(vault);
+      if (vault.syncMode === 'obsidian') requireObsidianService(dependencies);
+      await dependencies.database.transaction(async repositories => {
+        await repositories.vaults.insert(vault);
+        if (vault.syncMode === 'obsidian') await repositories.obsidianSync.upsert(initialObsidianSettings(vault.id));
+      });
     } catch (error) {
       if (isVaultNameConflict(error))
         fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
@@ -69,7 +83,7 @@ export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependenci
 
 export function registerVaultRoutes(app: ApiApp, dependencies: ApiDependencies): void {
   app.get('/api/v1/vaults/:vaultId', async (c) =>
-    c.json({ vault: await ownedVault(c, dependencies, 'vault:read-metadata') }),
+    c.json({ vault: await publicVault(await ownedVault(c, dependencies, 'vault:read-metadata'), dependencies) }),
   );
   app.delete('/api/v1/vaults/:vaultId', async (c) => {
     requireSession(c);
@@ -77,6 +91,7 @@ export function registerVaultRoutes(app: ApiApp, dependencies: ApiDependencies):
     const body = await jsonBody(c, deleteVaultSchema);
     if (body.confirmation !== vault.name)
       fail(400, 'VAULT_NAME_MISMATCH', 'Vault name confirmation does not match.');
+    if (vault.syncMode === 'obsidian') await requireObsidianService(dependencies).remove(vault);
     await dependencies.database.vaults.delete(vault.id);
     return c.body(null, 204);
   });

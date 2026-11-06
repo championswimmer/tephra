@@ -1,3 +1,4 @@
+import { requireObsidianService } from './obsidian-sync.js';
 import { z } from 'zod';
 import { hashManifest, sha256Hex, sha256Schema } from '@tephra/protocol';
 import { diffRevision } from '@tephra/vault-model';
@@ -55,6 +56,14 @@ export function registerWebEditRoutes(app: ApiApp, dependencies: ApiDependencies
       fail(400, 'INVALID_MANIFEST', 'Uploaded size does not match the declared size.');
     if (bytes.byteLength > max)
       fail(413, 'BLOB_TOO_LARGE', 'Content exceeds the configured size limit.');
+    if (vault.syncMode === 'obsidian') {
+      let text: string;
+      try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+      catch { fail(400, 'INVALID_MANIFEST', 'Markdown content must be UTF-8.'); }
+      const result = await requireObsidianService(dependencies).writeNote(vault, { kind: 'update', fileId, baseHash: ifMatch }, text);
+      if (result.status === 'conflict' || result.status === 'exists') return c.json({ error: { code: 'EDIT_CONFLICT', message: 'The file changed since it was loaded.' }, current: { blobHash: result.current.blobHash, size: result.current.size, mtime: result.current.mtime, revision: result.current.updatedRevision } }, 409);
+      return c.json({ status: result.status, revision: result.revision, blobHash: result.file.blobHash, size: result.file.size, mtime: result.file.mtime });
+    }
     // Server-computed digest (invariant I3): never trust a client digest.
     const hash = await sha256Hex(bytes);
     Object.assign(c.get('logContext'), {

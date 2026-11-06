@@ -55,6 +55,11 @@ export function VaultWorkspace() {
   const [leftOpen, toggleLeft] = useSidebarPref('tephra:sidebar-left', true);
   const [rightOpen, toggleRight] = useSidebarPref('tephra:sidebar-right', true);
   const sidebarWidths = useSidebarWidths();
+  useEffect(() => {
+    if (vault?.syncMode !== 'obsidian') return;
+    const timer = window.setInterval(() => { void load(); }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [vault?.syncMode, vaultId]);
   async function load() {
     setError(undefined);
     try {
@@ -229,10 +234,10 @@ export function VaultWorkspace() {
           </Link>
           <Link
             className={view.type === 'tokens' ? 'active' : ''}
-            to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/tokens`}
+            to={vault?.syncMode === 'obsidian' ? '/settings#obsidian-sync' : `/v/${encodeURIComponent(vault?.name ?? vaultId)}/tokens`}
           >
             <KeyRound size={14} aria-hidden="true" focusable="false" className="icon" />
-            Tokens
+            {vault?.syncMode === 'obsidian' ? 'Sync settings' : 'Tokens'}
           </Link>
           {showLinksPanel && (
             <button
@@ -312,7 +317,7 @@ export function VaultWorkspace() {
               {...(resolvedFileId === undefined ? {} : { selectedId: resolvedFileId })}
             />
           )}
-          {view.type === 'tokens' && <TokenManager vaultId={vaultId} />}
+          {view.type === 'tokens' && (vault.syncMode === 'obsidian' ? <p>This vault uses official Obsidian Sync. <Link to="/settings#obsidian-sync">Manage sync in Settings</Link>.</p> : <TokenManager vaultId={vaultId} />)}
           {view.type === 'file' &&
             (resolveState.status === 'loading' || resolveState.status === 'idle' ? (
               <Loading label="Resolving path…" />
@@ -342,6 +347,7 @@ export function VaultWorkspace() {
                       vaultId={vaultId}
                       fileId={selected.fileId}
                       file={selected}
+                      readOnly={vault.readOnly ?? false}
                       onOpen={open}
                       onSaved={refreshAfterSave}
                       getPathForFileId={(fileId) => pathByFileId.get(fileId)}

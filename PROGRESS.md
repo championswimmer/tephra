@@ -232,3 +232,18 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       graph, with workspace integration tests for selection and navigation.
       Graph browser checks cover both canvas layers and default orphan filtering.
       Full `npm run check` and all 9 Chromium end-to-end tests pass.
+
+- [x] Official Obsidian Headless Sync (plan 023): Settings creates native vaults,
+      signs in with optional MFA, selects owned/shared remotes and E2E passwords,
+      enables/pauses/retries two-way or download-only sync. The pinned official
+      client is installed only at runtime into a disposable cache; enabled vaults
+      resume from private persisted tokens/derived keys without saved passwords.
+      Downloads retain exact bytes in verified immutable blobs and revisioned
+      commits; web/MCP edits use confined atomic checkout writes with conflicts.
+      Missing checkout/state, plugin uploads, symlinks, secret exposure, restart,
+      process teardown, Pause races and vault limits have regression coverage.
+      Full `npm run check` passes (687 tests). Real official CLI installation,
+      version/local JSON commands and its native SQLite dependency pass; a local
+      Chromium Settings/create-vault flow and existing 18-file sample-vault sync,
+      all 16 note renders and graph generation pass. Live paid-account sign-in,
+      MFA and encrypted remote round trips still require manual account testing.

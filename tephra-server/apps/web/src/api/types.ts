@@ -3,6 +3,8 @@ export interface User {
   email: string;
 }
 export interface Vault {
+  syncMode?: 'tephra' | 'obsidian';
+  readOnly?: boolean;
   id: string;
   name: string;
   latestRevision: number;
@@ -82,3 +84,15 @@ export interface EditConflictCurrent {
   mtime: number;
   revision: number;
 }
+
+export interface ObsidianSyncSettings {
+  vaultId: string;
+  enabled: boolean;
+  remoteVaultId: string | null;
+  mode: 'bidirectional' | 'pull-only';
+  phase: 'pending-login' | 'pending-remote' | 'installing' | 'initial-sync' | 'running' | 'stopped' | 'error';
+  lastErrorCode: string | null;
+  hasSynced: boolean;
+  lastSyncedAt: number | null;
+}
+export interface ObsidianRemote { id: string; name: string; region?: string }

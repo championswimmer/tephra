@@ -109,12 +109,13 @@ export function VaultListPage() {
           </button>
         </form>
       </div>
+      <p><Link to="/settings#obsidian-sync">Connect official Obsidian Sync →</Link></p>
       {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
       {!vaults && !error ? (
         <Loading label="Loading vaults…" />
       ) : vaults?.length === 0 ? (
         <EmptyState title="No vaults yet">
-          <p>Create one, then connect the Tephra Obsidian plugin.</p>
+          <p>Create one, then connect the Tephra Obsidian plugin, or <Link to="/settings#obsidian-sync">connect official Obsidian Sync in Settings</Link>.</p>
         </EmptyState>
       ) : (
         <ul className="vault-grid">
@@ -126,7 +127,7 @@ export function VaultListPage() {
                     <Archive size={28} aria-hidden="true" focusable="false" className="icon" />
                   </span>
                   <strong>{vault.name}</strong>
-                  <span>Revision {vault.latestRevision}</span>
+                  <span>{vault.syncMode === 'obsidian' ? 'Obsidian Sync · ' : ''}Revision {vault.latestRevision}</span>
                 </Link>
                 <button
                   type="button"

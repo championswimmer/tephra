@@ -1423,3 +1423,10 @@ html.theme-dark .vault-grid a {
   gap: 0.4rem;
   margin-bottom: 1rem;
 }
+
+.obsidian-settings .modal-form { margin-block: 1rem; }
+.obsidian-settings > label { display: block; margin-top: 1rem; }
+.obsidian-settings select { max-width: 100%; margin-block: 0.5rem; }
+.obsidian-settings details { margin-block: 1rem; }
+.obsidian-settings summary { cursor: pointer; }
+.obsidian-sync-status { margin-block: 1rem; padding: 1rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }

@@ -1,3 +1,4 @@
+import type { ObsidianSyncSettings, ObsidianRemote } from './types';
 import type {
   ApiToken,
   CreatedToken,
@@ -121,8 +122,14 @@ export class ApiClient {
   vaults = () => this.request<{ vaults: Vault[] }>('/vaults');
   vault = (idOrName: string) =>
     this.request<{ vault: Vault }>(`/vaults/${encodeURIComponent(idOrName)}`);
-  createVault = (name: string) =>
-    this.request<{ vault: Vault }>('/vaults', { method: 'POST', body: JSON.stringify({ name }) });
+  createVault = (name: string, syncMode?: 'tephra' | 'obsidian') =>
+    this.request<{ vault: Vault }>('/vaults', { method: 'POST', body: JSON.stringify({ name, ...(syncMode ? { syncMode } : {}) }) });
+  obsidianAvailable = () => this.request<{ available: boolean }>('/obsidian-sync');
+  obsidianStatus = (vaultId: string) => this.request<{ settings: ObsidianSyncSettings }>(`/vaults/${encodeURIComponent(vaultId)}/obsidian-sync`);
+  obsidianLogin = (vaultId: string, input: { email: string; password: string; mfa?: string }) => this.request<{ settings: ObsidianSyncSettings }>(`/vaults/${encodeURIComponent(vaultId)}/obsidian-sync/login`, { method: 'POST', body: JSON.stringify(input) });
+  obsidianRemotes = (vaultId: string) => this.request<{ vaults: ObsidianRemote[] }>(`/vaults/${encodeURIComponent(vaultId)}/obsidian-sync/remotes`);
+  obsidianSetup = (vaultId: string, input: { remoteVaultId: string; mode: 'bidirectional' | 'pull-only'; encryptionPassword?: string }) => this.request<{ settings: ObsidianSyncSettings }>(`/vaults/${encodeURIComponent(vaultId)}/obsidian-sync/setup`, { method: 'POST', body: JSON.stringify(input) });
+  obsidianEnable = (vaultId: string, enabled: boolean) => this.request<{ settings: ObsidianSyncSettings }>(`/vaults/${encodeURIComponent(vaultId)}/obsidian-sync`, { method: 'PUT', body: JSON.stringify({ enabled }) });
   deleteVault = async (idOrName: string, vaultName: string) => {
     await this.request<void>(`/vaults/${encodeURIComponent(idOrName)}`, {
       method: 'DELETE',

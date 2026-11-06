@@ -1,3 +1,4 @@
+import type { ObsidianSyncService } from '../obsidian/types.js';
 import type { Context, Hono } from 'hono';
 import type { Database } from '@tephra/database-core';
 import type { BlobStore } from '@tephra/blob-store-core';
@@ -11,6 +12,7 @@ export interface IndexService {
 }
 
 export interface ApiDependencies {
+  obsidianSync?: ObsidianSyncService;
   database: Database;
   blobStore: BlobStore;
   clock: Clock;

@@ -25,6 +25,8 @@ ENV NODE_ENV=production \
     TEPHRA_BLOB_DRIVER=filesystem \
     TEPHRA_BLOB_PATH=/data/blobs \
     TEPHRA_MAX_BLOB_BYTES=104857600 \
+    TEPHRA_OBSIDIAN_SYNC_PATH=/data/obsidian-sync \
+    TEPHRA_OBSIDIAN_CACHE_PATH=/tmp/tephra-obsidian-client \
     TEPHRA_WEB_ROOT=/app/tephra-server/apps/web/dist
 
 WORKDIR /app

@@ -1,6 +1,6 @@
 # Obsidian Sync Vaults (server-side official Obsidian Sync)
 
-> Status: implementation plan (not started)
+> Status: superseded by `023-OBSIDIAN_HEADLESS_RUNTIME.md` (runtime installation and revisioned imports)
 > Supersedes: deleted `006-HEADLESS_OBSIDIAN_SYNC.md` (external sidecar bridge, never implemented)
 > Depends on: `001-TEPHRA_STAGE1_PLAN.md`, `003-MULTI_TENANT_PERSISTENCE.md` (`/data` layout), `004-DEPLOYMENT_PROFILES.md`
 > Last updated: 2026-10-13

@@ -12,6 +12,7 @@ const MIGRATIONS = [
   { version: 4, file: '004_graph_cache.sql' },
   { version: 5, file: '005_revision_manifest_hash_index.sql' },
   { version: 6, file: '006_oauth_codes.sql' },
+  { version: 7, file: '007_obsidian_sync.sql' },
 ] as const;
 
 export function migrate(db: DatabaseSync, migrationFile: string | URL | undefined): void {

@@ -126,7 +126,9 @@ export function registerVaultScopeMiddleware(app: ApiApp, dependencies: ApiDepen
             c.req.path.endsWith('/content')
           ? 'vault:write'
           : 'vault:read-metadata';
-    await ownedVault(c, dependencies, scope);
+    const vault = await ownedVault(c, dependencies, scope);
+    if (vault.syncMode === 'obsidian' && (c.req.path.includes('/sync/') || c.req.path.includes('/blobs/')))
+      fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'This vault uses official Obsidian Sync. Use Obsidian Sync on your devices.');
     return next();
   });
 }

@@ -21,6 +21,7 @@ export function NoteViewer({
   getPathForFileId,
   file,
   onSaved,
+  readOnly = false,
 }: {
   vaultId: string;
   fileId: string;
@@ -33,6 +34,7 @@ export function NoteViewer({
    * rules. Optional so existing call sites keep working.
    */
   file?: VaultFile;
+  readOnly?: boolean;
   /** Called after a successful save so the workspace can refresh files/links. */
   onSaved?: () => void;
 }) {
@@ -54,7 +56,7 @@ export function NoteViewer({
   const editableKind = !file || file.kind === 'markdown';
   const tooLarge =
     file !== undefined && file.kind === 'markdown' && file.size > MAX_EDIT_BYTES;
-  const canEdit = editableKind && !tooLarge;
+  const canEdit = editableKind && !tooLarge && !readOnly;
 
   async function load() {
     setNote(null);
@@ -134,6 +136,7 @@ export function NoteViewer({
         canEdit={canEdit}
         onSelect={(next) => void enterMode(next)}
       />
+      {readOnly && <p className="notice" role="status">Editing is unavailable for this vault. Check Obsidian Sync in Settings.</p>}
       {tooLarge && (
         <p className="notice" role="status">
           {READ_ONLY_NOTICE}

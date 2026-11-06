@@ -101,6 +101,7 @@ export function registerSyncRoutes(app: ApiApp, dependencies: ApiDependencies): 
       await repositories.lockVault(vaultId);
       const vault = await repositories.vaults.findById(vaultId);
       if (!vault) fail(404, 'VAULT_NOT_FOUND', 'Vault was not found.');
+      if (vault.syncMode === 'obsidian') fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'This vault uses official Obsidian Sync.');
       const principal = c.get('principal');
       if (principal.kind !== 'token')
         fail(403, 'VAULT_ACCESS_DENIED', 'An upload token is required.');

@@ -4,12 +4,24 @@ import type { TransactionRepositories } from '@tephra/database-core';
 import type { VaultIndexState } from '@tephra/vault-model';
 
 import {
-  all, blob, device, fileVersion, first, graphCache, json, noteLink, noteMetadata, nullableString, oauthCode,
+  all, blob, device, fileVersion, first, graphCache, json, noteLink, noteMetadata, nullableString, oauthCode, obsidianSync,
   requiredNumber, requiredString, revision, scopesJson, session, token, user, vault, vaultFile,
 } from './rows.js';
 
 export function makeRepositories(db: DatabaseSync): TransactionRepositories {
   return {
+    obsidianSync: {
+      async find(id) { const row = first(db, 'SELECT * FROM obsidian_sync WHERE vault_id=?', id); return row && obsidianSync(row); },
+      async list() { return all(db, 'SELECT * FROM obsidian_sync ORDER BY vault_id').map(obsidianSync); },
+      async upsert(v) {
+        db.prepare(`INSERT INTO obsidian_sync VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(vault_id) DO UPDATE SET enabled=excluded.enabled,
+          remote_vault_id=excluded.remote_vault_id, mode=excluded.mode,
+          phase=excluded.phase, last_error_code=excluded.last_error_code,
+          has_synced=excluded.has_synced, last_synced_at=excluded.last_synced_at`)
+          .run(v.vaultId, Number(v.enabled), v.remoteVaultId, v.mode, v.phase, v.lastErrorCode, Number(v.hasSynced), v.lastSyncedAt);
+      },
+    },
     users: {
       async count() { return requiredNumber(first(db, 'SELECT count(*) AS count FROM users')!, 'count'); },
       async findById(id) { const row = first(db, 'SELECT * FROM users WHERE id = ?', id); return row && user(row); },
@@ -27,8 +39,8 @@ export function makeRepositories(db: DatabaseSync): TransactionRepositories {
       async findById(id) { const row = first(db, 'SELECT * FROM vaults WHERE id=?', id); return row && vault(row); },
       async findByName(name) { const row = first(db, 'SELECT * FROM vaults WHERE name=?', name); return row && vault(row); },
       async listByOwner(id) { return all(db, 'SELECT * FROM vaults WHERE owner_user_id=? ORDER BY created_at, id', id).map(vault); },
-      async insert(v) { db.prepare('INSERT INTO vaults VALUES (?, ?, ?, ?, ?, ?)').run(v.id, v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt); },
-      async update(v) { db.prepare('UPDATE vaults SET owner_user_id=?, name=?, latest_revision=?, created_at=?, updated_at=? WHERE id=?').run(v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt, v.id); },
+      async insert(v) { db.prepare('INSERT INTO vaults (id, owner_user_id, name, latest_revision, created_at, updated_at, sync_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(v.id, v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt, v.syncMode ?? 'tephra'); },
+      async update(v) { db.prepare('UPDATE vaults SET owner_user_id=?, name=?, latest_revision=?, created_at=?, updated_at=?, sync_mode=COALESCE(?, sync_mode) WHERE id=?').run(v.ownerUserId, v.name, v.latestRevision, v.createdAt, v.updatedAt, v.syncMode ?? null, v.id); },
       async delete(id) { db.prepare('DELETE FROM vaults WHERE id=?').run(id); },
     },
     devices: {

@@ -1,3 +1,4 @@
+import { requireObsidianService } from '../routes/obsidian-sync.js';
 import { hashManifest, sha256Hex } from '@tephra/protocol';
 import { diffRevision, type CurrentVaultFile, type Vault } from '@tephra/vault-model';
 import { fail } from '../http/errors.js';
@@ -21,6 +22,7 @@ export async function commitNote(
   dependencies: ApiDependencies,
   input: { vault: Vault; userId: string; plan: Plan; text: string },
 ): Promise<NoteCommitResult> {
+  if (input.vault.syncMode === 'obsidian') return requireObsidianService(dependencies).writeNote(input.vault, input.plan, input.text);
   const bytes = new TextEncoder().encode(input.text);
   if (bytes.byteLength > (dependencies.maxBlobBytes ?? DEFAULT_BLOB_LIMIT))
     fail(413, 'BLOB_TOO_LARGE', 'Content exceeds the configured size limit.');

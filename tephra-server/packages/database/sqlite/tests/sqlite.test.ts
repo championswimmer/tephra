@@ -656,6 +656,9 @@ describe('SQLite database adapter', () => {
     const raw = new DatabaseSync(filename);
     raw.exec('DROP INDEX IF EXISTS vault_files_path_fold_idx');
     raw.exec('ALTER TABLE vault_files DROP COLUMN path_fold');
+    raw.exec('DROP TABLE obsidian_sync');
+    raw.exec('DROP TRIGGER vault_sync_mode_immutable');
+    raw.exec('ALTER TABLE vaults DROP COLUMN sync_mode');
     raw.exec('PRAGMA user_version = 2');
     const legacy = raw.prepare('PRAGMA table_info(vault_files)').all() as Array<{ name: string }>;
     expect(legacy.map((column) => column.name)).not.toContain('path_fold');
@@ -690,7 +693,7 @@ describe('SQLite database adapter', () => {
   });
 
   it.each([1, 2, 3, 4])(
-    'upgrades a user_version %i database through 006 with foreign_key_check clean',
+    'upgrades a user_version %i database through 007 with foreign_key_check clean',
     async (startVersion) => {
       // Build a genuinely old database by applying migrations 001..N with a
       // raw connection (openSqliteDatabase would migrate straight to
@@ -776,7 +779,7 @@ describe('SQLite database adapter', () => {
       try {
         expect(
           (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        ).toBe(6);
+        ).toBe(7);
         expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
         expect(
           raw
@@ -818,5 +821,31 @@ describe('SQLite database adapter', () => {
     expect(await db.oauthCodes.consume('h1')).toBeNull();
     expect(await db.oauthCodes.deleteExpired(30)).toBe(1);
     expect(await db.oauthCodes.consume('h2')).toBeNull();
+  });
+});
+
+
+describe('Obsidian Sync persistence', () => {
+  it('persists native settings, defaults existing vaults to tephra and forbids mode changes', async () => {
+    const { db, filename } = await database();
+    await seed(db);
+    expect((await db.vaults.findById('vault-1'))?.syncMode).toBe('tephra');
+    const existing = (await db.vaults.findById('vault-1'))!;
+    const native = { ...existing, id: 'native-vault', name: 'Native', syncMode: 'obsidian' as const };
+    await db.vaults.insert(native);
+    const settings = { vaultId: native.id, enabled: true, remoteVaultId: 'remote-1',
+      mode: 'bidirectional' as const, phase: 'running' as const, lastErrorCode: null,
+      hasSynced: true, lastSyncedAt: 12345 };
+    await db.obsidianSync.upsert(settings);
+    expect(await db.obsidianSync.find(native.id)).toEqual(settings);
+    await expect(db.vaults.update({ ...native, syncMode: 'tephra' })).rejects.toThrow('immutable');
+    db.close();
+    databases.splice(databases.indexOf(db), 1);
+    const reopened = openSqliteDatabase(filename);
+    databases.push(reopened);
+    expect(await reopened.obsidianSync.list()).toEqual([settings]);
+    expect((await reopened.vaults.findById(native.id))?.syncMode).toBe('obsidian');
+    await reopened.vaults.delete(native.id);
+    expect(await reopened.obsidianSync.list()).toEqual([]);
   });
 });

@@ -35,6 +35,8 @@ export function registerTokenRoutes(app: ApiApp, dependencies: ApiDependencies):
     const principal = requireSession(c);
     const vault = await ownedVault(c, dependencies, 'vault:read-metadata');
     const body = await jsonBody(c, tokenSchema);
+    if (vault.syncMode === 'obsidian' && body.scopes.includes('vault:upload'))
+      fail(409, 'VAULT_SYNC_MODE_MISMATCH', 'Plugin uploads cannot write to an Obsidian Sync vault. Use read or agent access.');
     const now = dependencies.clock.now();
     let deviceId = body.deviceId ?? null;
     if (deviceId) {

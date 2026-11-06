@@ -1,3 +1,4 @@
+import { ObsidianSyncSettingsPanel } from '../components/ObsidianSyncSettingsPanel';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
@@ -36,6 +37,7 @@ export function SettingsPage() {
         </p>
         <ThemeSelector />
       </section>
+      <ObsidianSyncSettingsPanel />
       <section className="settings-card">
         <h2>AI agents (MCP)</h2>
         <p>

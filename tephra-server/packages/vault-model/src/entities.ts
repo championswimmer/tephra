@@ -7,6 +7,8 @@ export interface User {
 }
 
 export interface Vault {
+  /** Legacy objects default to Tephra Sync. Immutable after creation. */
+  syncMode?: 'tephra' | 'obsidian';
   id: string;
   ownerUserId: string;
   name: string;
@@ -130,4 +132,15 @@ export interface IncomingVaultFile {
   mtime: number;
   mimeType?: string;
   kind: VaultFileKind;
+}
+
+export interface ObsidianSyncSettings {
+  vaultId: string;
+  enabled: boolean;
+  remoteVaultId: string | null;
+  mode: 'bidirectional' | 'pull-only';
+  phase: 'pending-login' | 'pending-remote' | 'installing' | 'initial-sync' | 'running' | 'stopped' | 'error';
+  lastErrorCode: string | null;
+  hasSynced: boolean;
+  lastSyncedAt: number | null;
 }

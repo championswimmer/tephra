@@ -1,3 +1,4 @@
+import type { ObsidianSyncSettings } from '@tephra/vault-model';
 import { expect } from 'vitest';
 import type {
   Database,
@@ -18,7 +19,7 @@ import type {
   Vault,
   VaultRevision,
 } from '@tephra/vault-model';
-import { createApp, type IndexService } from '../src/app.js';
+import { createApp, type ApiDependencies, type IndexService } from '../src/app.js';
 
 export class MemoryBlobStore implements BlobStore {
   readonly values = new Map<string, Uint8Array>();
@@ -45,6 +46,7 @@ export class MemoryBlobStore implements BlobStore {
 
 export class MemoryDatabase implements Database {
   readonly state = {
+    nativeSettings: new Map<string, ObsidianSyncSettings>(),
     users: new Map<string, User>(),
     sessions: new Map<string, Session>(),
     vaults: new Map<string, Vault>(),
@@ -56,6 +58,11 @@ export class MemoryDatabase implements Database {
     versions: [] as FileVersion[],
     graphCacheEntries: new Map<string, GraphCacheEntry>(),
     oauthCodes: new Map<string, OAuthCode>(),
+  };
+  obsidianSync = {
+    find: async (id: string) => this.state.nativeSettings.get(id) ?? null,
+    list: async () => [...this.state.nativeSettings.values()],
+    upsert: async (value: ObsidianSyncSettings) => { this.state.nativeSettings.set(value.vaultId, value); },
   };
   users = {
     count: async () => this.state.users.size,
@@ -105,6 +112,7 @@ export class MemoryDatabase implements Database {
     },
     delete: async (id: string) => {
       this.state.vaults.delete(id);
+      this.state.nativeSettings.delete(id);
       for (const [tokenId, token] of this.state.tokens) {
         if (token.vaultId === id) this.state.tokens.delete(tokenId);
       }
@@ -300,6 +308,7 @@ export class MemoryDatabase implements Database {
   }
   private repositories(): Repositories {
     return {
+      obsidianSync: this.obsidianSync,
       users: this.users,
       sessions: this.sessions,
       vaults: this.vaults,
@@ -326,7 +335,7 @@ export function fixture(options: FixtureOptions = {}) {
   const database = new MemoryDatabase();
   const blobStore = new MemoryBlobStore();
   let nextId = 0;
-  const app = createApp({
+  const dependencies: ApiDependencies = {
     database,
     blobStore,
     clock: { now: options.now ?? (() => 1_700_000_000_000) },
@@ -339,8 +348,9 @@ export function fixture(options: FixtureOptions = {}) {
     secureCookies: false,
     ...(options.indexService === undefined ? {} : { indexService: options.indexService }),
     ...(options.maxBlobBytes === undefined ? {} : { maxBlobBytes: options.maxBlobBytes }),
-  });
-  return { app, database, blobStore };
+  };
+  const app = createApp(dependencies);
+  return { app, database, blobStore, dependencies };
 }
 
 export async function setup(options: FixtureOptions = {}) {

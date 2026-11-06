@@ -1,3 +1,4 @@
+import { registerObsidianCapabilityRoutes, registerObsidianSyncRoutes } from './routes/obsidian-sync.js';
 import { Hono } from 'hono';
 import { handleApiError } from './http/errors.js';
 import { requestLogging } from './http/request-log.js';
@@ -29,9 +30,11 @@ export function createApp(dependencies: ApiDependencies): ApiApp {
   registerAuthMiddleware(app, dependencies);
   registerOAuthRoutes(app, dependencies);
   registerSessionAuthRoutes(app, dependencies);
+  registerObsidianCapabilityRoutes(app, dependencies);
   registerVaultListRoutes(app, dependencies);
   registerVaultScopeMiddleware(app, dependencies);
   registerVaultRoutes(app, dependencies);
+  registerObsidianSyncRoutes(app, dependencies);
   registerTokenRoutes(app, dependencies);
   registerSyncRoutes(app, dependencies);
   registerWebEditRoutes(app, dependencies);

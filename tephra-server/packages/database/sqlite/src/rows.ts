@@ -11,6 +11,7 @@ import type {
   FileVersion,
   NoteLink,
   NoteMetadata,
+  ObsidianSyncSettings,
   Session,
   User,
   Vault,
@@ -86,7 +87,7 @@ export function session(row: Row): Session {
   return { id: requiredString(row, 'id'), userId: requiredString(row, 'user_id'), expiresAt: requiredNumber(row, 'expires_at'), createdAt: requiredNumber(row, 'created_at') };
 }
 export function vault(row: Row): Vault {
-  return { id: requiredString(row, 'id'), ownerUserId: requiredString(row, 'owner_user_id'), name: requiredString(row, 'name'), latestRevision: requiredNumber(row, 'latest_revision'), createdAt: requiredNumber(row, 'created_at'), updatedAt: requiredNumber(row, 'updated_at') };
+  return { syncMode: requiredString(row, 'sync_mode') as 'tephra' | 'obsidian', id: requiredString(row, 'id'), ownerUserId: requiredString(row, 'owner_user_id'), name: requiredString(row, 'name'), latestRevision: requiredNumber(row, 'latest_revision'), createdAt: requiredNumber(row, 'created_at'), updatedAt: requiredNumber(row, 'updated_at') };
 }
 export function device(row: Row): Device {
   const result: Device = { id: requiredString(row, 'id'), userId: requiredString(row, 'user_id'), name: requiredString(row, 'name'), createdAt: requiredNumber(row, 'created_at'), lastSeenAt: requiredNumber(row, 'last_seen_at') };
@@ -131,4 +132,17 @@ export function all(db: DatabaseSync, sql: string, ...params: SqliteValue[]): Ro
 
 export function oauthCode(row: Row): OAuthCode {
   return { codeHash: requiredString(row, 'code_hash'), userId: requiredString(row, 'user_id'), vaultId: requiredString(row, 'vault_id'), clientId: requiredString(row, 'client_id'), clientName: requiredString(row, 'client_name'), redirectUri: requiredString(row, 'redirect_uri'), codeChallenge: requiredString(row, 'code_challenge'), scopes: scopesFromRow(row), createdAt: requiredNumber(row, 'created_at'), expiresAt: requiredNumber(row, 'expires_at') };
+}
+
+export function obsidianSync(row: Row): ObsidianSyncSettings {
+  return {
+    vaultId: requiredString(row, 'vault_id'),
+    enabled: requiredNumber(row, 'enabled') === 1,
+    remoteVaultId: nullableString(row, 'remote_vault_id'),
+    mode: requiredString(row, 'mode') as ObsidianSyncSettings['mode'],
+    phase: requiredString(row, 'phase') as ObsidianSyncSettings['phase'],
+    lastErrorCode: nullableString(row, 'last_error_code'),
+    hasSynced: requiredNumber(row, 'has_synced') === 1,
+    lastSyncedAt: nullableNumber(row, 'last_synced_at'),
+  };
 }

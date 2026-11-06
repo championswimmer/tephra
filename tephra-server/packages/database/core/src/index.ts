@@ -7,6 +7,7 @@ import type {
   FileVersion,
   NoteLink,
   NoteMetadata,
+  ObsidianSyncSettings,
   Session,
   User,
   Vault,
@@ -157,7 +158,14 @@ export interface GraphCacheRepository {
   deleteByVault(vaultId: string): Promise<void>;
 }
 
+export interface ObsidianSyncRepository {
+  find(vaultId: string): Promise<ObsidianSyncSettings | null>;
+  list(): Promise<ObsidianSyncSettings[]>;
+  upsert(settings: ObsidianSyncSettings): Promise<void>;
+}
+
 export interface Repositories {
+  obsidianSync: ObsidianSyncRepository;
   users: UserRepository;
   sessions: SessionRepository;
   vaults: VaultRepository;

@@ -1,7 +1,7 @@
 # Tephra Server
 
 Tephra Stage 1 is a private web mirror for vaults synced from the Tephra Obsidian
-plugin, with in-browser note editing. The primary self-hosted profile is one Node.js
+plugin or the official Obsidian Sync headless client, with in-browser note editing. The primary self-hosted profile is one Node.js
 container serving both the API and built web application, with SQLite and
 content-addressed blobs persisted under `/data`.
 
@@ -40,6 +40,12 @@ under `/data`.
 | `TEPHRA_BLOB_PATH`       | Filesystem blob root                                                                          | `/data/blobs` in the image                      |
 | `TEPHRA_MAX_BLOB_BYTES`  | Maximum accepted blob size                                                                    | `104857600` (100 MiB)                           |
 | `TEPHRA_WEB_ROOT`        | Directory of the built web app served by the API process                                      | `/app/tephra-server/apps/web/dist` in the image |
+| `TEPHRA_OBSIDIAN_SYNC_ENABLED` | Set to `false` to disable native Sync setup and startup | `true` |
+| `TEPHRA_OBSIDIAN_SYNC_PATH` | Private CLI credentials, Sync state and vault checkouts (persistent) | `obsidian-sync` beside the SQLite file; `/data/obsidian-sync` in Docker |
+| `TEPHRA_OBSIDIAN_CACHE_PATH` | Disposable installation prefix for the pinned official CLI | OS temp directory + `/tephra-obsidian-client` |
+| `TEPHRA_OBSIDIAN_MAX_VAULTS` | Maximum enabled native Sync vaults | `5` |
+| `TEPHRA_OBSIDIAN_SCAN_INTERVAL_SECS` | Debounce interval for checkout changes; full scan every 60 seconds | `2` |
+
 
 Never commit a real `.env`. Generate independent high-entropy session and bootstrap
 secrets, for example with `openssl rand -hex 32`. Platform request limits can be lower
@@ -66,6 +72,89 @@ Plugin requests authenticate with `Authorization: Bearer <device-token>`. A devi
 is scoped to one vault and grants only the sync operations needed by the plugin. Revoke a
 lost or retired token from the vault token settings. Tephra stores only a token hash and
 must never log the raw token.
+
+## Official Obsidian Sync
+
+Obsidian's [standalone headless client](https://obsidian.md/help/headless) runs
+without the desktop app and requires Node.js 22+ and an active Obsidian Sync
+subscription. This is separate from the desktop Obsidian CLI. Tephra invokes the
+official `ob` client as a separate process; it does not implement the Sync
+protocol or execute Obsidian plugins.
+
+1. Open **Settings → Obsidian Sync** and create a Tephra vault with a new name.
+2. Sign in with your Obsidian email/password and a current two-factor code if
+   enabled. Account passwords and codes are cleared after submission and are
+   never stored in Tephra's database, logs, command line or environment.
+3. Select an existing remote vault (owned or shared). Enter its vault encryption
+   password if it uses end-to-end encryption. Remote vault creation stays in
+   Obsidian. The account password and vault encryption password may differ.
+4. Choose **Two-way** to send browser/agent edits back through Obsidian Sync, or
+   **Download only** to browse/search while editing in Obsidian. Connect the vault
+   to enable automatic sync and start the initial download.
+5. Use **Pause sync**, **Enable automatic sync**, or **Retry sync** in Settings.
+   Re-authenticate there if the account session expires. Vaults cannot be
+   converted between native and Tephra plugin sync modes; create a new vault.
+
+### Runtime installation and restart recovery
+
+Neither the repository dependencies nor the Docker image include
+`obsidian-headless`. On first sign-in/use, Tephra installs the pinned official
+`obsidian-headless@0.0.14` npm package into `TEPHRA_OBSIDIAN_CACHE_PATH` using the
+public npm registry. The runtime needs npm and outbound access to npmjs.org and
+GitHub's native-addon downloads. Linux deployments normally use the package's
+prebuilt `better-sqlite3` addon; platforms without an available prebuild need
+native compilation tools. Installation failures are shown in Settings and can
+be retried without affecting Tephra plugin vaults.
+
+The installation cache is disposable. On boot, enabled vaults are resumed and
+the client is installed again if its cached executable has disappeared. No
+installation occurs on boot when there are no enabled native vaults. If the
+administrator lowers the enabled vault limit, excess vaults are paused during
+startup and show the limit error in Settings.
+
+Keep **SQLite, blobs and `TEPHRA_OBSIDIAN_SYNC_PATH` on a persistent local disk**
+(the Docker defaults put all of them under `/data`). The native state contains a
+per-vault Obsidian session token, derived encryption key, sync database and
+checkout. These are private files/directories restricted to the service user;
+protect this volume and its backups. Account passwords, MFA codes and encryption
+passwords are not retained. Synced notes are decrypted on your trusted server
+for rendering, search and editing, just as other Tephra notes are stored there.
+
+An object-store bucket backup does not replace the writable persistent disk. If
+the entire data volume disappears, Tephra's database and saved credentials also
+disappear; reinstallation alone cannot restore those. If only native state or a
+previously populated checkout is missing, Tephra refuses to start syncing that
+checkout so local data loss cannot propagate as remote deletions. Sign in if
+needed, load the remote vaults, and use **Download fresh copy and enable sync**
+to rebuild from Obsidian. This explicitly replaces the local checkout while
+retaining imported Tephra content until the download completes.
+
+Deleting a native vault stops the process before unlink/logout and local
+removal; it does not delete the remote Obsidian vault. Pausing preserves the
+credentials, files and state for later recovery. Back up/restore the native
+checkout and CLI state together with the database and blobs while the service
+is stopped; do not restore its sync state independently of its files.
+
+### Content and deployment behavior
+
+The official client runs continuously and Tephra watches for changed files,
+reconciling them after a short debounce plus a periodic full scan. Every import
+preserves the original bytes, stores SHA-256 verified immutable blobs, and
+commits file changes/deletions as a revision. Browser and agent Markdown writes
+pause the client, check the base hash, atomically replace the local file, import
+the change, and restart Sync. Stale edits return a conflict. Editing is disabled
+for paused, unhealthy, initial-sync or download-only native vaults.
+
+Tephra plugin uploads are rejected for native vaults. Use only official
+Obsidian Sync for those vaults on your devices. Obsidian configuration/plugin
+sync is disabled, and hidden/configuration files are excluded from Tephra's
+content import. Run one service process per local data volume; shared network
+filesystems and multiple replicas are unsupported.
+
+The automated tests use a fake official-client adapter for account and remote
+operations. Installation, CLI version/local JSON commands, and secret stdin
+launching are verified separately. Live paid-account sync (including E2E and
+MFA) requires manual acceptance with an Obsidian account.
 
 ## Docker
 
