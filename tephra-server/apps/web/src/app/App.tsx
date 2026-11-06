@@ -5,6 +5,7 @@ import { ConnectAgentPage } from '../routes/ConnectAgentPage';
 import { McpSettingsPage } from '../routes/McpSettingsPage';
 import { SettingsPage } from '../routes/SettingsPage';
 import { VaultListPage } from '../routes/VaultListPage';
+import { VaultSettingsPage } from '../routes/VaultSettingsPage';
 import { VaultWorkspace } from '../routes/VaultWorkspace';
 import { PublicOnly, RequireAuth, SetupOnly } from './RouteGuards';
 export function App() {
@@ -22,6 +23,7 @@ export function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/mcp" element={<McpSettingsPage />} />
           <Route path="/connect" element={<ConnectAgentPage />} />
+          <Route path="/v/:vaultSlug/settings" element={<VaultSettingsPage />} />
           <Route path="/v/:vaultSlug/*" element={<VaultWorkspace />} />
         </Route>
       </Route>

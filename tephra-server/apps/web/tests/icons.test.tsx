@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { FileBrowser } from '../src/components/FileBrowser';
-import { SettingsModal } from '../src/components/SettingsModal';
+import { AppShell } from '../src/components/AppShell';
 import { ThemeSelector } from '../src/components/ThemeSelector';
 import { LinksPanel } from '../src/components/LinksPanel';
 import { ErrorState } from '../src/components/Status';
@@ -15,6 +15,9 @@ vi.mock('@tephra/graph-renderer/pure', async () => {
   const settings = await import('../../../packages/graph-renderer/src/settings');
   return { ...settings };
 });
+vi.mock('../src/app/AuthContext', () => ({
+  useAuth: () => ({ user: { email: 'user@example.com' } }),
+}));
 
 /**
  * Icon-pack regression test: every UI-chrome icon must be a Lucide SVG
@@ -22,6 +25,17 @@ vi.mock('@tephra/graph-renderer/pure', async () => {
  * disturb the accessible names of its control.
  */
 describe('Lucide icon pack', () => {
+  it('provides one global settings link with a decorative icon', () => {
+    render(
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole('link', { name: 'Settings' });
+    expect(link).toHaveAttribute('href', '/settings');
+    expect(link.querySelector('svg.lucide[aria-hidden="true"]')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Account' })).not.toBeInTheDocument();
+  });
   it('renders the file-tree search, folder, and file icons as Lucide SVGs', () => {
     const files: VaultFile[] = [
       { fileId: '1', path: 'Projects/Plan.md', kind: 'markdown', size: 10, mtime: 1 },
@@ -46,19 +60,6 @@ describe('Lucide icon pack', () => {
     expect(screen.getByRole('searchbox', { name: 'Search files' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Tephra\.md/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cover\.png/ })).toBeInTheDocument();
-  });
-
-  it('renders the settings modal close button with a Lucide icon', () => {
-    const { container } = render(
-      <ThemeProvider>
-        <SettingsModal open onClose={vi.fn()} />
-      </ThemeProvider>,
-    );
-    const close = screen.getByRole('button', { name: 'Close settings' });
-    expect(close.querySelector('svg.lucide[aria-hidden="true"]')).toBeInTheDocument();
-    expect(
-      container.querySelector('button[aria-label="Close settings"] svg.lucide'),
-    ).toBeInTheDocument();
   });
 
   it('renders the theme options with Lucide light/dark/system icons', () => {

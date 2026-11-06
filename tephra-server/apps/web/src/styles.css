@@ -236,6 +236,13 @@ button:disabled {
   align-items: end;
   gap: 0.5rem;
 }
+.create-vault {
+  flex-wrap: wrap;
+}
+.create-vault label:not(.sr-only) {
+  display: grid;
+  gap: 0.25rem;
+}
 .create-vault input,
 .inline-form input {
   min-width: 220px;
@@ -271,7 +278,7 @@ input {
   display: grid;
   gap: 0.75rem;
 }
-.vault-grid a {
+.vault-card-main {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   padding: 1rem;
@@ -283,14 +290,14 @@ input {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
   color: var(--text-normal);
 }
-html.theme-dark .vault-grid a {
+html.theme-dark .vault-card-main {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
 }
-.vault-grid a:hover {
+.vault-card-main:hover {
   border-color: var(--background-modifier-border-focus);
   transform: translateY(-1px);
 }
-.vault-grid a > span:last-child {
+.vault-card-main > span:last-child {
   color: var(--text-muted);
   font-size: 0.82rem;
 }
@@ -1270,11 +1277,13 @@ html.theme-dark .vault-grid a {
     flex-direction: column;
   }
   .create-vault {
+    flex-direction: column;
     align-items: stretch;
   }
-  .create-vault input {
+  .create-vault input,
+  .create-vault select {
     min-width: 0;
-    flex: 1;
+    width: 100%;
   }
   .workspace-grid {
     display: block;

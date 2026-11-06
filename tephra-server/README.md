@@ -81,19 +81,19 @@ subscription. This is separate from the desktop Obsidian CLI. Tephra invokes the
 official `ob` client as a separate process; it does not implement the Sync
 protocol or execute Obsidian plugins.
 
-1. Open **Settings → Obsidian Sync** and create a Tephra vault with a new name.
-2. Sign in with your Obsidian email/password and a current two-factor code if
+1. Open **Settings → Obsidian Sync account** and sign in with your Obsidian email/password and a current two-factor code if
    enabled. Account passwords and codes are cleared after submission and are
    never stored in Tephra's database, logs, command line or environment.
-3. Select an existing remote vault (owned or shared). Enter its vault encryption
+2. Create a vault on the vaults page, choosing official Obsidian Sync as its sync
+   method. This choice is permanent; create another vault to use Tephra plugin sync.
+3. Open the vault's settings and select an existing remote vault (owned or shared). Enter its vault encryption
    password if it uses end-to-end encryption. Remote vault creation stays in
    Obsidian. The account password and vault encryption password may differ.
 4. Choose **Two-way** to send browser/agent edits back through Obsidian Sync, or
    **Download only** to browse/search while editing in Obsidian. Connect the vault
    to enable automatic sync and start the initial download.
-5. Use **Pause sync**, **Enable automatic sync**, or **Retry sync** in Settings.
-   Re-authenticate there if the account session expires. Vaults cannot be
-   converted between native and Tephra plugin sync modes; create a new vault.
+5. Use **Pause sync**, **Enable automatic sync**, or **Retry sync** in the vault's settings.
+   Re-authenticate in global Settings if the account session expires.
 
 ### Runtime installation and restart recovery
 

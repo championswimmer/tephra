@@ -8,7 +8,9 @@ Tephra is a self-hosted, web-based [Obsidian](https://obsidian.md) client. Your 
 It is built for one person on one box: a single container on your own domain, whether that's Railway, EC2, or any VM you control.
 
 You can also connect an existing official [Obsidian Sync](https://obsidian.md/sync)
-vault from **Settings → Obsidian Sync**, without the Tephra plugin. Tephra installs
+vault without the Tephra plugin. Sign in under **Settings → Obsidian Sync account**,
+create an Obsidian Sync vault on the vaults page, then connect the remote in that
+vault's settings. Tephra installs
 Obsidian's official headless client on demand, saves its session token and vault
 key on your persistent volume, and resumes enabled vaults after a restart. Your
 Obsidian account password is never saved. Both two-way sync and download-only

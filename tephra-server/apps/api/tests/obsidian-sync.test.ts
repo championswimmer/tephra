@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -40,15 +40,20 @@ async function temporary() {
 }
 
 class FakeClient implements OfficialClient {
+  hasAuth = async (paths: VaultPaths) => { try { return (await stat(join(clientStateRoot(paths), 'auth_token'))).isFile(); } catch { return false; } };
+  copyAuth = async (source: VaultPaths, destination: VaultPaths) => {
+    await mkdir(clientStateRoot(destination), { recursive: true, mode: 0o700 });
+    await copyFile(join(clientStateRoot(source), 'auth_token'), join(clientStateRoot(destination), 'auth_token'));
+  };
   ensure = vi.fn(async () => undefined);
   remotes = vi.fn(async () => [{ id: 'remote-1', name: 'Remote vault', region: 'eu' }]);
   active = 0;
   events: string[] = [];
   pendingDownload = true;
   failure: Error | undefined;
-  login = vi.fn(async (paths: VaultPaths) => {
+  login = vi.fn(async (paths: VaultPaths, input: { email: string }) => {
     await mkdir(clientStateRoot(paths), { recursive: true, mode: 0o700 });
-    await writeFile(join(clientStateRoot(paths), 'auth_token'), 'saved-token', { mode: 0o600 });
+    await writeFile(join(clientStateRoot(paths), 'auth_token'), `saved-token:${input.email}`, { mode: 0o600 });
   });
   setup = vi.fn(async (paths: VaultPaths, _input: ObsidianSetup) => {
     void _input;
@@ -122,6 +127,34 @@ async function connect(
 }
 
 describe('official client adapter and runtime installer', () => {
+  it('copies only private authentication state and rejects symlinked sources and destinations', async () => {
+    const root = await temporary();
+    const outside = await temporary();
+    const source = vaultPaths(root, 'source');
+    const destination = vaultPaths(root, 'destination');
+    await mkdir(clientStateRoot(source), { recursive: true });
+    await writeFile(join(clientStateRoot(source), 'auth_token'), 'source-token');
+    await mkdir(join(clientStateRoot(source), 'sync', 'remote'), { recursive: true });
+    await writeFile(join(clientStateRoot(source), 'sync', 'remote', 'config.json'), 'source-key');
+    await mkdir(join(clientStateRoot(destination), 'sync', 'remote'), { recursive: true });
+    await writeFile(join(clientStateRoot(destination), 'sync', 'remote', 'config.json'), 'destination-key');
+    const client = new HeadlessClient(new RuntimeInstaller(root));
+    await client.copyAuth(source, destination);
+    expect(await readFile(join(clientStateRoot(destination), 'auth_token'), 'utf8')).toBe('source-token');
+    expect(await readFile(join(clientStateRoot(destination), 'sync', 'remote', 'config.json'), 'utf8')).toBe('destination-key');
+    expect((await stat(join(clientStateRoot(destination), 'auth_token'))).mode & 0o777).toBe(0o600);
+    for (const path of [destination.root, destination.config, clientStateRoot(destination)])
+      expect((await stat(path)).mode & 0o777).toBe(0o700);
+    await rm(join(clientStateRoot(source), 'auth_token'));
+    await symlink(join(clientStateRoot(destination), 'auth_token'), join(clientStateRoot(source), 'auth_token'));
+    await expect(client.copyAuth(source, destination)).rejects.toMatchObject({ code: 'OBSIDIAN_AUTH_EXPIRED' });
+    await rm(join(clientStateRoot(source), 'auth_token'));
+    await writeFile(join(clientStateRoot(source), 'auth_token'), 'new-token');
+    const malicious = vaultPaths(root, 'malicious');
+    await symlink(outside, malicious.root);
+    await expect(client.copyAuth(source, malicious)).rejects.toMatchObject({ code: 'OBSIDIAN_SETUP_FAILED' });
+    expect(await stat(join(outside, 'config')).catch(() => null)).toBeNull();
+  });
   it('coalesces installs, pins the official package, and reinstalls a lost executable', async () => {
     const cache = await temporary();
     const run = vi.fn<ProcessRunner>(async (input) => {
@@ -395,7 +428,7 @@ describe('native Sync lifecycle and revisioned content', () => {
     expect(context.client.active).toBe(0);
     expect(context.client.ensure).toHaveBeenCalledTimes(2);
     expect(await readFile(join(clientStateRoot(context.paths), 'auth_token'), 'utf8')).toBe(
-      'saved-token',
+      'saved-token:obsidian@example.com',
     );
   });
   it.each(['absent', 'empty', 'nested-empty', 'state-absent'] as const)(
@@ -520,11 +553,12 @@ describe('native Sync lifecycle and revisioned content', () => {
     expect(context.client.ensure).toHaveBeenCalledTimes(3);
     expect(context.client.login).toHaveBeenCalledTimes(1);
   });
-  it('stops and reaps the worker before unlink, logout and local removal; rejects queued resurrection', async () => {
+  it('stops and reaps the worker before unlink and local removal; rejects queued resurrection', async () => {
     const context = await nativeFixture();
     await connect(context);
     await context.service.remove(context.vault);
-    expect(context.client.events.slice(-3)).toEqual(['stopped', 'unlink', 'logout']);
+    expect(context.client.events.slice(-2)).toEqual(['stopped', 'unlink']);
+    expect(context.client.logout).not.toHaveBeenCalled();
     expect(await stat(context.paths.root).catch(() => null)).toBeNull();
     expect((await context.service.status(context.vault)).enabled).toBe(false);
     await expect(context.service.enable(context.vault, true)).rejects.toMatchObject({
@@ -623,6 +657,140 @@ describe('checkout confinement', () => {
 });
 
 describe('owner setup API and protocol separation', () => {
+  it('keeps account sign-in user-scoped, copies only auth to owned vaults, and preserves legacy state', async () => {
+    const context = await nativeFixture();
+    const vault = context.vault;
+    const legacyDir = clientStateRoot(context.paths);
+    await mkdir(join(legacyDir, 'sync', 'legacy'), { recursive: true });
+    await writeFile(join(legacyDir, 'auth_token'), 'legacy-token');
+    await writeFile(join(legacyDir, 'sync', 'legacy', 'config.json'), 'legacy-ledger');
+    const other = { ...vault, id: 'other-native', ownerUserId: 'other-user', name: 'Other native' };
+    await context.database.vaults.insert(other);
+    await context.database.obsidianSync.upsert(initialObsidianSettings(other.id));
+    const otherPaths = vaultPaths(context.root, other.id);
+    await mkdir(clientStateRoot(otherPaths), { recursive: true });
+    await writeFile(join(clientStateRoot(otherPaths), 'auth_token'), 'other-token');
+    const url = '/api/v1/obsidian-sync/account';
+    expect((await context.app.request(url)).status).toBe(401);
+    expect((await context.app.request(url, { headers: { authorization: `Bearer ${context.token}` } })).status).toBe(403);
+    expect((await (await context.app.request(url, { headers: context.browserHeaders })).json()).account).toEqual({ authenticated: false, email: null, lastErrorCode: null });
+    expect(await readFile(join(legacyDir, 'auth_token'), 'utf8')).toBe('legacy-token');
+    const noCsrf = await context.app.request(`${url}/login`, { method: 'POST', headers: { cookie: context.browserHeaders.cookie, 'content-type': 'application/json' }, body: '{}' });
+    expect(noCsrf.status).toBe(403);
+    const login = await context.app.request(`${url}/login`, {
+      method: 'POST', headers: context.browserHeaders,
+      body: JSON.stringify({ email: 'account@example.com', password: 'unique-password', mfa: '123456' }),
+    });
+    expect(login.status).toBe(200);
+    const body = await login.text();
+    expect(JSON.parse(body).account).toEqual({ authenticated: true, email: 'account@example.com', lastErrorCode: null });
+    expect(body).not.toMatch(/unique-password|123456|saved-token/);
+    expect(await readFile(join(legacyDir, 'auth_token'), 'utf8')).toBe('saved-token:account@example.com');
+    expect(await readFile(join(legacyDir, 'sync', 'legacy', 'config.json'), 'utf8')).toBe('legacy-ledger');
+    expect(await readFile(join(clientStateRoot(otherPaths), 'auth_token'), 'utf8')).toBe('other-token');
+    expect((await context.service.accountStatus('other-user')).authenticated).toBe(false);
+    const create = await context.app.request('/api/v1/vaults', {
+      method: 'POST', headers: context.browserHeaders, body: JSON.stringify({ name: 'New headless account vault', syncMode: 'obsidian' }),
+    });
+    const created = (await create.json()).vault as Vault & { obsidianSync: { phase: string } };
+    expect(created.obsidianSync.phase).toBe('pending-remote');
+    expect((await context.app.request(`/api/v1/vaults/${created.id}/obsidian-sync/remotes`, { headers: context.browserHeaders })).status).toBe(200);
+    expect(await readFile(join(clientStateRoot(vaultPaths(context.root, created.id)), 'auth_token'), 'utf8')).toBe('saved-token:account@example.com');
+    const restarted = new NativeSyncService(context.dependencies, { root: context.root, client: context.client });
+    services.push(restarted);
+    expect(await restarted.accountStatus(vault.ownerUserId)).toEqual({ authenticated: true, email: null, lastErrorCode: null });
+    await context.service.remove(vault);
+    expect(context.client.logout).not.toHaveBeenCalled();
+    expect((await context.service.accountStatus(vault.ownerUserId)).authenticated).toBe(true);
+  });
+
+  it('reports a known expired account and resumes an enabled vault on reauthentication', async () => {
+    const context = await nativeFixture();
+    await connect(context);
+    await context.service.enable(context.vault, false);
+    context.client.failure = nativeFailure('OBSIDIAN_AUTH_EXPIRED');
+    await context.service.enable(context.vault, true);
+    await expect.poll(async () => (await context.service.status(context.vault)).lastErrorCode).toBe('OBSIDIAN_AUTH_EXPIRED');
+    expect(await context.service.accountStatus(context.vault.ownerUserId)).toMatchObject({ authenticated: false, lastErrorCode: 'OBSIDIAN_AUTH_EXPIRED' });
+    context.client.failure = undefined;
+    await context.service.accountLogin(context.vault.ownerUserId, { email: 'new@example.com', password: 'secret' });
+    await expect.poll(async () => (await context.service.status(context.vault)).phase).toBe('running');
+    expect(await context.service.accountStatus(context.vault.ownerUserId)).toMatchObject({ authenticated: true, lastErrorCode: null });
+  });
+
+  it('refuses an account storage symlink and does not write through it', async () => {
+    const context = await nativeFixture();
+    const outside = await temporary();
+    await symlink(outside, join(context.root, '.accounts'));
+    await expect(context.service.accountLogin(context.vault.ownerUserId, { email: 'x@example.com', password: 'secret' })).rejects.toMatchObject({ code: 'OBSIDIAN_SYNC_FAILED' });
+    expect(await stat(join(outside, context.vault.ownerUserId)).catch(() => null)).toBeNull();
+  });
+
+  it('returns only public status fields for headless vaults on list, detail, and creation', async () => {
+    const context = await nativeFixture();
+    const initial = { enabled: false, phase: 'pending-login', lastErrorCode: null, lastSyncedAt: null };
+    const create = async (name: string, syncMode: 'tephra' | 'obsidian') => context.app.request('/api/v1/vaults', {
+      method: 'POST', headers: context.browserHeaders, body: JSON.stringify({ name, syncMode }),
+    });
+    const created = await create('New headless', 'obsidian');
+    expect(created.status).toBe(201);
+    expect((await created.json()).vault.obsidianSync).toEqual(initial);
+    const direct = await create('Direct', 'tephra');
+    expect((await direct.json()).vault).not.toHaveProperty('obsidianSync');
+
+    await context.database.obsidianSync.upsert({
+      ...initialObsidianSettings(context.vault.id),
+      enabled: true, phase: 'error', lastErrorCode: 'OBSIDIAN_SYNC_FAILED', lastSyncedAt: 123,
+      remoteVaultId: 'private-remote-id',
+    });
+    await context.database.vaults.insert({ ...context.vault, id: 'other-vault', ownerUserId: 'other-user', name: 'Private vault' });
+    const expected = { enabled: true, phase: 'error', lastErrorCode: 'OBSIDIAN_SYNC_FAILED', lastSyncedAt: 123 };
+    const list = await context.app.request('/api/v1/vaults', { headers: context.browserHeaders });
+    const listBody = await list.json();
+    expect(listBody.vaults.find((vault: Vault) => vault.id === context.vault.id).obsidianSync).toEqual(expected);
+    expect(JSON.stringify(listBody)).not.toMatch(/private-remote-id|Private vault|saved-token/);
+    const detail = await context.app.request(`/api/v1/vaults/${context.vault.id}`, { headers: context.browserHeaders });
+    expect((await detail.json()).vault.obsidianSync).toEqual(expected);
+    expect((await context.app.request('/api/v1/vaults/other-vault', { headers: context.browserHeaders })).status).toBe(403);
+
+    delete context.dependencies.obsidianSync;
+    const unavailableStored = await context.app.request(`/api/v1/vaults/${context.vault.id}`, { headers: context.browserHeaders });
+    expect((await unavailableStored.json()).vault.obsidianSync).toEqual({ ...expected, phase: 'unavailable' });
+
+    context.database.state.nativeSettings.delete(context.vault.id);
+    context.dependencies.obsidianSync = context.service;
+    const fallback = await context.app.request(`/api/v1/vaults/${context.vault.id}`, { headers: context.browserHeaders });
+    expect((await fallback.json()).vault.obsidianSync).toEqual(initial);
+    delete context.dependencies.obsidianSync;
+    const unavailable = await context.app.request(`/api/v1/vaults/${context.vault.id}`, { headers: context.browserHeaders });
+    expect((await unavailable.json()).vault.obsidianSync).toEqual({ ...initial, phase: 'unavailable' });
+  });
+
+  it('does not allow switching vault sync methods or configuring headless sync on direct vaults', async () => {
+    const context = await nativeFixture();
+    const created = await context.app.request('/api/v1/vaults', {
+      method: 'POST', headers: context.browserHeaders, body: JSON.stringify({ name: 'Direct', syncMode: 'tephra' }),
+    });
+    const direct = (await created.json()).vault as Vault;
+    for (const vault of [direct, context.vault]) {
+      for (const method of ['PUT', 'PATCH']) {
+        const response = await context.app.request(`/api/v1/vaults/${vault.id}`, {
+          method, headers: context.browserHeaders,
+          body: JSON.stringify({ syncMode: vault.syncMode === 'tephra' ? 'obsidian' : 'tephra' }),
+        });
+        expect(response.status).toBe(404);
+      }
+      expect((await context.database.vaults.findById(vault.id))?.syncMode).toBe(vault.syncMode);
+    }
+    const response = await context.app.request(`/api/v1/vaults/${direct.id}/obsidian-sync/setup`, {
+      method: 'POST', headers: context.browserHeaders,
+      body: JSON.stringify({ remoteVaultId: 'remote-1', mode: 'bidirectional' }),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe('VAULT_SYNC_MODE_MISMATCH');
+    expect(await context.database.obsidianSync.find(direct.id)).toBeNull();
+  });
+
   it('supports creation/setup/status only for owner sessions, enforces CSRF and never echoes secrets', async () => {
     const context = await nativeFixture();
     const prefix = `/api/v1/vaults/${context.vault.id}/obsidian-sync`;

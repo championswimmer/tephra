@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { chmod, lstat, mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { chmod, lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -297,6 +298,8 @@ export async function preparePaths(paths: VaultPaths): Promise<void> {
 }
 
 export interface OfficialClient {
+  hasAuth(paths: VaultPaths): Promise<boolean>;
+  copyAuth(source: VaultPaths, destination: VaultPaths): Promise<void>;
   ensure(): Promise<void>;
   close?(): void;
   login(paths: VaultPaths, input: ObsidianLogin): Promise<void>;
@@ -315,6 +318,49 @@ const remoteSchema = z.object({
 const remotesSchema = z.object({ vaults: z.array(remoteSchema), shared: z.array(remoteSchema) });
 
 export class HeadlessClient implements OfficialClient {
+  async hasAuth(paths: VaultPaths): Promise<boolean> {
+    try {
+      for (const path of [dirname(paths.root), paths.root, paths.config, clientStateRoot(paths)]) {
+        const info = await lstat(path);
+        if (!info.isDirectory() || info.isSymbolicLink()) return false;
+      }
+      const token = await lstat(join(clientStateRoot(paths), 'auth_token'));
+      return token.isFile() && !token.isSymbolicLink() && token.size > 0 && token.size <= 65536;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+  async copyAuth(source: VaultPaths, destination: VaultPaths): Promise<void> {
+    if (!(await this.hasAuth(source))) throw nativeFailure('OBSIDIAN_AUTH_EXPIRED');
+    for (const path of [dirname(destination.root), destination.root, destination.config, destination.tmp]) {
+      if (path !== dirname(destination.root)) await mkdir(path, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
+      const info = await lstat(path);
+      if (!info.isDirectory() || info.isSymbolicLink()) throw nativeFailure('OBSIDIAN_SETUP_FAILED');
+      if (path !== dirname(destination.root)) await chmod(path, 0o700);
+    }
+    const stateRoot = clientStateRoot(destination);
+    await mkdir(stateRoot, { recursive: true, mode: 0o700 });
+    const info = await lstat(stateRoot);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw nativeFailure('OBSIDIAN_SETUP_FAILED');
+    await chmod(stateRoot, 0o700);
+    const handle = await open(join(clientStateRoot(source), 'auth_token'), constants.O_RDONLY | constants.O_NOFOLLOW);
+    let token: Buffer;
+    try {
+      const info = await handle.stat();
+      if (!info.isFile() || info.size === 0 || info.size > 65536) throw nativeFailure('OBSIDIAN_AUTH_EXPIRED');
+      token = await handle.readFile();
+    } finally {
+      await handle.close();
+    }
+    const temporary = join(stateRoot, `.auth-${randomUUID()}`);
+    try {
+      await writeFile(temporary, token, { mode: 0o600, flag: 'wx' });
+      await rename(temporary, join(stateRoot, 'auth_token'));
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  }
   private readonly controller = new AbortController();
   close(): void {
     this.controller.abort();

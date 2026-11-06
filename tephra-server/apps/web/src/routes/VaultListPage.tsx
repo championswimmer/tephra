@@ -4,6 +4,7 @@ import { Archive, X } from 'lucide-react';
 import { api } from '../api/client';
 import type { Vault } from '../api/types';
 import { EmptyState, ErrorState, Loading } from '../components/Status';
+import { syncStatus } from '../vault/sync-status';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.';
@@ -14,22 +15,71 @@ export function VaultListPage() {
   const [error, setError] = useState<unknown>();
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [syncMode, setSyncMode] = useState<'tephra' | 'obsidian'>('tephra');
+  const [obsidianAvailable, setObsidianAvailable] = useState(false);
+  const [createdHeadless, setCreatedHeadless] = useState<Vault | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void api.obsidianAvailable().then((result) => { if (!cancelled) setObsidianAvailable(result.available); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [deletingVault, setDeletingVault] = useState<Vault | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState<unknown>();
   const [deleting, setDeleting] = useState(false);
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
-  async function load() {
-    setError(undefined);
+  const mutationVersion = useRef(0);
+  const inFlight = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
+  const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const version = mutationVersion.current;
     try {
-      setVaults((await api.vaults()).vaults);
+      const result = await api.vaults(controller.signal);
+      if (!controller.signal.aborted && mounted.current && version === mutationVersion.current) {
+        setVaults(result.vaults);
+        setError(undefined);
+      }
     } catch (caught) {
-      setError(caught);
+      if (!controller.signal.aborted && mounted.current) setError(caught);
+    } finally {
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        inFlight.current = false;
+      }
     }
-  }
-  useEffect(() => {
-    void load();
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      activeRequest.current?.abort();
+      activeRequest.current = null;
+      inFlight.current = false;
+    };
+  }, [load]);
+  const hasHeadlessVault = vaults?.some((vault) => vault.syncMode === 'obsidian') ?? false;
+  useEffect(() => {
+    if (!hasHeadlessVault) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        await load();
+        if (!cancelled) schedule();
+      }, 10_000);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [hasHeadlessVault, load]);
   async function create(event: FormEvent) {
     event.preventDefault();
     const trimmed = name.trim();
@@ -37,9 +87,11 @@ export function VaultListPage() {
     setCreating(true);
     setError(undefined);
     try {
-      const { vault } = await api.createVault(trimmed);
-      setVaults((current) => [...(current ?? []), vault]);
+      const { vault } = await api.createVault(trimmed, syncMode);
+      mutationVersion.current += 1;
+      setVaults((current) => [...(current ?? []).filter((item) => item.id !== vault.id), vault]);
       setName('');
+      setCreatedHeadless(syncMode === 'obsidian' ? vault : null);
     } catch (caught) {
       setError(caught);
     } finally {
@@ -78,6 +130,7 @@ export function VaultListPage() {
     setDeleteError(undefined);
     try {
       await api.deleteVault(deletingVault.id, deletingVault.name);
+      mutationVersion.current += 1;
       setVaults((current) => current?.filter((vault) => vault.id !== deletingVault.id) ?? []);
       resetDeleteModal({ restoreFocus: false });
     } catch (caught) {
@@ -100,35 +153,46 @@ export function VaultListPage() {
           </label>
           <input
             id="vault-name"
+            disabled={creating}
             placeholder="New vault name"
+            aria-describedby="vault-creation-method"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+          <label>
+            Sync method
+            <select disabled={creating} value={syncMode} onChange={(event) => setSyncMode(event.target.value as 'tephra' | 'obsidian')}>
+              <option value="tephra">Direct Tephra plugin</option>
+              <option value="obsidian" disabled={!obsidianAvailable}>Official Obsidian Sync{!obsidianAvailable ? ' (unavailable)' : ''}</option>
+            </select>
+          </label>
           <button className="primary" disabled={creating}>
             {creating ? 'Creating…' : 'Create vault'}
           </button>
         </form>
       </div>
-      <p><Link to="/settings#obsidian-sync">Connect official Obsidian Sync →</Link></p>
+      <p id="vault-creation-method">The sync method is permanent and cannot be changed after creation. Choose direct Tephra plugin sync or official Obsidian Sync. <Link to="/settings#obsidian-sync">Manage your Obsidian account →</Link></p>
+      {createdHeadless && <p role="status">Vault created. <Link to={`/v/${encodeURIComponent(createdHeadless.name)}/settings`}>Set up Obsidian Sync →</Link></p>}
       {error !== undefined && <ErrorState error={error} retry={() => void load()} />}
       {!vaults && !error ? (
         <Loading label="Loading vaults…" />
       ) : vaults?.length === 0 ? (
         <EmptyState title="No vaults yet">
-          <p>Create one, then connect the Tephra Obsidian plugin, or <Link to="/settings#obsidian-sync">connect official Obsidian Sync in Settings</Link>.</p>
+          <p>Create a vault and choose its sync method above.</p>
         </EmptyState>
       ) : (
         <ul className="vault-grid">
           {vaults?.map((vault) => (
             <li key={vault.id}>
               <article className="vault-card">
-                <Link to={`/v/${encodeURIComponent(vault.name)}`}>
+                <Link className="vault-card-main" to={`/v/${encodeURIComponent(vault.name)}`}>
                   <span className="vault-icon" aria-hidden="true">
                     <Archive size={28} aria-hidden="true" focusable="false" className="icon" />
                   </span>
                   <strong>{vault.name}</strong>
-                  <span>{vault.syncMode === 'obsidian' ? 'Obsidian Sync · ' : ''}Revision {vault.latestRevision}</span>
+                  <span>{vault.syncMode === 'obsidian' ? syncStatus(vault) : `Revision ${vault.latestRevision}`}</span>
                 </Link>
+                <Link to={`/v/${encodeURIComponent(vault.name)}/settings`} aria-label={`Settings for ${vault.name}`}>Vault settings</Link>
                 <button
                   type="button"
                   className="danger subtle vault-delete-button"

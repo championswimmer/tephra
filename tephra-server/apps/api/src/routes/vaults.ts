@@ -42,8 +42,17 @@ function isVaultNameConflict(error: unknown): boolean {
 
 async function publicVault(vault: Vault, dependencies: ApiDependencies) {
   if (vault.syncMode !== 'obsidian') return vault;
-  const settings = await dependencies.database.obsidianSync.find(vault.id);
-  return { ...vault, readOnly: !dependencies.obsidianSync || !settings?.enabled || settings.phase !== 'running' || settings.mode !== 'bidirectional' };
+  const settings = (await dependencies.database.obsidianSync.find(vault.id)) ?? initialObsidianSettings(vault.id);
+  return {
+    ...vault,
+    readOnly: !dependencies.obsidianSync || !settings.enabled || settings.phase !== 'running' || settings.mode !== 'bidirectional',
+    obsidianSync: {
+      enabled: settings.enabled,
+      phase: dependencies.obsidianSync ? settings.phase : 'unavailable' as const,
+      lastErrorCode: settings.lastErrorCode,
+      lastSyncedAt: settings.lastSyncedAt,
+    },
+  };
 }
 
 export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependencies): void {
@@ -67,17 +76,18 @@ export function registerVaultListRoutes(app: ApiApp, dependencies: ApiDependenci
     if ((await dependencies.database.vaults.findByName(vault.name)) !== null)
       fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
     try {
-      if (vault.syncMode === 'obsidian') requireObsidianService(dependencies);
+      const native = vault.syncMode === 'obsidian' ? requireObsidianService(dependencies) : undefined;
+      const account = native ? await native.accountStatus(principal.user.id) : undefined;
       await dependencies.database.transaction(async repositories => {
         await repositories.vaults.insert(vault);
-        if (vault.syncMode === 'obsidian') await repositories.obsidianSync.upsert(initialObsidianSettings(vault.id));
+        if (native) await repositories.obsidianSync.upsert({ ...initialObsidianSettings(vault.id), ...(account?.authenticated ? { phase: 'pending-remote' as const } : {}) });
       });
     } catch (error) {
       if (isVaultNameConflict(error))
         fail(409, 'VAULT_NAME_TAKEN', 'A vault with this name already exists.');
       throw error;
     }
-    return c.json({ vault }, 201);
+    return c.json({ vault: await publicVault(vault, dependencies) }, 201);
   });
 }
 

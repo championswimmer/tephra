@@ -31,6 +31,14 @@ export function registerObsidianCapabilityRoutes(app: ApiApp, dependencies: ApiD
     requireSession(c);
     return c.json({ available: Boolean(dependencies.obsidianSync) });
   });
+  app.get('/api/v1/obsidian-sync/account', async (c) => {
+    const principal = requireSession(c);
+    return c.json({ account: await requireObsidianService(dependencies).accountStatus(principal.user.id) });
+  });
+  app.post('/api/v1/obsidian-sync/account/login', async (c) => {
+    const principal = requireSession(c);
+    return c.json({ account: await requireObsidianService(dependencies).accountLogin(principal.user.id, await jsonBody(c, loginSchema)) });
+  });
 }
 export function registerObsidianSyncRoutes(app: ApiApp, dependencies: ApiDependencies): void {
   const owner = async (c: Parameters<typeof requireSession>[0]) => {
@@ -40,7 +48,7 @@ export function registerObsidianSyncRoutes(app: ApiApp, dependencies: ApiDepende
       fail(
         409,
         'VAULT_SYNC_MODE_MISMATCH',
-        'This vault uses the Tephra sync plugin. Create an Obsidian Sync vault in Settings.',
+        'This vault uses the Tephra sync plugin and its sync method is fixed. Create a new Obsidian Sync vault on the vaults page.',
       );
     return vault;
   };

@@ -17,6 +17,8 @@ export interface ObsidianRemote {
   region?: string | undefined;
 }
 export interface ObsidianSyncService {
+  accountStatus(userId: string): Promise<ObsidianAccount>;
+  accountLogin(userId: string, input: ObsidianLogin): Promise<ObsidianAccount>;
   status(vault: Vault): Promise<ObsidianSyncSettings>;
   login(vault: Vault, input: ObsidianLogin): Promise<void>;
   remotes(vault: Vault): Promise<ObsidianRemote[]>;
@@ -28,6 +30,12 @@ export interface ObsidianSyncService {
     plan: { kind: 'create'; path: string } | { kind: 'update'; fileId: string; baseHash: string },
     text: string,
   ): Promise<NoteCommitResult>;
+}
+
+export interface ObsidianAccount {
+  authenticated: boolean;
+  email: string | null;
+  lastErrorCode: string | null;
 }
 
 export function initialObsidianSettings(vaultId: string): ObsidianSyncSettings {

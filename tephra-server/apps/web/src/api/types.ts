@@ -5,6 +5,12 @@ export interface User {
 export interface Vault {
   syncMode?: 'tephra' | 'obsidian';
   readOnly?: boolean;
+  obsidianSync?: {
+    enabled: boolean;
+    phase: ObsidianSyncSettings['phase'] | 'unavailable';
+    lastErrorCode: string | null;
+    lastSyncedAt: number | null;
+  };
   id: string;
   name: string;
   latestRevision: number;
@@ -83,6 +89,12 @@ export interface EditConflictCurrent {
   size: number;
   mtime: number;
   revision: number;
+}
+
+export interface ObsidianAccount {
+  authenticated: boolean;
+  email: string | null;
+  lastErrorCode: string | null;
 }
 
 export interface ObsidianSyncSettings {

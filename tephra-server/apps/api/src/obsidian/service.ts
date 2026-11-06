@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs';
-import { lstat, mkdir, readdir, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { sha256Hex } from '@tephra/protocol';
 import type { ObsidianSyncSettings, Vault } from '@tephra/vault-model';
@@ -27,6 +28,7 @@ import {
   type ObsidianLogin,
   type ObsidianSetup,
   type ObsidianSyncService,
+  type ObsidianAccount,
 } from './types.js';
 
 class KeyedQueue {
@@ -64,6 +66,7 @@ export class NativeSyncService implements ObsidianSyncService {
   private readonly contents = new KeyedQueue();
   private readonly workers = new Map<string, Worker>();
   private readonly loginAttempts = new Map<string, number[]>();
+  private readonly accountDetails = new Map<string, { email: string | null; lastErrorCode: string | null }>();
   private closing = false;
   private readonly deleting = new Set<string>();
   constructor(
@@ -72,6 +75,76 @@ export class NativeSyncService implements ObsidianSyncService {
   ) {}
   private paths(vault: Vault): VaultPaths {
     return vaultPaths(this.options.root, vault.id);
+  }
+  private accountPaths(userId: string): VaultPaths {
+    return vaultPaths(join(this.options.root, '.accounts'), userId);
+  }
+  private userKey(userId: string): string { return `user:${userId}`; }
+  private async prepareAccounts(): Promise<void> {
+    await mkdir(this.options.root, { recursive: true, mode: 0o700 });
+    await safeDirectory(this.options.root);
+    const root = join(this.options.root, '.accounts');
+    await mkdir(root, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
+    await safeDirectory(root);
+    await chmod(root, 0o700);
+  }
+  async accountStatus(userId: string): Promise<ObsidianAccount> {
+    this.assertOpen();
+    let authenticated = await this.options.client.hasAuth(this.accountPaths(userId));
+    const details = this.accountDetails.get(userId);
+    const vaults = await this.dependencies.database.vaults.listByOwner(userId);
+    const states = await Promise.all(vaults.filter((vault) => vault.syncMode === 'obsidian').map((vault) => this.status(vault)));
+    const expired = states.some((state) => state.enabled && state.phase === 'error' && state.lastErrorCode === 'OBSIDIAN_AUTH_EXPIRED');
+    if (expired) authenticated = false;
+    return { authenticated, email: details?.email ?? null, lastErrorCode: expired ? 'OBSIDIAN_AUTH_EXPIRED' : details?.lastErrorCode ?? null };
+  }
+  async accountLogin(userId: string, input: ObsidianLogin): Promise<ObsidianAccount> {
+    this.assertOpen();
+    const now = this.dependencies.clock.now();
+    const attempts = (this.loginAttempts.get(userId) ?? []).filter((time) => time > now - 15 * 60_000);
+    if (attempts.length >= 5) fail(429, 'OBSIDIAN_RATE_LIMIT', 'Too many sign-in attempts. Try again in 15 minutes.');
+    this.loginAttempts.set(userId, [...attempts, now]);
+    return this.controls.run(this.userKey(userId), async () => {
+      this.assertOpen();
+      const staging = vaultPaths(join(this.options.root, '.accounts'), `login-${randomUUID()}`);
+      let staged = false;
+      try {
+        await this.prepareAccounts();
+        await preparePaths(staging);
+        staged = true;
+        await this.options.client.login(staging, input);
+        if (!(await this.options.client.hasAuth(staging))) throw nativeFailure('OBSIDIAN_LOGIN_FAILED');
+        await this.options.client.copyAuth(staging, this.accountPaths(userId));
+        this.accountDetails.set(userId, { email: input.email, lastErrorCode: null });
+        const vaults = await this.dependencies.database.vaults.listByOwner(userId);
+        for (const vault of vaults.filter((item) => item.syncMode === 'obsidian')) {
+          await this.controls.run(vault.id, async () => {
+            if (this.deleting.has(vault.id)) return;
+            this.assertOpen(vault);
+            await this.stop(vault);
+            try {
+              await this.options.client.copyAuth(this.accountPaths(userId), await this.privatePaths(vault));
+              const state = await this.status(vault);
+              await this.patch(vault, { phase: state.remoteVaultId ? 'stopped' : 'pending-remote', lastErrorCode: null });
+            } finally {
+              const state = await this.status(vault);
+              if (state.enabled && state.remoteVaultId) this.launch(vault);
+            }
+          });
+        }
+        return this.accountStatus(userId);
+      } catch (error) {
+        const failure = error instanceof ApiFailure ? error : nativeFailure('OBSIDIAN_LOGIN_FAILED');
+        this.accountDetails.set(userId, { email: this.accountDetails.get(userId)?.email ?? null, lastErrorCode: failure.code });
+        throw failure;
+      } finally {
+        if (staged) await rm(staging.root, { recursive: true, force: true });
+      }
+    });
+  }
+  private async useAccount(vault: Vault, paths: VaultPaths): Promise<void> {
+    const account = this.accountPaths(vault.ownerUserId);
+    if (await this.options.client.hasAuth(account)) await this.options.client.copyAuth(account, paths);
   }
   private assertOpen(vault?: Vault): void {
     if (this.closing || (vault && this.deleting.has(vault.id)))
@@ -113,49 +186,25 @@ export class NativeSyncService implements ObsidianSyncService {
       fail(409, 'OBSIDIAN_SYNC_LIMIT', 'The server has reached its Obsidian Sync vault limit.');
   }
   async login(vault: Vault, input: ObsidianLogin): Promise<void> {
-    this.assertOpen(vault);
-    const now = this.dependencies.clock.now();
-    const attempts = (this.loginAttempts.get(vault.id) ?? []).filter(
-      (time) => time > now - 15 * 60_000,
-    );
-    if (attempts.length >= 5)
-      fail(429, 'OBSIDIAN_RATE_LIMIT', 'Too many sign-in attempts. Try again in 15 minutes.');
-    this.loginAttempts.set(vault.id, [...attempts, now]);
-    return this.controls.run(vault.id, async () => {
-      this.assertOpen(vault);
-      await this.stop(vault);
-      const paths = await this.privatePaths(vault);
-      try {
-        await this.options.client.login(paths, input);
-        const state = await this.status(vault);
-        await this.patch(vault, {
-          phase: state.remoteVaultId ? 'stopped' : 'pending-remote',
-          lastErrorCode: null,
-        });
-        if (state.enabled && state.remoteVaultId) this.launch(vault);
-      } catch (error) {
-        const failure =
-          error instanceof ApiFailure ? error : nativeFailure('OBSIDIAN_LOGIN_FAILED');
-        await this.patch(vault, { phase: 'error', lastErrorCode: failure.code });
-        throw failure;
-      }
-    });
+    await this.accountLogin(vault.ownerUserId, input);
   }
   async remotes(vault: Vault) {
     this.assertOpen(vault);
-    return this.controls.run(vault.id, async () => {
+    return this.controls.run(this.userKey(vault.ownerUserId), () => this.controls.run(vault.id, async () => {
       this.assertOpen(vault);
       try {
-        return await this.options.client.remotes(await this.privatePaths(vault));
+        const paths = await this.privatePaths(vault);
+        if (!(await this.status(vault)).remoteVaultId) await this.useAccount(vault, paths);
+        return await this.options.client.remotes(paths);
       } catch (error) {
         throw error instanceof ApiFailure ? error : nativeFailure('OBSIDIAN_SYNC_FAILED');
       }
-    });
+    }));
   }
   async setup(vault: Vault, input: ObsidianSetup): Promise<void> {
     this.assertOpen(vault);
     // Global gate serializes capacity reservations across different vaults.
-    return this.controls.run('capacity', () =>
+    return this.controls.run(this.userKey(vault.ownerUserId), () => this.controls.run('capacity', () =>
       this.controls.run(vault.id, async () => {
         this.assertOpen(vault);
         await this.capacity(vault);
@@ -170,6 +219,7 @@ export class NativeSyncService implements ObsidianSyncService {
         await this.stop(vault);
         const paths = await this.privatePaths(vault);
         try {
+          if (!settings.remoteVaultId) await this.useAccount(vault, paths);
           const remotes = await this.options.client.remotes(paths);
           if (!remotes.some((remote) => remote.id === input.remoteVaultId))
             throw nativeFailure('OBSIDIAN_SETUP_FAILED');
@@ -195,7 +245,7 @@ export class NativeSyncService implements ObsidianSyncService {
           throw failure;
         }
       }),
-    );
+    ));
   }
   async enable(vault: Vault, enabled: boolean): Promise<void> {
     this.assertOpen(vault);
@@ -427,17 +477,18 @@ export class NativeSyncService implements ObsidianSyncService {
     });
   }
   async remove(vault: Vault): Promise<void> {
-    this.deleting.add(vault.id);
-    return this.controls.run(vault.id, async () => {
+    return this.controls.run(this.userKey(vault.ownerUserId), () => {
+      this.deleting.add(vault.id);
+      return this.controls.run(vault.id, async () => {
       await this.patch(vault, { enabled: false, phase: 'stopped' });
       await this.stop(vault);
       const paths = this.paths(vault);
       // Child is gone, so local removal cannot propagate to the remote vault.
       // Network revocation is best effort (expired credentials/offline deletion).
       await this.options.client.unlink(paths).catch(() => undefined);
-      await this.options.client.logout(paths).catch(() => undefined);
       await rm(paths.root, { recursive: true, force: true });
       this.loginAttempts.delete(vault.id);
+      });
     });
   }
   async boot(): Promise<void> {

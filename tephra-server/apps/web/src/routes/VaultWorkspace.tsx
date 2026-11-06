@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  KeyRound,
+  Settings,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -232,12 +232,9 @@ export function VaultWorkspace() {
             <Waypoints size={14} aria-hidden="true" focusable="false" className="icon" />
             Graph
           </Link>
-          <Link
-            className={view.type === 'tokens' ? 'active' : ''}
-            to={vault?.syncMode === 'obsidian' ? '/settings#obsidian-sync' : `/v/${encodeURIComponent(vault?.name ?? vaultId)}/tokens`}
-          >
-            <KeyRound size={14} aria-hidden="true" focusable="false" className="icon" />
-            {vault?.syncMode === 'obsidian' ? 'Sync settings' : 'Tokens'}
+          <Link to={`/v/${encodeURIComponent(vault?.name ?? vaultId)}/settings`}>
+            <Settings size={14} aria-hidden="true" focusable="false" className="icon" />
+            Vault settings
           </Link>
           {showLinksPanel && (
             <button
