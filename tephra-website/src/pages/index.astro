@@ -407,7 +407,7 @@ const comparisons = [
 <style>
   .grad {
     font-style: italic;
-    font-weight: 400;
+    font-weight: inherit;
     padding-inline-end: 0.06em;
     background: linear-gradient(120deg, var(--crystal-500), var(--obsidian-900));
     -webkit-background-clip: text;
@@ -416,7 +416,7 @@ const comparisons = [
   }
 
   .obs {
-    font-weight: 400;
+    font-weight: inherit;
   }
 
   .band {
@@ -429,6 +429,11 @@ const comparisons = [
     position: relative;
     overflow: hidden;
     padding-top: clamp(48px, 8vw, 88px);
+  }
+
+  .hero h1 {
+    font-weight: 700;
+    letter-spacing: -0.025em;
   }
 
   .hero::before {
