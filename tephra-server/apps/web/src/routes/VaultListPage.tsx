@@ -299,7 +299,7 @@ export function VaultListPage() {
             {(syncMode === 'obsidian' || !obsidianAvailable) && (
               <p className="muted">
                 {!obsidianAvailable && 'Official Obsidian Sync is unavailable on this server. '}
-                <Link to="/settings#obsidian-sync">Manage your Obsidian account →</Link>
+                <Link to="/settings?tab=sync">Manage your Obsidian account →</Link>
               </p>
             )}
             {createError !== undefined && (

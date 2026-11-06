@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
 import { ConnectAgentPage } from '../src/routes/ConnectAgentPage';
-import { AuthorizedAgents, McpSettingsPage } from '../src/routes/McpSettingsPage';
+import { AuthorizedAgents, McpSettingsPanel } from '../src/components/McpSettingsPanel';
 
 describe('Authorized agents', () => {
   it('lists MCP tokens across vaults and revokes one', async () => {
@@ -45,7 +45,7 @@ describe('MCP settings page', () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
-        <McpSettingsPage />
+        <McpSettingsPanel />
       </MemoryRouter>,
     );
     expect(screen.getByText(/claude mcp add --transport http tephra/)).toBeInTheDocument();

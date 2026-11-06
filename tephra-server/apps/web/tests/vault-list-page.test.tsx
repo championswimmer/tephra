@@ -137,7 +137,7 @@ describe('VaultListPage', () => {
       await user.selectOptions(screen.getByLabelText('Sync method'), 'obsidian');
       expect(
         within(dialog).getByRole('link', { name: /Manage your Obsidian account/ }),
-      ).toHaveAttribute('href', '/settings#obsidian-sync');
+      ).toHaveAttribute('href', '/settings?tab=sync');
       if (action === 'Escape') fireEvent(dialog, new Event('cancel', { cancelable: true }));
       else await user.click(within(dialog).getByRole('button', { name: action }));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

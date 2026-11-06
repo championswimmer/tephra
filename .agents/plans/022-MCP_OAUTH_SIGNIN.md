@@ -21,7 +21,7 @@ OAuth 2.1 authorization code + PKCE (S256), public clients, loopback redirect.
    API token (`MCP: <client name>`, scopes `vault:read-metadata` [+ `vault:write`], no expiry) and returns it as
    the access token. It is listed and revocable in the vault's Tokens UI.
 
-Web app: Settings -> "AI agents (MCP)" (`/settings/mcp`) with setup steps for Claude Code, Codex, Cursor,
+Web app: Settings -> "MCP" (`/settings?tab=mcp`) with setup steps for Claude Code, Codex, Cursor,
 Antigravity and Pi; consent page `/connect`.
 
 ## Non-goals

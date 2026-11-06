@@ -78,7 +78,7 @@ describe('Obsidian Sync settings', () => {
     expect(await screen.findByText('Sign in to Obsidian to continue')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Sign in or reauthenticate/ })).toHaveAttribute(
       'href',
-      '/settings#obsidian-sync',
+      '/settings?tab=sync',
     );
     expect(screen.queryByLabelText('Obsidian password')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Load remote vaults' }));

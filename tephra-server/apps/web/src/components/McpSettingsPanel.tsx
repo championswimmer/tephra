@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Copy } from 'lucide-react';
 import { api } from '../api/client';
 import type { ApiToken } from '../api/types';
@@ -55,7 +54,10 @@ export function agentGuides(url: string): AgentGuide[] {
         'Restart or refresh MCP servers; Antigravity starts the browser sign-in the first time the server is used (in the CLI run /mcp to authenticate).',
       ],
       snippets: [
-        { label: 'mcp_config.json', code: JSON.stringify({ mcpServers: { tephra: { serverUrl: url } } }, null, 2) },
+        {
+          label: 'mcp_config.json',
+          code: JSON.stringify({ mcpServers: { tephra: { serverUrl: url } } }, null, 2),
+        },
       ],
       note: 'The file lives under ~/.gemini/ (path differs between Antigravity versions). If your version does not offer browser sign-in, create an API token under a vault’s Tokens and add "headers": { "Authorization": "Bearer <token>" }.',
     },
@@ -68,7 +70,10 @@ export function agentGuides(url: string): AgentGuide[] {
       ],
       snippets: [
         { label: 'Terminal', code: `pi mcp add tephra ${url}\npi mcp login tephra` },
-        { label: 'or ~/.pi/agent/mcp.json', code: JSON.stringify({ mcpServers: { tephra: { url } } }, null, 2) },
+        {
+          label: 'or ~/.pi/agent/mcp.json',
+          code: JSON.stringify({ mcpServers: { tephra: { url } } }, null, 2),
+        },
       ],
       note: 'Credentials are stored in ~/.pi/agent/mcp-auth.json; remove them with pi mcp logout tephra. Use pi mcp add -l to save the server to the current project (.pi/mcp.json) instead. Exact flags may vary by Pi version — check pi mcp --help.',
     },
@@ -81,7 +86,11 @@ function CodeBlock({ label, code }: { label: string; code: string }) {
       <strong>{label}</strong>
       <code style={{ whiteSpace: 'pre' }}>{code}</code>
       <div>
-        <button type="button" className="icon-button" onClick={() => void navigator.clipboard.writeText(code)}>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => void navigator.clipboard.writeText(code)}
+        >
           <Copy size={14} aria-hidden="true" focusable="false" className="icon" />
           Copy
         </button>
@@ -167,19 +176,20 @@ export function AuthorizedAgents() {
   );
 }
 
-export function McpSettingsPage() {
+export function McpSettingsPanel() {
   const url = `${window.location.origin}/mcp`;
   const guides = agentGuides(url);
   const [active, setActive] = useState(guides[0]!.id);
   const guide = guides.find((g) => g.id === active)!;
   return (
-    <main className="page narrow">
-      <p className="eyebrow">
-        <Link to="/settings">Settings</Link> / AI agents
-      </p>
-      <h1>Connect an AI agent (MCP)</h1>
+    <>
       <section className="settings-card">
-        <h2>How sign-in works</h2>
+        <h2>Connect an AI agent (MCP)</h2>
+        <p>
+          Let Claude Code, Codex, Cursor and other coding agents search and edit your notes. Sign-in
+          happens in your browser — no token copy-pasting.
+        </p>
+        <h3>How sign-in works</h3>
         <ol>
           <li>Add the server URL below to your agent.</li>
           <li>The agent opens this site in your browser. Sign in to Tephra if needed.</li>
@@ -222,6 +232,6 @@ export function McpSettingsPage() {
         ))}
         {guide.note && <p className="muted">{guide.note}</p>}
       </section>
-    </main>
+    </>
   );
 }

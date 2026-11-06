@@ -252,3 +252,9 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       guidance and the permanence notice inside the dialog. Creation errors stay
       in the form; cancellation resets it and restores focus. Full `npm run check`
       and Chromium desktop/mobile creation and existing deletion checks pass.
+- [x] Application Settings now has Appearance, Account, Sync and MCP tabs, with
+      the full MCP setup guides and authorized-agent controls in the MCP tab.
+      Tab URLs support reload and browser history; keyboard navigation and
+      mobile layouts are covered. Sync links open its tab, and leaving Sync
+      clears unfinished credentials. Full `npm run check` (731 tests) and four
+      Chromium settings/vault-creation checks pass; desktop/mobile screenshots reviewed.

@@ -314,7 +314,7 @@ export function VaultWorkspace() {
               {...(resolvedFileId === undefined ? {} : { selectedId: resolvedFileId })}
             />
           )}
-          {view.type === 'tokens' && (vault.syncMode === 'obsidian' ? <p>This vault uses official Obsidian Sync. <Link to="/settings#obsidian-sync">Manage sync in Settings</Link>.</p> : <TokenManager vaultId={vaultId} />)}
+          {view.type === 'tokens' && (vault.syncMode === 'obsidian' ? <p>This vault uses official Obsidian Sync. <Link to="/settings?tab=sync">Manage sync in Settings</Link>.</p> : <TokenManager vaultId={vaultId} />)}
           {view.type === 'file' &&
             (resolveState.status === 'loading' || resolveState.status === 'idle' ? (
               <Loading label="Resolving path…" />

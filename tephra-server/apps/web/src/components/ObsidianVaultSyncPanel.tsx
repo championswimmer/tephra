@@ -109,7 +109,7 @@ export function ObsidianVaultSyncPanel({ vaultId }: { vaultId: string }) {
     <section className="settings-card obsidian-settings">
       <h2>Obsidian Sync</h2>
       <p>
-        <Link to="/settings#obsidian-sync">Sign in or reauthenticate your Obsidian account →</Link>
+        <Link to="/settings?tab=sync">Sign in or reauthenticate your Obsidian account →</Link>
       </p>
       {settings && (
         <div className="obsidian-sync-status" role="status">

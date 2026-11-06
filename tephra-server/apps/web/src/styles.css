@@ -497,6 +497,35 @@ input {
   color: #c0503f;
   margin: 0;
 }
+.settings-tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  margin-top: 1.5rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.settings-tabs button {
+  flex: 1 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0.65rem 0.75rem;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.settings-tabs button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.settings-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--interactive-accent);
+  color: var(--text-accent);
+}
+.settings-tabs button:focus-visible {
+  outline-offset: -3px;
+}
 .settings-card,
 .management {
   padding: 1rem;
