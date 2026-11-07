@@ -1,17 +1,18 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Playwright end-to-end config for @tephra/web (Stage 1 gap F).
  *
- * Stack under test: the API composition root (`../api/dist/main.js`) serves
+ * Stack under test: the Go server (`tephra-server/go/cmd/tephra-server`) serves
  * both `/api/v1/*` and the built web bundle, so a single origin exercises the
  * production-like path with no dev-proxy involved.
  *
  * Prerequisites (run once before `npm run test:e2e`):
- *   1. `npm run build --workspace=@tephra/api`  (produces ../api/dist/main.js)
+ *   1. Go toolchain on PATH (the server is started with `go run`).
  *   2. `npm run build --workspace=@tephra/web`  (produces ./dist, served below
  *      as TEPHRA_WEB_ROOT)
  *   3. `npm run build --workspace=@tephra/protocol` (needed by the
@@ -33,6 +34,8 @@ import { defineConfig, devices } from '@playwright/test';
  * Isolation: every Playwright run mints a fresh temp data directory, so
  * bootstrap/login/vault state never leaks between runs.
  */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const GO_DIR = resolve(__dirname, '../../go');
 const PORT = Number(process.env.E2E_PORT ?? 8123);
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 const BOOTSTRAP_TOKEN = process.env.E2E_BOOTSTRAP_TOKEN ?? 'e2e-bootstrap-token';
@@ -61,21 +64,18 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Served with cwd = tephra-server/apps/web, hence the relative paths.
-    command: 'node ../api/dist/main.js',
+    command: `go run -C ${GO_DIR} ./cmd/tephra-server`,
     url: `${BASE_URL}/healthz`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
       HOST: '127.0.0.1',
       PORT: String(PORT),
-      NODE_ENV: 'test',
+      TEPHRA_OBSIDIAN_SYNC_ENABLED: 'false',
       TEPHRA_BOOTSTRAP_TOKEN: BOOTSTRAP_TOKEN,
       TEPHRA_SQLITE_PATH: join(DATA_DIR, 'tephra.db'),
       TEPHRA_BLOB_PATH: join(DATA_DIR, 'blobs'),
-      // API main.ts defaults to ./tephra-server/apps/web/dist (repo-root
-      // relative); from this directory the bundle lives at ./dist.
-      TEPHRA_WEB_ROOT: './dist',
+      TEPHRA_WEB_ROOT: resolve(__dirname, 'dist'),
     },
   },
 });

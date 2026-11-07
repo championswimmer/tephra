@@ -34,10 +34,6 @@
       ],
       "secrets": [
         {
-          "name": "TEPHRA_SESSION_SECRET",
-          "valueFrom": "<SESSION_SECRET_SSM_OR_SECRETSMANAGER_ARN>"
-        },
-        {
           "name": "TEPHRA_BOOTSTRAP_TOKEN",
           "valueFrom": "<BOOTSTRAP_TOKEN_SSM_OR_SECRETSMANAGER_ARN>"
         }
@@ -50,10 +46,7 @@
         }
       ],
       "healthCheck": {
-        "command": [
-          "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
-        ],
+        "command": ["CMD", "/usr/local/bin/tephra-server", "healthcheck"],
         "interval": 30,
         "timeout": 5,
         "retries": 3,

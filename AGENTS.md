@@ -14,18 +14,17 @@ A plan must state scope, non-goals, affected packages, migration/API consequence
 
 ## Repository rules
 
-- Package manager: npm workspaces.
-- Language: strict TypeScript.
-- Run `npm run check` before reporting implementation complete.
+- Server: Go, in `tephra-server/go` (module `github.com/championswimmer/tephra/tephra-server/go`). Never run plain `go get` / `go mod tidy`; `go.mod` pins exact versions.
+- Web app and plugin: strict TypeScript, managed as npm workspaces (`tephra-server/apps/web`, `tephra-server/packages/*`, `tephra-plugin`).
+- Run `npm run check` (TypeScript lint, typecheck, build, tests) and `npm run go:check` (gofmt, vet, `go test -race`) before reporting implementation complete; run both when a change touches the API contract or shared packages.
 - Add tests with behavior changes; security invariants require regression tests.
-- Shared packages (`protocol`, Markdown, link resolution, vault model) must remain browser-safe.
-- Node-only APIs belong in Node adapters and entrypoints.
-- Infrastructure is accessed through interfaces; do not bypass database/blob-store abstractions.
+- The shared TypeScript packages (`protocol`, `graph-renderer`, `markdown-editor`) must remain browser-safe; the plugin must not use Node-only APIs.
+- Server infrastructure is accessed through interfaces; do not bypass the database/blob-store abstractions in `tephra-server/go/internal`.
 - Do not log tokens, passwords, cookies, or vault contents.
 
 ## Products
 
-- `tephra-server`: Hono API, React/Vite web app, shared packages, persistence, deployment assets.
+- `tephra-server`: Go HTTP API (`tephra-server/go`), React/Vite web app (`tephra-server/apps/web`), shared TypeScript packages, SQLite and filesystem persistence, deployment assets. The Go server serves the built web app.
 - `tephra-plugin`: mobile-compatible Obsidian plugin using Obsidian APIs and Web Crypto only.
 
 ## Documentation and progress

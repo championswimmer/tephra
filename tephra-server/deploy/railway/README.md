@@ -1,9 +1,14 @@
 # Railway deployment
 
-Railway runs the same Docker image as the single-container deployment. The
+Railway runs the same Go server Docker image as the single-container deployment
+(`tephra-server/deploy/docker/Dockerfile.go`, a static binary). The
 checked-in Infrastructure-as-Code file `.railway/railway.ts` (repo root)
 declares the whole project in one place: one `tephra` service, one
-`tephra-data` volume mounted at `/data`, the Go server Dockerfile (`Dockerfile.go`; set `RAILWAY_DOCKERFILE_PATH` back to `Dockerfile` to roll back to Node), the
+`tephra-data` volume (1000 MB, resized from 512 MB; growing is a non-destructive
+resize) mounted at `/data`, `RAILWAY_DOCKERFILE_PATH` pointing at `Dockerfile.go`,
+`WITH_OBSIDIAN_SYNC=true` (a build arg that adds Node + npm to the runtime image
+so the official Obsidian headless sync client can run; it is only spawned when a
+vault uses Obsidian Sync), `TEPHRA_WEB_ROOT=/app/web`, the
 `/healthz` healthcheck, **one replica** (required for the
 SQLite/filesystem profile — volumes cannot be shared across replicas), and
 every non-secret variable. Secrets are never in git; they use `preserve()`
@@ -27,8 +32,8 @@ npm run deploy:railway
 
 The script (`scripts/deploy-railway.mjs`) runs `railway config apply` (shows
 the plan, asks for confirmation, creates the service and volume), then
-generates `TEPHRA_SESSION_SECRET` and `TEPHRA_BOOTSTRAP_TOKEN` **only if they
-are not already set**, piping them over stdin so they never appear in argv,
+generates `TEPHRA_BOOTSTRAP_TOKEN` (and a legacy `TEPHRA_SESSION_SECRET`, which
+the Go server does not read) **only if they are not already set**, piping them over stdin so they never appear in argv,
 logs, or git. Re-running is safe: existing secrets are left untouched. Pass
 `-- --yes` to skip the apply confirmation.
 
@@ -37,7 +42,6 @@ Manual equivalent:
 ```bash
 railway config plan                  # read-only preview; expect create-only lines
 railway config apply
-printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_SESSION_SECRET --stdin --service tephra --skip-deploys
 printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_BOOTSTRAP_TOKEN --stdin --service tephra
 ```
 
@@ -56,6 +60,8 @@ printf '%s' "$(openssl rand -hex 32)" | railway variable set TEPHRA_BOOTSTRAP_TO
 5. Create a vault and one vault-scoped plugin token; complete a real plugin
    sync and browser read.
 
+The image runs as an unprivileged user but Railway mounts volumes root-owned, so the IaC file sets `RAILWAY_RUN_UID=0`.
+
 Expected storage layout on the volume: SQLite at `/data/tephra.db`, blobs
 under `/data/blobs` (image defaults; also pinned explicitly in the IaC
 file).
@@ -67,10 +73,10 @@ project Settings → Generate Template from Project. In the composer, keep the
 repo source with the Dockerfile path
 `tephra-server/deploy/docker/Dockerfile.go`, the `/data` volume attachment,
 public networking, the `/healthz` healthcheck, one replica, and the same
-variables — but generate the secrets at deploy time with:
+variables (including `RAILWAY_DOCKERFILE_PATH`, `WITH_OBSIDIAN_SYNC=true` and
+`TEPHRA_WEB_ROOT=/app/web`) — but generate the secret at deploy time with:
 
 ```text
-TEPHRA_SESSION_SECRET=${{secret(64,"abcdef0123456789")}}
 TEPHRA_BOOTSTRAP_TOKEN=${{secret(64,"abcdef0123456789")}}
 TEPHRA_PUBLIC_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
 ```

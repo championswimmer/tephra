@@ -7,15 +7,16 @@ Read [`AGENTS.md`](AGENTS.md) and the active numbered plan under [`.agents/plans
 ```bash
 nvm use
 npm ci
-npm run check
+npm run check      # web app + plugin
+npm run go:check   # Go server (tephra-server/go)
 ```
 
-Use strict TypeScript, preserve package boundaries, and add tests for behavior changes. Shared parsing, protocol, and model packages must remain browser-safe. Never introduce web-to-vault writes into Stage 1.
+The server is written in Go (`tephra-server/go`); the web app and plugin use strict TypeScript. Preserve package boundaries and add tests for behavior changes. Shared TypeScript packages (`protocol`, `graph-renderer`, `markdown-editor`) must remain browser-safe. Never introduce web-to-vault writes into Stage 1.
 
 ## Pull requests
 
 - Keep each pull request focused and explain the user-visible outcome.
 - Document API, schema, migration, and environment-variable changes.
 - Include regression tests for security or data-integrity fixes.
-- Confirm `npm run check` passes.
+- Confirm `npm run check` and `npm run go:check` pass (whichever apply to your change).
 - Do not commit credentials, `.env` files, databases, or generated plugin bundles.

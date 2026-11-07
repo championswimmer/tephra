@@ -1,54 +1,62 @@
 # Tephra Server
 
 Tephra Stage 1 is a private web mirror for vaults synced from the Tephra Obsidian
-plugin or the official Obsidian Sync headless client, with in-browser note editing. The primary self-hosted profile is one Node.js
-container serving both the API and built web application, with SQLite and
-content-addressed blobs persisted under `/data`.
+plugin or the official Obsidian Sync headless client, with in-browser note editing. The primary self-hosted profile is one Go
+container (a single static binary) serving both the API and built web application, with SQLite and
+content-addressed blobs persisted under `/data`. The server lives in
+[`go/`](go/README.md); the web app is built from `apps/web`.
 
 ## Local development
 
-Requirements: Node.js 22 or newer and npm 10 (the version is pinned in the root
-`package.json`). From the repository root:
+Requirements: Go (version in `go/go.mod`), Node.js 22 or newer and npm 10 (the version is
+pinned in the root `package.json`; needed for the web app). From the repository root:
 
 ```bash
 npm ci
-cp tephra-server/.env.example .env
-# Replace both secret placeholders in .env.
-npm run dev
+npm run build      # builds the web app into tephra-server/apps/web/dist
+npm run go:build   # static binary at tephra-server/go/bin/tephra-server
+HOST=127.0.0.1 PORT=8080 TEPHRA_BOOTSTRAP_TOKEN=change-me \
+TEPHRA_PUBLIC_URL=http://localhost:8080 \
+TEPHRA_SQLITE_PATH=./data/tephra.db TEPHRA_BLOB_PATH=./data/blobs \
+TEPHRA_WEB_ROOT=tephra-server/apps/web/dist \
+  tephra-server/go/bin/tephra-server
 ```
 
-Use `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` before
-submitting changes. `npm run check` runs all four in that order.
+The server reads plain environment variables (it does not load `.env` files);
+`tephra-server/.env.example` lists them for use with your own shell or process manager. For
+web-app hot reload, run the Go server with `PORT=3000` and start Vite with
+`npm run dev --workspace=@tephra/web` (its dev proxy targets `localhost:3000`).
 
-The default local storage paths in `.env.example` are under `./data`. They are relative to
-the server process's working directory. The Docker profile instead uses absolute paths
-under `/data`.
+Run `npm run check` (web app and plugin) and `npm run go:check` (gofmt, `go vet`, and
+`go test -race` against both the in-memory and SQLite databases) before submitting changes.
+
+Local storage paths default to `./data`, relative to the server process's working
+directory. The Docker profile instead uses absolute paths under `/data`.
 
 ## Configuration
 
-| Variable                 | Purpose                                                                                       | Default                                         |
-| ------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `HOST`                   | HTTP bind address                                                                             | `0.0.0.0` in the image                          |
-| `PORT`                   | Single API/web HTTP port                                                                      | `8080`                                          |
-| `NODE_ENV`               | Set to `production` to mark session cookies `Secure`                                          | `production` in the image                       |
-| `TEPHRA_PUBLIC_URL`      | Browser-visible origin, including scheme; used for redirects, cookies and MCP OAuth discovery | required in production                          |
-| `TEPHRA_SESSION_SECRET`  | Signs/protects browser sessions                                                               | required; no safe default                       |
-| `TEPHRA_BOOTSTRAP_TOKEN` | One-time proof used to create the first admin                                                 | required for first setup                        |
-| `TEPHRA_DATABASE_DRIVER` | Must be `sqlite` (only live database)                                                         | `sqlite`                                        |
-| `TEPHRA_SQLITE_PATH`     | SQLite database file                                                                          | `/data/tephra.db` in the image                  |
-| `TEPHRA_BLOB_DRIVER`     | Must be `filesystem` (only live blob store)                                                   | `filesystem`                                    |
-| `TEPHRA_BLOB_PATH`       | Filesystem blob root                                                                          | `/data/blobs` in the image                      |
-| `TEPHRA_MAX_BLOB_BYTES`  | Maximum accepted blob size                                                                    | `104857600` (100 MiB)                           |
-| `TEPHRA_WEB_ROOT`        | Directory of the built web app served by the API process                                      | `/app/tephra-server/apps/web/dist` in the image |
-| `TEPHRA_OBSIDIAN_SYNC_ENABLED` | Set to `false` to disable native Sync setup and startup | `true` |
-| `TEPHRA_OBSIDIAN_SYNC_PATH` | Private CLI credentials, Sync state and vault checkouts (persistent) | `obsidian-sync` beside the SQLite file; `/data/obsidian-sync` in Docker |
-| `TEPHRA_OBSIDIAN_CACHE_PATH` | Disposable installation prefix for the pinned official CLI | OS temp directory + `/tephra-obsidian-client` |
-| `TEPHRA_OBSIDIAN_MAX_VAULTS` | Maximum enabled native Sync vaults | `5` |
-| `TEPHRA_OBSIDIAN_SCAN_INTERVAL_SECS` | Debounce interval for checkout changes; full scan every 60 seconds | `2` |
+| Variable                             | Purpose                                                                                                   | Default                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `HOST`                               | HTTP bind address                                                                                         | `127.0.0.1`; `0.0.0.0` in the image                                     |
+| `PORT`                               | Single API/web HTTP port                                                                                  | `8080`                                                                  |
+| `NODE_ENV`                           | The server still reads this name only to decide cookie flags: `production` marks session cookies `Secure` | unset; `production` in the image                                        |
+| `TEPHRA_PUBLIC_URL`                  | Browser-visible origin, including scheme; used for redirects, cookies and MCP OAuth discovery             | required in production                                                  |
+| `TEPHRA_SESSION_SECRET`              | Legacy; the Go server does not read it (sessions are opaque tokens stored hashed in the database)         | not needed                                                              |
+| `TEPHRA_BOOTSTRAP_TOKEN`             | One-time proof used to create the first admin                                                             | required for first setup                                                |
+| `TEPHRA_DATABASE_DRIVER`             | Must be `sqlite` (only live database)                                                                     | `sqlite`                                                                |
+| `TEPHRA_SQLITE_PATH`                 | SQLite database file                                                                                      | `./data/tephra.db`; `/data/tephra.db` in the image                      |
+| `TEPHRA_BLOB_DRIVER`                 | Must be `filesystem` (only live blob store)                                                               | `filesystem`                                                            |
+| `TEPHRA_BLOB_PATH`                   | Filesystem blob root                                                                                      | `./data/blobs`; `/data/blobs` in the image                              |
+| `TEPHRA_MAX_BLOB_BYTES`              | Maximum accepted blob size                                                                                | `104857600` (100 MiB)                                                   |
+| `TEPHRA_WEB_ROOT`                    | Directory of the built web app served by the API process                                                  | `./tephra-server/apps/web/dist`; `/app/web` in the image                |
+| `TEPHRA_OBSIDIAN_SYNC_ENABLED`       | Set to `false` to disable native Sync setup and startup                                                   | `true`; the default image sets `false` (no Node/npm; see below)         |
+| `TEPHRA_OBSIDIAN_SYNC_PATH`          | Private CLI credentials, Sync state and vault checkouts (persistent)                                      | `obsidian-sync` beside the SQLite file; `/data/obsidian-sync` in Docker |
+| `TEPHRA_OBSIDIAN_CACHE_PATH`         | Disposable installation prefix for the pinned official CLI                                                | OS temp directory + `/tephra-obsidian-client`                           |
+| `TEPHRA_OBSIDIAN_MAX_VAULTS`         | Maximum enabled native Sync vaults                                                                        | `5`                                                                     |
+| `TEPHRA_OBSIDIAN_SCAN_INTERVAL_SECS` | Debounce interval for checkout changes; full scan every 60 seconds                                        | `2`                                                                     |
 
-
-Never commit a real `.env`. Generate independent high-entropy session and bootstrap
-secrets, for example with `openssl rand -hex 32`. Platform request limits can be lower
+Never commit a real `.env`. Generate a high-entropy bootstrap token, for example with
+`openssl rand -hex 32`. Platform request limits can be lower
 than `TEPHRA_MAX_BLOB_BYTES`.
 
 ## First-user bootstrap
@@ -77,7 +85,9 @@ must never log the raw token.
 
 Obsidian's [standalone headless client](https://obsidian.md/help/headless) runs
 without the desktop app and requires Node.js 22+ and an active Obsidian Sync
-subscription. This is separate from the desktop Obsidian CLI. Tephra invokes the
+subscription. The Docker image only includes Node.js and npm when built with
+`--build-arg WITH_OBSIDIAN_SYNC=true` (the default image is a distroless static binary with
+`TEPHRA_OBSIDIAN_SYNC_ENABLED=false`); Railway builds with it enabled. This is separate from the desktop Obsidian CLI. Tephra invokes the
 official `ob` client as a separate process; it does not implement the Sync
 protocol or execute Obsidian plugins.
 
@@ -172,36 +182,40 @@ MFA) requires manual acceptance with an Obsidian account.
 Build the production image from the repository root:
 
 ```bash
-docker build -f tephra-server/deploy/docker/Dockerfile -t tephra:local .
+docker build -f tephra-server/deploy/docker/Dockerfile.go -t tephra:local .
+# Add Node.js + npm for official Obsidian Sync (about 170 MB larger):
+#   --build-arg WITH_OBSIDIAN_SYNC=true
 ```
 
 Run it with a named persistent volume. Generate the bootstrap value separately so it is
 available for the first browser visit:
 
 ```bash
-export TEPHRA_SESSION_SECRET="$(openssl rand -hex 32)"
 export TEPHRA_BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
 printf 'Bootstrap token: %s\n' "$TEPHRA_BOOTSTRAP_TOKEN"
 docker run --name tephra --restart unless-stopped \
   -p 8080:8080 \
   -v tephra-data:/data \
   -e TEPHRA_PUBLIC_URL=http://localhost:8080 \
-  -e TEPHRA_SESSION_SECRET="$TEPHRA_SESSION_SECRET" \
   -e TEPHRA_BOOTSTRAP_TOKEN="$TEPHRA_BOOTSTRAP_TOKEN" \
   tephra:local
 ```
 
-The image runs as the unprivileged `node` user, serves `/api/*` and the static web app on
-one port, and defaults to SQLite plus filesystem blobs in `/data`. If using a bind mount,
-make it writable by UID/GID 1000 before starting the container.
+The image serves `/api/*` and the static web app on one port and defaults to SQLite plus
+filesystem blobs in `/data`. The default runtime is
+`gcr.io/distroless/static-debian12:nonroot` (no shell; user `nonroot`, UID/GID 65532); with
+`WITH_OBSIDIAN_SYNC=true` it is `node:22-bookworm-slim` running as the `node` user (UID/GID
+1000). If using a bind mount, make it writable by that UID/GID before starting the container.
+The image healthcheck is `tephra-server healthcheck`, which probes
+`http://127.0.0.1:$PORT/healthz` without needing a shell or curl.
 
-For Compose, export the two secrets (or place them in an uncommitted `.env`) and run from
+For Compose, export the bootstrap token (or place it in an uncommitted `.env`) and run from
 the repository root:
 
 ```bash
-export TEPHRA_SESSION_SECRET="$(openssl rand -hex 32)"
 export TEPHRA_BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
-docker compose -f tephra-server/deploy/docker/compose.yml up --build -d
+# optional: export WITH_OBSIDIAN_SYNC=true   (build with Node + npm and enable Obsidian Sync)
+docker compose -f tephra-server/deploy/docker/compose.go.yml up --build -d
 ```
 
 The Compose service uses the named `tephra-data` volume. Do not scale it beyond one
@@ -245,17 +259,17 @@ post-upgrade smoke test succeeds.
 ## Blob garbage collection
 
 Failed or superseded uploads can leave blobs in the blob directory that no current
-vault file and no retained file version references. Tephra's `collectUnreferencedBlobs`
-routine (in `@tephra/api`) deletes such orphan blobs from both the blob store and the
+vault file and no retained file version references. Tephra's `CollectUnreferencedBlobs`
+routine (in `go/internal/api/blobgc.go`; the server binary does not currently schedule it) deletes such orphan blobs from both the blob store and the
 `blobs` table. A blob only becomes eligible 7 days after its `created_at` timestamp, so
 blobs belonging to in-flight uploads — always much newer than the cutoff — are never
 collected, and blobs referenced by current files or retained history are never
-candidates. Run collection as a periodic maintenance job, not on the sync hot path.
+candidates. It is a tested library routine with an optional periodic runner (`StartBlobGC`); the server binary does not currently start it, so unreferenced blobs are not yet reclaimed automatically.
 
 ## Migration policy
 
-SQLite migrations live in `tephra-server/migrations/sqlite/` (for example
-`001_initial.sql`). They auto-run on Node.js server startup: a fresh database
+SQLite migrations live in `tephra-server/go/internal/db/sqlite/migrations/` (for example
+`001_initial.sql`). They are embedded in the Go binary and auto-run on server startup: a fresh database
 executes the migration transactionally and records the schema version with
 `PRAGMA user_version`; an
 up-to-date database is left untouched and a newer-than-supported database fails fast
@@ -280,7 +294,7 @@ Live storage is disk-only on every target: one container/VM + one disk per
 tenant (SQLite + filesystem at `/data`). Object storage holds periodic
 snapshot tarballs only — never live blobs.
 
-- [Railway](deploy/railway/README.md): same Docker image, declared via
+- [Railway](deploy/railway/README.md): same Go Docker image (`Dockerfile.go`, built with `WITH_OBSIDIAN_SYNC=true`), declared via
   `.railway/railway.ts` (service + `/data` volume, one replica) — deploy with
   `npm run deploy:railway` (or `railway config apply`) or a published template.
 - [AWS](deploy/aws/README.md): ECS/EFS single-task guidance plus EC2/EBS;

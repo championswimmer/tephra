@@ -1,17 +1,16 @@
 # syntax=docker/dockerfile:1.7
-# Go port of the Tephra server (plan 023). Additive: the Node Dockerfile stays the default.
+# Tephra server image: Go binary + built web app.
 # Build from the repo root:  docker build -f tephra-server/deploy/docker/Dockerfile.go -t tephra:go .
 #   --build-arg WITH_OBSIDIAN_SYNC=true  adds Node + npm (needed only for official Obsidian
 #                                         headless sync; glibc image, ~170 MB larger)
 # Default (false): static distroless runtime, TEPHRA_OBSIDIAN_SYNC_ENABLED=false.
 ARG WITH_OBSIDIAN_SYNC=false
 
-# ---- web app (same as the Node image's build stage)
+# ---- web app (workspace build)
 FROM node:22-bookworm-slim AS web
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY tephra-plugin/package.json ./tephra-plugin/package.json
-COPY tephra-server/apps/api/package.json ./tephra-server/apps/api/package.json
 COPY tephra-server/apps/web/package.json ./tephra-server/apps/web/package.json
 COPY tephra-server/packages ./tephra-server/packages
 RUN npm ci
@@ -40,7 +39,6 @@ RUN mkdir -p /data/blobs && chown -R node:node /data
 USER node
 
 FROM runtime-${WITH_OBSIDIAN_SYNC} AS runtime
-# Same defaults as tephra-server/deploy/docker/Dockerfile (Node image).
 ENV NODE_ENV=production \
     PORT=8080 \
     HOST=0.0.0.0 \

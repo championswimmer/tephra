@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -759,35 +758,4 @@ func TestObsidianSyncPersistence(t *testing.T) {
 	must(t, re.Vaults().Delete(ctx, native.ID))
 	list, _ = re.ObsidianSync().List(ctx)
 	eq(t, list, []vm.ObsidianSyncSettings{})
-}
-
-func TestEmbeddedMigrationsMatchSource(t *testing.T) {
-	src := filepath.Join("..", "..", "..", "..", "migrations", "sqlite")
-	if _, err := os.Stat(src); err != nil {
-		t.Skip("source migrations not present")
-	}
-	srcEntries, err := os.ReadDir(src)
-	must(t, err)
-	copyEntries, err := os.ReadDir("migrations")
-	must(t, err)
-	names := func(es []os.DirEntry) []string {
-		out := []string{}
-		for _, e := range es {
-			out = append(out, e.Name())
-		}
-		return out
-	}
-	eq(t, names(copyEntries), names(srcEntries))
-	for _, e := range srcEntries {
-		a, err := os.ReadFile(filepath.Join(src, e.Name()))
-		must(t, err)
-		b, err := os.ReadFile(filepath.Join("migrations", e.Name()))
-		must(t, err)
-		if string(a) != string(b) {
-			t.Errorf("migration %s differs from tephra-server/migrations/sqlite", e.Name())
-		}
-	}
-	if len(srcEntries) != len(migrations) {
-		t.Errorf("migration chain lists %d, directory has %d", len(migrations), len(srcEntries))
-	}
 }

@@ -19,7 +19,6 @@ SECRETS_FILE="$HOME/.tephra-aws-${DOMAIN}.env"
 if [ ! -f "$SECRETS_FILE" ]; then
   umask 077
   {
-    echo "TEPHRA_SESSION_SECRET=$(openssl rand -hex 32)"
     echo "TEPHRA_BOOTSTRAP_TOKEN=$(openssl rand -hex 24)"
   } >"$SECRETS_FILE"
 fi
@@ -42,9 +41,9 @@ apt-get update && apt-get install -y docker.io docker-compose-v2 git
 DEV=/dev/nvme1n1; [ -b \$DEV ] || DEV=/dev/sdf
 blkid \$DEV || mkfs.ext4 -L tephra-data \$DEV
 mkdir -p /data && echo 'LABEL=tephra-data /data ext4 defaults,nofail 0 2' >> /etc/fstab && mount -a
-mkdir -p /data/tephra /opt/tephra && chown 1000:1000 /data/tephra
+mkdir -p /data/tephra /opt/tephra && chown 65532:65532 /data/tephra
 git clone --depth 1 $REPO /opt/tephra/src
-docker build -f /opt/tephra/src/tephra-server/deploy/docker/Dockerfile -t tephra:local /opt/tephra/src
+docker build -f /opt/tephra/src/tephra-server/deploy/docker/Dockerfile.go -t tephra:local /opt/tephra/src
 umask 077
 cat > /opt/tephra/.env <<'ENV'
 $SECRETS

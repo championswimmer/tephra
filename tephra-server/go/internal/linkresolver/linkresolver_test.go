@@ -92,7 +92,7 @@ type vectorFile struct {
 }
 
 // TestTypeScriptVectors checks the Go resolver against outputs generated from
-// packages/link-resolver (see internal/testdata/gen-markdown-vectors.mjs).
+// packages/link-resolver (former TS implementation, commit afb9acc).
 func TestTypeScriptVectors(t *testing.T) {
 	raw, err := os.ReadFile("../testdata/linkresolver-vectors.json")
 	if err != nil {

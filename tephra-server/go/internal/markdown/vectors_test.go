@@ -55,7 +55,7 @@ func subObject(t *testing.T, raw []byte, key string) []byte {
 }
 
 // TestTypeScriptVectors compares ParseNote/RenderMarkdown with outputs
-// generated from packages/markdown (see internal/testdata/gen-markdown-vectors.mjs).
+// generated from the former TS packages/markdown at commit afb9acc.
 func TestTypeScriptVectors(t *testing.T) {
 	raw, err := os.ReadFile("../testdata/markdown-vectors.json")
 	if err != nil {

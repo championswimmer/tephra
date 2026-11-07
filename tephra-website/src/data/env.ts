@@ -1,6 +1,6 @@
 // Canonical list of environment variables Tephra reads at startup.
 // Mirrors the configuration table in tephra-server/README.md and the defaults baked into
-// tephra-server/deploy/docker/Dockerfile. Keep both in sync when a variable is added or renamed.
+// tephra-server/deploy/docker/Dockerfile.go. Keep both in sync when a variable is added or renamed.
 
 export type EnvStatus = 'required' | 'setup' | 'default';
 
@@ -30,7 +30,7 @@ export const envVars: EnvVar[] = [
     name: 'TEPHRA_SESSION_SECRET',
     status: 'required',
     purpose:
-      'Signs and protects browser sessions. Use at least 32 random bytes, for example <code>openssl rand -hex 32</code>. Never reuse the bootstrap token here.',
+      'Legacy: the Go server does not read it (sessions are opaque tokens stored hashed in the database). Deploy scripts still generate it; it is harmless. Never reuse the bootstrap token here.',
   },
   {
     name: 'TEPHRA_BOOTSTRAP_TOKEN',
@@ -93,8 +93,8 @@ export const envVars: EnvVar[] = [
   {
     name: 'TEPHRA_WEB_ROOT',
     status: 'default',
-    fallback: '/app/tephra-server/apps/web/dist in the image',
+    fallback: '/app/web in the image',
     purpose:
-      'Directory of the built web app served by the API process. Only change it for custom builds.',
+      'Directory of the built web app served by the Tephra server. Only change it for custom builds.',
   },
 ];

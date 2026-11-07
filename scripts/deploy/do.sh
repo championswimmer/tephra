@@ -21,7 +21,6 @@ DNS_ZONE="${DNS_ZONE:-}"
 command -v doctl >/dev/null || { echo "doctl not found" >&2; exit 1; }
 command -v openssl >/dev/null || { echo "openssl not found" >&2; exit 1; }
 
-SESSION_SECRET="$(openssl rand -hex 32)"
 BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
 SSH_KEYS="$(doctl compute ssh-key list --no-header --format ID | paste -sd, -)"
 [ -n "${SSH_KEYS}" ] || { echo "add an SSH key to your DO account first" >&2; exit 1; }
@@ -43,7 +42,7 @@ for _ in \$(seq 1 60); do [ -e "\$DEV" ] && break; sleep 2; done
 blkid "\$DEV" >/dev/null 2>&1 || mkfs.ext4 -m 0 "\$DEV"
 grep -q ' /data ' /etc/fstab || echo "\$DEV /data ext4 defaults,nofail,discard 0 2" >> /etc/fstab
 mountpoint -q /data || mount /data
-chown -R 1000:1000 /data
+chown -R 65532:65532 /data
 
 # Docker (official convenience script) + git
 curl -fsSL https://get.docker.com | sh
@@ -53,7 +52,6 @@ apt-get install -y git
 umask 077
 cat > tephra.env <<ENV
 TEPHRA_PUBLIC_URL=https://\${DOMAIN}
-TEPHRA_SESSION_SECRET=${SESSION_SECRET}
 TEPHRA_BOOTSTRAP_TOKEN=${BOOTSTRAP_TOKEN}
 DOMAIN=\${DOMAIN}
 ENV
@@ -62,7 +60,7 @@ umask 022
 
 # Build image from source
 git clone --depth 1 --branch "\$REF" "\$REPO" src
-docker build -t tephra:local -f src/tephra-server/deploy/docker/Dockerfile src
+docker build -t tephra:local -f src/tephra-server/deploy/docker/Dockerfile.go src
 
 cat > Caddyfile <<CADDY
 {\\\$DOMAIN} {
@@ -80,7 +78,6 @@ services:
       PORT: '8080'
       HOST: '0.0.0.0'
       TEPHRA_PUBLIC_URL: '\${TEPHRA_PUBLIC_URL}'
-      TEPHRA_SESSION_SECRET: '\${TEPHRA_SESSION_SECRET}'
       TEPHRA_BOOTSTRAP_TOKEN: '\${TEPHRA_BOOTSTRAP_TOKEN:-}'
       TEPHRA_DATABASE_DRIVER: 'sqlite'
       TEPHRA_SQLITE_PATH: '/data/tephra.db'

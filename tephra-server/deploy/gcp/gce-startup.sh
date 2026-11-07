@@ -1,7 +1,7 @@
 #!/bin/bash
 # GCE startup script for Tephra (disk-only, single tenant).
 # Attaches the pre-created Persistent Disk as /data, installs Docker +
-# Compose, and starts the Tephra stack. Replace every <PLACEHOLDER>.
+# Compose, and starts the Tephra (Go server image) stack. Replace every <PLACEHOLDER>.
 set -euo pipefail
 
 DATA_DISK="${DATA_DISK:-tephra-data}"
@@ -27,7 +27,9 @@ if ! mountpoint -q "${MOUNT_POINT}"; then
 fi
 grep -q "${MOUNT_POINT}" /etc/fstab || \
   echo "${DEVICE} ${MOUNT_POINT} ext4 discard,defaults,nofail 0 2" >> /etc/fstab
-chown -R 1000:1000 "${MOUNT_POINT}"
+# Default Go image runs as distroless nonroot (65532). Use 1000 for the
+# WITH_OBSIDIAN_SYNC=true (node user) image.
+chown -R "${DATA_UID:-65532}:${DATA_UID:-65532}" "${MOUNT_POINT}"
 
 # Docker + Compose plugin (Debian 12).
 if ! command -v docker >/dev/null 2>&1; then
@@ -49,11 +51,9 @@ fi
 mkdir -p "${TEPHRA_DIR}"
 ENV_FILE="${TEPHRA_DIR}/tephra.env"
 if [ ! -f "${ENV_FILE}" ]; then
-  TEPHRA_SESSION_SECRET="$(gcloud secrets versions access latest --secret=<SESSION_SECRET_NAME> 2>/dev/null || openssl rand -hex 32)"
   TEPHRA_BOOTSTRAP_TOKEN="$(gcloud secrets versions access latest --secret=<BOOTSTRAP_SECRET_NAME> 2>/dev/null || openssl rand -hex 32)"
   cat > "${ENV_FILE}" <<EOF
 TEPHRA_PUBLIC_URL=${PUBLIC_URL}
-TEPHRA_SESSION_SECRET=${TEPHRA_SESSION_SECRET}
 TEPHRA_BOOTSTRAP_TOKEN=${TEPHRA_BOOTSTRAP_TOKEN}
 EOF
   chmod 600 "${ENV_FILE}"
@@ -61,6 +61,6 @@ EOF
   chmod 600 /var/log/tephra-bootstrap.log
 fi
 
-# Compose bundle (Tephra + optional headless Sync sidecar overlay).
+# Compose bundle (single Tephra service).
 cp /opt/tephra-bundle/gce-compose.yml "${TEPHRA_DIR}/compose.yml" 2>/dev/null || true
 docker compose --env-file "${ENV_FILE}" -f "${TEPHRA_DIR}/compose.yml" up -d

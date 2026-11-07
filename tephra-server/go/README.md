@@ -1,6 +1,6 @@
 # tephra-server (Go)
 
-Go port of the Tephra API server. See `.agents/plans/023-GO_SERVER_PORT.md`.
+Go implementation of the Tephra API server (replaced the original Node API).
 The Node implementation remains the default; the Go server is an additive, drop-in alternative on the
 same data directory (see [Running the Go server](#running-the-go-server)).
 
@@ -19,7 +19,14 @@ npm run go:check   # gofmt -l (must be empty), go vet, go test -race (both DB mo
 
 Never run plain `go get` / `go mod tidy`; `go.mod` pins exact versions.
 
-`cmd/tephra-server` reads the same environment as the Node API (`HOST`, `PORT`, `NODE_ENV`,
+`npm run dev` (from the repo root) runs `make dev`: the server on `127.0.0.1:3000` (the Vite dev proxy target)
+with data in `./data`.
+
+Test vectors and fixtures under `testdata/` (auth, Markdown, link resolver, indexer, blob and SQLite
+fixtures) were generated from the former TypeScript implementation at git commit `afb9acc`; the generator
+scripts were removed with it and the generated files are kept as-is.
+
+`cmd/tephra-server` reads the environment below (`HOST`, `PORT`, `NODE_ENV`,
 `TEPHRA_DATABASE_DRIVER`, `TEPHRA_BLOB_DRIVER`, `TEPHRA_SQLITE_PATH`, `TEPHRA_BLOB_PATH`,
 `TEPHRA_BOOTSTRAP_TOKEN`, `TEPHRA_PUBLIC_URL`, `TEPHRA_MAX_BLOB_BYTES`, `TEPHRA_WEB_ROOT`,
 `TEPHRA_OBSIDIAN_SYNC_ENABLED|PATH|CACHE_PATH|MAX_VAULTS|SCAN_INTERVAL_SECS`). It serves the built web

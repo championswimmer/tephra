@@ -11,7 +11,7 @@ You can also connect an existing official [Obsidian Sync](https://obsidian.md/sy
 vault without the Tephra plugin. Sign in under **Settings → Obsidian Sync account**,
 create an Obsidian Sync vault on the vaults page, then connect the remote in that
 vault's settings. Tephra installs
-Obsidian's official headless client on demand, saves its session token and vault
+Obsidian's official headless client on demand (this needs the Docker image built with `WITH_OBSIDIAN_SYNC=true`, which adds Node.js and npm), saves its session token and vault
 key on your persistent volume, and resumes enabled vaults after a restart. Your
 Obsidian account password is never saved. Both two-way sync and download-only
 vaults are supported. See the [server setup guide](tephra-server/README.md#official-obsidian-sync).
@@ -53,21 +53,21 @@ A browser-safe subset of community plugin support, and optional publishing of ch
 
 ## Repository
 
-- [`tephra-server/`](tephra-server/): API, web app, shared packages, deployment assets.
+- [`tephra-server/`](tephra-server/): Go API server, web app, shared TypeScript packages, deployment assets.
 - [`tephra-plugin/`](tephra-plugin/): the mobile-compatible Obsidian sync plugin.
 - [Stage 1 plan](.agents/plans/001-TEPHRA_STAGE1_PLAN.md)
 
 ## Development
 
-Requires Node.js 22+ and npm 10+.
+Requires Go (see `tephra-server/go/go.mod`) for the server, and Node.js 22+ with npm 10+ for the web app and plugin.
 
 ```bash
 npm install
-npm run check
-npm run dev
+npm run check      # web app + plugin: lint, typecheck, build, tests
+npm run go:check   # server: gofmt, go vet, go test -race
 ```
 
-The product READMEs cover configuration and usage.
+The product READMEs cover configuration and usage, including how to run the server and the web dev server.
 
 ## License
 

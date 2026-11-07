@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One-command Railway deploy driven by the Infrastructure-as-Code file
 // `.railway/railway.ts`: applies the project (service + /data volume), then
-// generates TEPHRA_SESSION_SECRET and TEPHRA_BOOTSTRAP_TOKEN once.
+// generates TEPHRA_BOOTSTRAP_TOKEN once.
 // Secrets are piped over stdin (never argv) and never printed or committed.
 // Usage: npm run deploy:railway [-- --yes]
 import { spawnSync } from 'node:child_process';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const service = 'tephra';
-const secretNames = ['TEPHRA_SESSION_SECRET', 'TEPHRA_BOOTSTRAP_TOKEN'];
+const secretNames = ['TEPHRA_BOOTSTRAP_TOKEN'];
 const yes = process.argv.includes('--yes');
 
 function railway(args, { input, capture = false } = {}) {
@@ -32,7 +32,9 @@ function fail(message) {
 }
 
 if (railway(['whoami'], { capture: true }).status !== 0) {
-  fail('not logged in. Run `railway login`, then `railway init` (or `railway link` for an existing project), then retry.');
+  fail(
+    'not logged in. Run `railway login`, then `railway init` (or `railway link` for an existing project), then retry.',
+  );
 }
 
 console.log('Applying .railway/railway.ts (service + volume + settings)...');

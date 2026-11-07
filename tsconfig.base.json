@@ -7,20 +7,8 @@
     "baseUrl": ".",
     "paths": {
       "@tephra/protocol": ["tephra-server/packages/protocol/src/index.ts"],
-      "@tephra/core": ["tephra-server/packages/core/src/index.ts"],
-      "@tephra/vault-model": ["tephra-server/packages/vault-model/src/index.ts"],
-      "@tephra/database-core": ["tephra-server/packages/database/core/src/index.ts"],
-      "@tephra/blob-store-core": ["tephra-server/packages/blob-store/core/src/index.ts"],
-      "@tephra/database-sqlite": ["tephra-server/packages/database/sqlite/src/index.ts"],
-      "@tephra/blob-store-filesystem": [
-        "tephra-server/packages/blob-store/filesystem/src/index.ts"
-      ],
-      "@tephra/markdown": ["tephra-server/packages/markdown/src/index.ts"],
       "@tephra/markdown-editor": ["tephra-server/packages/markdown-editor/src/index.ts"],
       "@tephra/markdown-editor/pure": ["tephra-server/packages/markdown-editor/src/pure.ts"],
-      "@tephra/link-resolver": ["tephra-server/packages/link-resolver/src/index.ts"],
-      "@tephra/indexer": ["tephra-server/packages/indexer/src/index.ts"],
-      "@tephra/auth": ["tephra-server/packages/auth/src/index.ts"],
       "@tephra/graph-renderer": ["tephra-server/packages/graph-renderer/src/index.ts"],
       "@tephra/graph-renderer/pure": ["tephra-server/packages/graph-renderer/src/pure.ts"]
     },

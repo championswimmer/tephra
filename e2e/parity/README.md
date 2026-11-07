@@ -1,7 +1,10 @@
 # Black-box API parity harness
 
 Runs one deterministic scripted scenario (437 requests) against a **fresh** Tephra server and writes a
-normalised JSON snapshot. Snapshots from the Node server and the Go server (plan 023) must be identical.
+normalised JSON snapshot. `golden/node.json` is a **frozen snapshot of the final Node implementation**
+(git commit `afb9acc`; the Node backend has since been removed from the tree). The Go server must keep
+matching it. The Node harness scripts (`run-node.mjs`, `cross-open.mjs`, `bench-memory.mjs`) were removed
+together with the Node backend; check out `afb9acc` to regenerate or re-run them.
 Dependency-free: Node >= 22 built-ins and global `fetch` only.
 
 ## Usage
@@ -11,12 +14,8 @@ Dependency-free: Node >= 22 built-ins and global `fetch` only.
 #    TEPHRA_OBSIDIAN_SYNC_ENABLED=false, serving the built web app so static/SPA routes exist):
 node e2e/parity/run.mjs --base http://127.0.0.1:8080 --out /tmp/go.json --bootstrap-token "$TOKEN"
 
-# 2. Compare against the checked-in Node golden (exit 1 + readable diff on any difference):
+# 2. Compare against the frozen Node golden (exit 1 + readable diff on any difference):
 node e2e/parity/compare.mjs e2e/parity/golden/node.json /tmp/go.json
-
-# Regenerate the golden from the Node server (starts it on a free port with temp sqlite/blob dirs,
-# runs the scenario, kills it; needs `npm run build` first):
-node e2e/parity/run-node.mjs --out e2e/parity/golden/node.json
 ```
 
 `TEPHRA_BOOTSTRAP_TOKEN` may be used instead of `--bootstrap-token`. The server must be **fresh**: the
@@ -99,18 +98,3 @@ hashed asset, `/favicon.ico`, SPA fallback, unknown routes; post-delete behaviou
   declared-size check is tested) and the 10 k graph-node cap need long waits or huge payloads.
 - `Secure` cookie variant (requires `NODE_ENV=production` + TLS), and `X-Request-Id`/log-line contents
   beyond the header.
-
-## Cross-open and memory benchmark
-
-Both need `npm run build` and `npm run go:build`, Linux, and use temp dirs/ephemeral ports.
-
-```bash
-node e2e/parity/cross-open.mjs      # Node<->Go on one data dir, both directions + Go SIGKILL -> Node (WAL)
-node e2e/parity/bench-memory.mjs    # VmRSS/VmHWM from /proc: idle, after parity scenario, after ~1000-note sync
-```
-
-`cross-open.mjs` seeds a data dir with server A (bootstrap, vault, API token, sync commits with notes,
-PNG and binary attachments, rename, delete, web edit), stops it with SIGTERM, starts server B on the same dir
-and checks login with A's password hash, A's API token, identical reads (vault, files, tree, changes, graph,
-links, search, content/raw/rendered), a new commit plus web edit, then returns to A. It also runs
-`PRAGMA integrity_check` (needs the `sqlite3` CLI) and reports leftover `-wal`/`-shm` files.

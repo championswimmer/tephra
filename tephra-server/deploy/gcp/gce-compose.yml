@@ -1,6 +1,7 @@
 # Compose bundle for a GCP Compute Engine VM (disk-only, single tenant).
 # The PD is mounted at /data by gce-startup.sh. One tenant = one VM + one disk.
-# Optional headless Sync sidecar (plan 006) mounts the same /data volume.
+# Official Obsidian Sync runs inside the Tephra process; build the image with
+# WITH_OBSIDIAN_SYNC=true (Node + npm in the runtime) to use it.
 services:
   tephra:
     image: <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/tephra:<TAG>
@@ -12,7 +13,6 @@ services:
       PORT: '8080'
       HOST: '0.0.0.0'
       TEPHRA_PUBLIC_URL: '${TEPHRA_PUBLIC_URL:?set TEPHRA_PUBLIC_URL}'
-      TEPHRA_SESSION_SECRET: '${TEPHRA_SESSION_SECRET:?set TEPHRA_SESSION_SECRET}'
       TEPHRA_BOOTSTRAP_TOKEN: '${TEPHRA_BOOTSTRAP_TOKEN:-}'
       TEPHRA_DATABASE_DRIVER: 'sqlite'
       TEPHRA_SQLITE_PATH: '/data/tephra.db'
@@ -22,11 +22,7 @@ services:
     volumes:
       - /data:/data
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      test: ['CMD', '/usr/local/bin/tephra-server', 'healthcheck']
       interval: 30s
       timeout: 5s
       start_period: 15s

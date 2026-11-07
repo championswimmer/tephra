@@ -52,14 +52,14 @@ Example patch for changing line 4 of a note:
 
 ## Self-hosting
 
-The server is one Node.js container with SQLite and blobs on one persistent disk at `/data`. Deploy guides: https://github.com/championswimmer/tephra/tree/main/docs/deploy.
+The server is one Go container (a static binary; Node.js is added only when the image is built with `WITH_OBSIDIAN_SYNC=true` for official Obsidian Sync) with SQLite and blobs on one persistent disk at `/data`. Deploy guides: https://github.com/championswimmer/tephra/tree/main/docs/deploy.
 
 Required environment variables (the cloud deploy scripts generate the secrets and set them):
 
 - `TEPHRA_PUBLIC_URL` — browser-visible HTTPS origin, e.g. `https://notes.yourname.com`.
-- `TEPHRA_SESSION_SECRET` — at least 32 random bytes; signs browser sessions.
+- `TEPHRA_SESSION_SECRET` — legacy; the Go server does not read it (deploy scripts still generate it, harmless).
 - `TEPHRA_BOOTSTRAP_TOKEN` — one-time token for creating the first admin at `/setup`; delete it after that account exists.
 
-Optional, with container defaults: `HOST=0.0.0.0`, `PORT=8080`, `NODE_ENV=production`, `TEPHRA_DATABASE_DRIVER=sqlite`, `TEPHRA_SQLITE_PATH=/data/tephra.db`, `TEPHRA_BLOB_DRIVER=filesystem`, `TEPHRA_BLOB_PATH=/data/blobs`, `TEPHRA_MAX_BLOB_BYTES=104857600`, `TEPHRA_WEB_ROOT=/app/tephra-server/apps/web/dist`.
+Optional, with container defaults: `HOST=0.0.0.0`, `PORT=8080`, `NODE_ENV=production`, `TEPHRA_DATABASE_DRIVER=sqlite`, `TEPHRA_SQLITE_PATH=/data/tephra.db`, `TEPHRA_BLOB_DRIVER=filesystem`, `TEPHRA_BLOB_PATH=/data/blobs`, `TEPHRA_MAX_BLOB_BYTES=104857600`, `TEPHRA_WEB_ROOT=/app/web`.
 
 Keep one container replica per disk. Health: `/healthz`; readiness: `/readyz`.

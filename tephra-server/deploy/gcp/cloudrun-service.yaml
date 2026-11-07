@@ -54,11 +54,6 @@ spec:
               value: 'filesystem'
             - name: TEPHRA_BLOB_PATH
               value: '/data/blobs'
-            - name: TEPHRA_SESSION_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: <SESSION_SECRET_NAME>
-                  key: latest
             - name: TEPHRA_BOOTSTRAP_TOKEN
               valueFrom:
                 secretKeyRef:

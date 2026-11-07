@@ -51,17 +51,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build production image
-        run: docker build -f tephra-server/deploy/docker/Dockerfile -t tephra:ci .
+        run: docker build -f tephra-server/deploy/docker/Dockerfile.go -t tephra:ci .
 
       - name: Smoke test container health endpoints
         run: |
           set -euo pipefail
-          export TEPHRA_SESSION_SECRET="$(openssl rand -hex 32)"
           docker run -d --name tephra-ci \
             -p 8080:8080 \
             -v tephra-ci-data:/data \
             -e TEPHRA_PUBLIC_URL=http://localhost:8080 \
-            -e TEPHRA_SESSION_SECRET="$TEPHRA_SESSION_SECRET" \
             tephra:ci
           cleanup() {
             docker stop tephra-ci >/dev/null 2>&1 || true
@@ -101,6 +99,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tephra-server/go/go.mod
+          cache-dependency-path: tephra-server/go/go.sum
 
       - name: Build workspaces
         run: npm run build

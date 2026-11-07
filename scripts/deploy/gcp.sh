@@ -16,7 +16,7 @@ if [ -n "$IMAGE" ]; then
   PULL_CMD="gcloud auth configure-docker --quiet ${IMAGE%%/*} >/dev/null 2>&1 || true"
 else
   IMAGE="tephra:local"
-  PULL_CMD="docker image inspect tephra:local >/dev/null 2>&1 || { apt-get install -y git && git clone --depth 1 $REPO /opt/tephra-src && docker build -f /opt/tephra-src/tephra-server/deploy/docker/Dockerfile -t tephra:local /opt/tephra-src; }"
+  PULL_CMD="docker image inspect tephra:local >/dev/null 2>&1 || { apt-get install -y git && git clone --depth 1 $REPO /opt/tephra-src && docker build -f /opt/tephra-src/tephra-server/deploy/docker/Dockerfile.go -t tephra:local /opt/tephra-src; }"
 fi
 NAME="${NAME:-tephra}"
 DISK_GB="${DISK_GB:-10}"
@@ -27,7 +27,7 @@ G=(gcloud --project "$PROJECT" --quiet)
 "${G[@]}" services enable compute.googleapis.com secretmanager.googleapis.com
 
 # Secrets (created once; existing values are kept).
-for s in session-secret bootstrap-token; do
+for s in bootstrap-token; do
   secret="$NAME-$s"
   if ! "${G[@]}" secrets describe "$secret" >/dev/null 2>&1; then
     openssl rand -hex 32 | "${G[@]}" secrets create "$secret" --data-file=-
@@ -51,7 +51,7 @@ DEV=/dev/disk/by-id/google-$NAME-data
 blkid "\$DEV" >/dev/null 2>&1 || mkfs.ext4 -m 0 "\$DEV"
 mkdir -p /data; mountpoint -q /data || mount -o discard,defaults "\$DEV" /data
 grep -q ' /data ' /etc/fstab || echo "\$DEV /data ext4 discard,defaults,nofail 0 2" >> /etc/fstab
-chown 1000:1000 /data
+chown 65532:65532 /data
 command -v docker >/dev/null || { apt-get update && apt-get install -y docker.io docker-compose; }
 $PULL_CMD
 mkdir -p /opt/tephra; cd /opt/tephra
@@ -59,7 +59,6 @@ sec() { gcloud secrets versions access latest --secret="$NAME-\$1"; }
 if [ ! -f tephra.env ]; then
   umask 077
   { echo "TEPHRA_PUBLIC_URL=https://$DOMAIN"
-    echo "TEPHRA_SESSION_SECRET=\$(sec session-secret)"
     echo "TEPHRA_BOOTSTRAP_TOKEN=\$(sec bootstrap-token)"; } > tephra.env
 fi
 printf '%s {\n  reverse_proxy tephra:8080\n}\n' "$DOMAIN" > Caddyfile

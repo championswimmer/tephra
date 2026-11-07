@@ -1,6 +1,6 @@
 # AWS deployment
 
-Two checked-in skeletons deploy the existing Node Docker image to ECS on
+Two checked-in skeletons deploy the Go server Docker image to ECS on
 Fargate behind an Application Load Balancer, with persistent storage on EFS.
 They cover the stateful single-replica profile (SQLite + filesystem blobs at
 `/data`, one tenant per service+access-point). Field names follow the ECS task-definition parameters reference
@@ -19,15 +19,16 @@ IDs, ARNs, or secrets.
 ## Prerequisites
 
 - The production image built from the repository root:
-  `docker build -f tephra-server/deploy/docker/Dockerfile -t tephra:<TAG> .`,
+  `docker build -f tephra-server/deploy/docker/Dockerfile.go -t tephra:<TAG> .`,
   pushed to ECR.
 - An ECS cluster, a public ALB with an ACM certificate, and private subnets
   with EFS mount targets in every AZ the tasks may use.
-- An EFS filesystem plus an access point for Tephra (POSIX UID/GID 1000 to
-  match the image's `node` user), e.g. created alongside the environment.
-- Secrets in Secrets Manager or SSM Parameter Store:
-  `TEPHRA_SESSION_SECRET` and `TEPHRA_BOOTSTRAP_TOKEN` (independent
-  high-entropy values, e.g. `openssl rand -hex 32` each).
+- An EFS filesystem plus an access point for Tephra (POSIX UID/GID 65532 to
+  match the default image's distroless `nonroot` user; use 1000 if you build with
+  `--build-arg WITH_OBSIDIAN_SYNC=true`, whose runtime user is `node`), e.g. created alongside the environment.
+- A secret in Secrets Manager or SSM Parameter Store:
+  `TEPHRA_BOOTSTRAP_TOKEN` (a high-entropy value, e.g. `openssl rand -hex 32`).
+  The Go server does not read `TEPHRA_SESSION_SECRET`.
 - An execution role (image pull + secret injection + awslogs) and a task role
   (EFS client + snapshot upload to S3), per the ECS IAM roles documentation.
 
@@ -58,7 +59,9 @@ IDs, ARNs, or secrets.
   access point as shown in the skeleton.
 - EBS on Fargate is a poor fit here (one volume per task at launch, single-AZ,
   snapshot/restore needed across redeploys). Prefer EFS for this profile.
-- Container liveness uses `/healthz`; ALB readiness uses `/readyz`.
+- Container liveness uses `/healthz` via `tephra-server healthcheck` (the default
+  image is distroless, so there is no shell for a `CMD-SHELL` check); ALB readiness
+  uses `/readyz`.
 - Back up EFS (AWS Backup or equivalent) and test restores; treat backups as
   private data and encrypt them off-host.
 
@@ -67,7 +70,7 @@ IDs, ARNs, or secrets.
 More tenants means more independent single-task services (or EC2 instances),
 each with its own EFS access point or EBS volume — never a shared database.
 Object storage (private S3) holds periodic snapshot tarballs only
-(`tephra snapshot upload`), never live blobs. Serialize per-instance
+(created by your own backup job; the server has no snapshot command), never live blobs. Serialize per-instance
 migrations across deployments. Never run multiple tasks against one
 SQLite file or blob directory.
 

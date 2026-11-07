@@ -1,6 +1,6 @@
 # GCP deployment (disk-only)
 
-Two reference paths run the same Node Docker image on GCP with persistent
+Two reference paths run the Go server Docker image (`tephra-server/deploy/docker/Dockerfile.go`) on GCP with persistent
 disk at `/data` (SQLite at `/data/tephra.db` + filesystem blobs at
 `/data/blobs`, plus `checkouts/`, `sync-state/`, `snapshots/` per the
 disk-only doctrine in `.agents/plans/003-MULTI_TENANT_PERSISTENCE.md`).
@@ -12,12 +12,12 @@ Never attach two writers to one disk.
 
 ## Files
 
-| File | Purpose |
-| ---- | ------- |
-| `gce-startup.sh` | GCE startup script: installs Docker, mounts the PD at `/data`, runs Compose |
-| `gce-compose.yml` | Compose bundle for the VM (Tephra + optional Sync sidecar) |
-| `cloudrun-service.yaml` | Cloud Run service skeleton (Filestore NFS at `/data`, min=max=1) |
-| `README.md` | This guide |
+| File                    | Purpose                                                                     |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `gce-startup.sh`        | GCE startup script: installs Docker, mounts the PD at `/data`, runs Compose |
+| `gce-compose.yml`       | Compose bundle for the VM (single Tephra service)                           |
+| `cloudrun-service.yaml` | Cloud Run service skeleton (Filestore NFS at `/data`, min=max=1)            |
+| `README.md`             | This guide                                                                  |
 
 Every `<PLACEHOLDER>` must be replaced before use. Nothing here contains real
 project IDs, IPs, or secrets.
@@ -31,11 +31,10 @@ project IDs, IPs, or secrets.
    `gcloud compute instances create tephra --zone=<ZONE> --machine-type=e2-micro --image-family=debian-12 --image-project=debian-cloud --disk=name=tephra-data,mode=rw --metadata-from-file=startup-script=gce-startup.sh`.
 3. Reserve a static IP + DNS A record; terminate TLS with the platform LB or
    Caddy/Traefik on the VM; set `TEPHRA_PUBLIC_URL` to the HTTPS origin.
-4. Secrets (`TEPHRA_SESSION_SECRET`, `TEPHRA_BOOTSTRAP_TOKEN`) via Secret
+4. Secret (`TEPHRA_BOOTSTRAP_TOKEN`) via Secret
    Manager, injected as env at first boot; complete `/setup` once, then delete
    the bootstrap secret value.
-5. Backups: `tephra snapshot create` + `snapshot upload` to a private GCS
-   bucket (backup only), plus scheduled PD snapshots
+5. Backups: scheduled PD snapshots
    (`gcloud compute disks snapshot`).
 
 ## Option 2 — Cloud Run + Filestore
@@ -50,7 +49,10 @@ project IDs, IPs, or secrets.
 
 ## Notes and limits
 
-- Container liveness uses `/healthz`; LB/readiness uses `/readyz`.
+- Container liveness uses `/healthz` (the image healthcheck is `tephra-server healthcheck`);
+  LB/readiness uses `/readyz`.
+- The default image runs as UID/GID 65532; set `DATA_UID=1000` for the startup script if you
+  build with `--build-arg WITH_OBSIDIAN_SYNC=true` (runtime user `node`).
 - Back up the disk (PD snapshots or Filestore backups) and test restores;
   treat backups as private data.
 - Object storage (GCS) holds snapshot tarballs only — never live blobs.

@@ -6,8 +6,6 @@
   "workspaces": [
     "tephra-server/apps/*",
     "tephra-server/packages/*",
-    "tephra-server/packages/database/*",
-    "tephra-server/packages/blob-store/*",
     "tephra-plugin"
   ],
   "engines": {
@@ -15,7 +13,7 @@
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspace=@tephra/api",
+    "dev": "make -C tephra-server/go dev",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:workspaces": "npm run test --workspaces --if-present",

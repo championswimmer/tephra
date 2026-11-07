@@ -292,3 +292,11 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       Production memory after the switch is about 297 MiB (Node: about 372 MiB before); an
       identical image on an empty volume sits at about 41 MiB, so the difference is believed
       (not confirmed) to be a running Obsidian Sync client process.
+    - 2026-11-07: Owner confirmed the Go deployment on Railway works. The Node API
+      (`tephra-server/apps/api`, the auth/core/database/blob-store/indexer/link-resolver/
+      markdown/vault-model packages, Node Dockerfile/compose, Node-only parity scripts and the
+      TS vector generators) was removed. The web app and plugin keep `@tephra/protocol`,
+      `graph-renderer` and `markdown-editor`. Verified after removal: `npm run check`,
+      `npm run go:check`, and a `Dockerfile.go` build that serves `/healthz` and `/`.
+      Deploy scripts, docs, CI and the Railway IaC now point at the Go image; the IaC volume
+      size was corrected to the live 1000 MB (applying the old 512 MB value would have shrunk it).

@@ -16,7 +16,7 @@ flowchart LR
       APP["Tephra container<br/>API + web app"]
     end
     EBS[("EBS gp3 /data<br/>SQLite + blobs")]
-    ENV["/opt/tephra/.env (600)<br/>SESSION_SECRET<br/>BOOTSTRAP_TOKEN"]
+    ENV["/opt/tephra/.env (600)<br/>BOOTSTRAP_TOKEN"]
   end
   DNS --> EIP --> CADDY --> APP
   APP --- EBS
@@ -71,14 +71,13 @@ DOMAIN=notes.yourname.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
 2. Security group: inbound TCP 80 and 443 only. No SSH.
 3. Allocate an Elastic IP and attach it to the instance.
 4. DNS: `A notes.yourname.com -> <Elastic IP>` (Route 53 or any DNS).
-5. Secrets (never commit, never paste in chat):
+5. Secret (never commit, never paste in chat):
    ```sh
-   openssl rand -hex 32   # TEPHRA_SESSION_SECRET
    openssl rand -hex 24   # TEPHRA_BOOTSTRAP_TOKEN
    ```
-   Keep them in `/opt/tephra/.env` (`chmod 600`). Prefer SSM Parameter Store SecureString if you use an instance role.
+   Keep it in `/opt/tephra/.env` (`chmod 600`). Prefer SSM Parameter Store SecureString if you use an instance role.
 6. Set `TEPHRA_PUBLIC_URL=https://notes.yourname.com` in the same file.
-7. Mount EBS at `/data`, build the image, run compose (see user-data in the script).
+7. Mount EBS at `/data`, build the Go image (`docker build -f tephra-server/deploy/docker/Dockerfile.go -t tephra:local .`), run compose (see user-data in the script). The default image runs as UID/GID 65532; make the data directory writable by it (or by 1000 if you build with `--build-arg WITH_OBSIDIAN_SYNC=true`).
 8. Open `https://notes.yourname.com/setup`, create the first user with the bootstrap token.
 9. Remove `TEPHRA_BOOTSTRAP_TOKEN` from `.env` / SSM, then `docker compose up -d`.
 
@@ -86,12 +85,12 @@ DOMAIN=notes.yourname.com HOSTED_ZONE_ID=Z123 scripts/deploy/aws.sh
 
 The one-command script and the CloudFormation stack write these for you. On the EC2 path
 they live in `/opt/tephra/.env` (mode 600) and are loaded by Compose; on the
-CloudFormation path the two secrets are generated in Secrets Manager and injected at boot.
+CloudFormation path the secrets are generated in Secrets Manager and injected at boot.
 
 | Variable                 | Needed          | Value here                                              | Purpose                                                     |
 | ------------------------ | --------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
 | `TEPHRA_PUBLIC_URL`      | always          | `https://notes.yourname.com`                            | Browser-visible origin for redirects, cookies and MCP OAuth |
-| `TEPHRA_SESSION_SECRET`  | always          | generated, 32 random bytes                              | Signs and protects browser sessions                         |
+| `TEPHRA_SESSION_SECRET`  | no              | may be written by the one-command script                | Legacy; the Go server does not read it                      |
 | `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | generated; also in `~/.tephra-aws-<domain>.env` locally | Creates the first admin; delete it after setup              |
 | `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                                       | Database file on the EBS volume                             |
 | `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`                                           | Attachment store on the EBS volume                          |

@@ -8,10 +8,10 @@ verifies every note renders and prints graph stats. It reuses the vault by
 name, so re-runs only upload changed blobs.
 
 ```bash
-# Terminal 1: API + web (from repo root)
+# Terminal 1: Go server + web (from repo root; `npm run go:build` first)
 PORT=8080 HOST=127.0.0.1 TEPHRA_BOOTSTRAP_TOKEN=... \
 TEPHRA_SQLITE_PATH=./data/demo.db TEPHRA_BLOB_PATH=./data/demo-blobs \
-node tephra-server/apps/api/dist/main.js
+tephra-server/go/bin/tephra-server
 
 # Terminal 2: sync the sample vault
 TEPHRA_BOOTSTRAP_TOKEN=... VAULT_DIR=sample-vault npm run sync:vault

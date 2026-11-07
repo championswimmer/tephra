@@ -2,7 +2,7 @@
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fchampionswimmer%2Ftephra.git&cloudshell_workspace=.&cloudshell_open_in_editor=docs%2Fdeploy%2FGCP.md)
 
-One Compute Engine VM + Persistent Disk running the Docker image, Caddy for HTTPS, secrets in Secret Manager. (Cloud Run needs Filestore; see `tephra-server/deploy/gcp/README.md`.)
+One Compute Engine VM + Persistent Disk running the Go server Docker image (`tephra-server/deploy/docker/Dockerfile.go`), Caddy for HTTPS, secrets in Secret Manager. (Cloud Run needs Filestore; see `tephra-server/deploy/gcp/README.md`.)
 
 ## Infra at a glance
 
@@ -17,7 +17,7 @@ flowchart LR
       APP["Tephra container<br/>API + web app"]
     end
     PD[("Persistent Disk /data<br/>SQLite + blobs")]
-    SM["Secret Manager<br/>SESSION_SECRET<br/>BOOTSTRAP_TOKEN"]
+    SM["Secret Manager<br/>BOOTSTRAP_TOKEN"]
     AR["Artifact Registry<br/>Tephra image"]
   end
   DNS --> IP --> CADDY --> APP
@@ -49,7 +49,7 @@ Colors: blue = users, orange = network edge, green = compute, red = data, purple
    PROJECT=my-proj ZONE=us-central1-a DOMAIN=notes.yourname.com \
    scripts/deploy/gcp.sh
    ```
-   It creates: static IP, firewall (80/443), 10 GB disk, 2 secrets (`TEPHRA_SESSION_SECRET`, `TEPHRA_BOOTSTRAP_TOKEN`, random via `openssl rand -hex 32`), and the VM.
+   It creates: static IP, firewall (80/443), 10 GB disk, the `TEPHRA_BOOTSTRAP_TOKEN` secret (random via `openssl rand -hex 32`; the script also creates a legacy `TEPHRA_SESSION_SECRET` that the Go server ignores), and the VM.
 3. Add a DNS record at your registrar: `A notes.yourname.com -> <IP printed by script>`.
 4. Wait ~5 min (first boot builds the image). Caddy gets the TLS cert; `TEPHRA_PUBLIC_URL=https://notes.yourname.com` is set for you.
 5. Get the bootstrap token and open `https://notes.yourname.com/setup`:
@@ -73,7 +73,7 @@ editing `tephra.env`.
 | Variable                 | Needed          | Value here                              | Purpose                                                     |
 | ------------------------ | --------------- | --------------------------------------- | ----------------------------------------------------------- |
 | `TEPHRA_PUBLIC_URL`      | always          | `https://notes.yourname.com`            | Browser-visible origin for redirects, cookies and MCP OAuth |
-| `TEPHRA_SESSION_SECRET`  | always          | Secret Manager `tephra-session-secret`  | Signs and protects browser sessions                         |
+| `TEPHRA_SESSION_SECRET`  | no              | Secret Manager `tephra-session-secret`  | Legacy; the Go server does not read it                      |
 | `TEPHRA_BOOTSTRAP_TOKEN` | first boot only | Secret Manager `tephra-bootstrap-token` | Creates the first admin; delete it after setup              |
 | `TEPHRA_SQLITE_PATH`     | no              | `/data/tephra.db`                       | Database file on the Persistent Disk                        |
 | `TEPHRA_BLOB_PATH`       | no              | `/data/blobs`                           | Attachment store on the Persistent Disk                     |
