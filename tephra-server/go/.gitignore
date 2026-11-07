@@ -1,0 +1,4 @@
+bin/
+/tephra-server
+*.test
+*.out

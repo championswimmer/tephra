@@ -27,8 +27,15 @@ export default defineRailway((ctx) => {
     },
     env: {
       // The repo root stays the Docker build context (npm workspace); the
-      // Dockerfile lives in a subdirectory.
-      RAILWAY_DOCKERFILE_PATH: 'tephra-server/deploy/docker/Dockerfile',
+      // Dockerfile lives in a subdirectory. This is the Go server image
+      // (static binary, ~14 MiB idle RSS). The previous Node image is
+      // tephra-server/deploy/docker/Dockerfile: point this back at it to roll
+      // back (the data directory is interchangeable between the two).
+      RAILWAY_DOCKERFILE_PATH: 'tephra-server/deploy/docker/Dockerfile.go',
+      // Build arg read by Dockerfile.go: include Node + npm in the runtime image
+      // so the official Obsidian headless sync client can run (spawned only
+      // when a vault uses Obsidian Sync; no idle cost otherwise).
+      WITH_OBSIDIAN_SYNC: 'true',
       // The image runs as the unprivileged `node` user but volumes mount
       // root-owned; Railway prescribes UID 0 for this combination.
       RAILWAY_RUN_UID: '0',

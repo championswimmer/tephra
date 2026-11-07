@@ -1,0 +1,322 @@
+{
+  "users": [
+    {
+      "id": "user-1",
+      "email": "one@example.com",
+      "passwordHash": "scrypt$hash",
+      "createdAt": 1,
+      "updatedAt": 2
+    },
+    {
+      "id": "user-2",
+      "email": "two@example.com",
+      "passwordHash": null,
+      "createdAt": 3,
+      "updatedAt": 3
+    }
+  ],
+  "userCount": 2,
+  "session": {
+    "id": "session-1",
+    "userId": "user-1",
+    "expiresAt": 100,
+    "createdAt": 4
+  },
+  "vaults": [
+    {
+      "syncMode": "tephra",
+      "id": "vault-1",
+      "ownerUserId": "user-1",
+      "name": "Vault <&> ünï",
+      "latestRevision": 2,
+      "createdAt": 5,
+      "updatedAt": 6
+    },
+    {
+      "syncMode": "obsidian",
+      "id": "vault-2",
+      "ownerUserId": "user-1",
+      "name": "Native",
+      "latestRevision": 0,
+      "createdAt": 5,
+      "updatedAt": 5
+    }
+  ],
+  "devices": [
+    {
+      "id": "device-1",
+      "userId": "user-1",
+      "name": "Phone",
+      "createdAt": 7,
+      "lastSeenAt": 8,
+      "platform": "mobile"
+    },
+    {
+      "id": "device-2",
+      "userId": "user-1",
+      "name": "Anon",
+      "createdAt": 7,
+      "lastSeenAt": 9
+    }
+  ],
+  "tokens": [
+    {
+      "id": "token-1",
+      "userId": "user-1",
+      "vaultId": "vault-1",
+      "deviceId": "device-1",
+      "tokenHash": "hash-1",
+      "name": "Sync",
+      "scopes": [
+        "vault:upload",
+        "vault:read-metadata",
+        "vault:write"
+      ],
+      "createdAt": 10,
+      "lastUsedAt": 11,
+      "expiresAt": 5000,
+      "revokedAt": null
+    },
+    {
+      "id": "token-2",
+      "userId": "user-1",
+      "vaultId": null,
+      "deviceId": null,
+      "tokenHash": "hash-2",
+      "name": "Global",
+      "scopes": [],
+      "createdAt": 10,
+      "lastUsedAt": null,
+      "expiresAt": null,
+      "revokedAt": 12
+    }
+  ],
+  "oauthCode": {
+    "codeHash": "code-1",
+    "userId": "user-1",
+    "vaultId": "vault-1",
+    "clientId": "c",
+    "clientName": "Claude Code",
+    "redirectUri": "http://127.0.0.1:1/cb",
+    "codeChallenge": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "scopes": [
+      "vault:read-metadata"
+    ],
+    "createdAt": 10,
+    "expiresAt": 70
+  },
+  "blobs": [
+    {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 5,
+      "mimeType": "text/markdown",
+      "createdAt": 13
+    },
+    {
+      "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "size": 0,
+      "mimeType": null,
+      "createdAt": 14
+    },
+    {
+      "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 9,
+      "mimeType": "image/png",
+      "createdAt": 15
+    }
+  ],
+  "files": [
+    {
+      "fileId": "file-1",
+      "vaultId": "vault-1",
+      "path": "Notes/Ünï.md",
+      "blobHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 5,
+      "mtime": 18,
+      "kind": "markdown",
+      "updatedRevision": 1,
+      "mimeType": "text/markdown"
+    },
+    {
+      "fileId": "file-2",
+      "vaultId": "vault-1",
+      "path": "img/pic.png",
+      "blobHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 9,
+      "mtime": 19,
+      "kind": "attachment",
+      "updatedRevision": 2
+    }
+  ],
+  "fileFold": [
+    {
+      "fileId": "file-1",
+      "vaultId": "vault-1",
+      "path": "Notes/Ünï.md",
+      "blobHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 5,
+      "mtime": 18,
+      "kind": "markdown",
+      "updatedRevision": 1,
+      "mimeType": "text/markdown"
+    }
+  ],
+  "revisions": [
+    {
+      "vaultId": "vault-1",
+      "revision": 1,
+      "manifestHash": "m1",
+      "deviceId": "device-1",
+      "createdAt": 16
+    },
+    {
+      "vaultId": "vault-1",
+      "revision": 2,
+      "manifestHash": "m1",
+      "deviceId": "device-2",
+      "createdAt": 17
+    }
+  ],
+  "latestByManifest": {
+    "vaultId": "vault-1",
+    "revision": 2,
+    "manifestHash": "m1",
+    "deviceId": "device-2",
+    "createdAt": 17
+  },
+  "versions": [
+    {
+      "id": "v-1",
+      "vaultId": "vault-1",
+      "fileId": "file-1",
+      "revision": 1,
+      "path": "Notes/Ünï.md",
+      "blobHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 5,
+      "mtime": 18,
+      "changeType": "create",
+      "createdAt": 16
+    },
+    {
+      "id": "v-2",
+      "vaultId": "vault-1",
+      "fileId": "file-2",
+      "revision": 2,
+      "path": "img/pic.png",
+      "blobHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 9,
+      "mtime": 19,
+      "changeType": "create",
+      "createdAt": 17
+    },
+    {
+      "id": "v-3",
+      "vaultId": "vault-1",
+      "fileId": "file-3",
+      "revision": 2,
+      "path": "gone.md",
+      "blobHash": null,
+      "size": null,
+      "mtime": null,
+      "changeType": "delete",
+      "createdAt": 17
+    }
+  ],
+  "metadata": [
+    {
+      "fileId": "file-1",
+      "vaultId": "vault-1",
+      "indexedBlobHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "title": "Ünï <b>",
+      "frontmatter": {
+        "nested": {
+          "enabled": true
+        },
+        "count": 2,
+        "list": [
+          1,
+          "x",
+          null
+        ]
+      },
+      "headings": [
+        {
+          "text": "Title",
+          "level": 1
+        }
+      ],
+      "tags": [
+        "one",
+        "two"
+      ],
+      "blocks": [
+        {
+          "id": "block"
+        }
+      ],
+      "indexedAt": 20
+    },
+    {
+      "fileId": "file-2",
+      "vaultId": "vault-1",
+      "indexedBlobHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "title": null,
+      "frontmatter": {},
+      "headings": [],
+      "tags": [],
+      "blocks": [],
+      "indexedAt": 21
+    }
+  ],
+  "links": [
+    {
+      "id": "link-1",
+      "vaultId": "vault-1",
+      "sourceFileId": "file-1",
+      "rawText": "[[pic#x|P]]",
+      "linkPath": "pic",
+      "subpath": "#x",
+      "displayText": "P",
+      "isEmbed": true,
+      "targetFileId": "file-2",
+      "createdAt": 22
+    },
+    {
+      "id": "link-2",
+      "vaultId": "vault-1",
+      "sourceFileId": "file-1",
+      "rawText": "[[Nope]]",
+      "linkPath": "Nope",
+      "subpath": null,
+      "displayText": null,
+      "isEmbed": false,
+      "targetFileId": null,
+      "createdAt": 22
+    }
+  ],
+  "state": {
+    "vaultId": "vault-1",
+    "indexedRevision": 2,
+    "lastError": "boom"
+  },
+  "graph": {
+    "vaultId": "vault-1",
+    "revision": 2,
+    "indexedRevision": 2,
+    "etag": "W/\"2-2-graph-v2\"",
+    "payloadJson": "{\"revision\":2}",
+    "updatedAt": 23
+  },
+  "obsidian": [
+    {
+      "vaultId": "vault-2",
+      "enabled": true,
+      "remoteVaultId": "remote-1",
+      "mode": "pull-only",
+      "phase": "error",
+      "lastErrorCode": "E1",
+      "hasSynced": false,
+      "lastSyncedAt": 12345
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "scrypt": [
+    {
+      "password": "correct horse battery staple",
+      "encoded": "scrypt$16384$8$1$Ist3mone_fM9bB2YprU2QQ$Uyj9P7lFTrY6gr65tpkxi9O_oqNB0cz6RoEjwwQVjh8"
+    },
+    {
+      "password": "",
+      "encoded": "scrypt$16384$8$1$PL78ww5Ogh4TCX0RP5PSPA$_wdnVzHyO_kOuKkNoCz9n_JF3injn_PPQkLqRAAUp5I"
+    },
+    {
+      "password": "pässwörd 🔐 ünïcode",
+      "encoded": "scrypt$16384$8$1$0zSa2rQ3aL1GtrtqWif01Q$HkCjHxXAF3VoBhfq-HufMj5uld1QEmhvWBXfTnSCfPQ"
+    },
+    {
+      "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "encoded": "scrypt$16384$8$1$V2RHUfnnNrdDa6uNQjoWoA$lNxR52s9gTZeNMrh1X8qS24MSLBzduXjiw2paqV1ldg"
+    }
+  ],
+  "tokens": [
+    {
+      "token": "tph_nThYIYZGvVhGtMne_MFTG3AmhlJugwtsgF1ZBYE6lok",
+      "hash": "f9000483f83fcff26b749628dc3abdab9aa30b4344d6dc50ef5b07e232ba3bcf"
+    },
+    {
+      "token": "test__UDmcVPN5LsdF9NCkCmZyXETc3vMacnqpjAZ4BhKsxg",
+      "hash": "9fdd80dfaf130e77a188658c0bedd6bc59423e54755f0b16979b89df22fbecf3"
+    },
+    {
+      "token": "héllo",
+      "hash": "3c48591d8d098a4538f5e013dfcf406e948eac4d3277b10bf614e295d6068179"
+    }
+  ],
+  "cookies": [
+    {
+      "token": "secret",
+      "cookie": "tephra_session=secret; Path=/; HttpOnly; SameSite=Lax; Secure"
+    },
+    {
+      "token": "a b;c=d/é",
+      "cookie": "tephra_session=a%20b%3Bc%3Dd%2F%C3%A9; Path=/; HttpOnly; SameSite=Lax; Secure"
+    },
+    {
+      "token": "",
+      "cookie": "tephra_session=; Path=/; HttpOnly; SameSite=Lax; Secure"
+    }
+  ]
+}

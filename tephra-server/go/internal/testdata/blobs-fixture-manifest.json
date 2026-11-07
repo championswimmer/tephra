@@ -1,0 +1,14 @@
+[
+  {
+    "hash": "e997afd18e5f6be004fc193aed2c90291e68ab2c7599a62538c935b7fca6ab0f",
+    "content": "hello blob"
+  },
+  {
+    "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "content": ""
+  },
+  {
+    "hash": "2d9a36945e837c0de4d79545ec6936f7be46660e56fb6fc05f546650082b77a1",
+    "content": "unicode ✓ content"
+  }
+]

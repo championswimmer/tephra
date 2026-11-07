@@ -1,0 +1,15 @@
+.git
+.github
+.agents
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+.DS_Store
+PROGRESS.md
+# Go build output
+tephra-server/go/bin

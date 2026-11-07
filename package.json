@@ -25,7 +25,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:workspaces",
-    "deploy:railway": "node scripts/deploy-railway.mjs"
+    "deploy:railway": "node scripts/deploy-railway.mjs",
+    "go:build": "make -C tephra-server/go build",
+    "go:test": "make -C tephra-server/go test",
+    "go:check": "make -C tephra-server/go check"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

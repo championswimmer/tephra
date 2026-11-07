@@ -3,7 +3,7 @@
 Railway runs the same Docker image as the single-container deployment. The
 checked-in Infrastructure-as-Code file `.railway/railway.ts` (repo root)
 declares the whole project in one place: one `tephra` service, one
-`tephra-data` volume mounted at `/data`, the repo Dockerfile, the
+`tephra-data` volume mounted at `/data`, the Go server Dockerfile (`Dockerfile.go`; set `RAILWAY_DOCKERFILE_PATH` back to `Dockerfile` to roll back to Node), the
 `/healthz` healthcheck, **one replica** (required for the
 SQLite/filesystem profile — volumes cannot be shared across replicas), and
 every non-secret variable. Secrets are never in git; they use `preserve()`
@@ -65,7 +65,7 @@ file).
 For a Deploy-button flow, convert a verified project into a template:
 project Settings → Generate Template from Project. In the composer, keep the
 repo source with the Dockerfile path
-`tephra-server/deploy/docker/Dockerfile`, the `/data` volume attachment,
+`tephra-server/deploy/docker/Dockerfile.go`, the `/data` volume attachment,
 public networking, the `/healthz` healthcheck, one replica, and the same
 variables — but generate the secrets at deploy time with:
 

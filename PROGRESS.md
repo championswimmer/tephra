@@ -258,3 +258,22 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       mobile layouts are covered. Sync links open its tab, and leaving Sync
       clears unfinished credentials. Full `npm run check` (731 tests) and four
       Chromium settings/vault-creation checks pass; desktop/mobile screenshots reviewed.
+
+- [x] Go port of tephra-server (plan 023, `tephra-server/go`), additive; Node stays the default.
+      Black-box parity scenario (`e2e/parity`, 437 requests) against the Go binary: 0 API
+      differences from the Node golden except 2 benign 304 responses where Go omits a
+      `content-type` header. Docker image served by the Go binary shows the same 2 plus
+      the web-bundle hash differences of that image's own web build.
+      Cross-open (`e2e/parity/cross-open.mjs`) passes in both directions on one data dir:
+      Node-hashed password and API token work in Go and vice versa, vault/files/blobs/
+      changes/graph/links/search/rendered reads are identical, new sync commits and web edits
+      work, SQLite `integrity_check` is ok (user_version 7), and a Go process killed with
+      SIGKILL (WAL and shm left behind) is recovered by Node.
+      Memory (`e2e/parity/bench-memory.mjs`, VmRSS / peak VmHWM in MiB, one run each):
+      idle 87.3 (Node) vs 13.8 (Go); after the parity scenario 176.3 / 176.3 vs 39.9 / 51.6;
+      after syncing 1000 notes + 3x20 MiB attachments 297.9 / 413.9 vs 43.3 / 60.5.
+      `deploy/docker/Dockerfile.go` (distroless, optional `WITH_OBSIDIAN_SYNC=true` adds
+      Node), `compose.go.yml` and a `tephra-server healthcheck` subcommand added; the image
+      builds (16.8 MB without Node, 241.7 MB with) and serves the parity scenario with a
+      healthy container healthcheck. Live Obsidian headless sync through the Go server is not
+      verified.
