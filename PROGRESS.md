@@ -277,3 +277,18 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       builds (16.8 MB without Node, 241.7 MB with) and serves the parity scenario with a
       healthy container healthcheck. Live Obsidian headless sync through the Go server is not
       verified.
+    - 2026-11-07: Railway `tephra` service (notes.championswimmer.in) switched in place to
+      `Dockerfile.go` (`WITH_OBSIDIAN_SYNC=true`) on the existing `tephra-data-eu` volume; the
+      IaC in `.railway/railway.ts` declares the same values (set via `railway variable set`,
+      not `railway config apply`). Verified after the switch: `/healthz` and `/readyz` ok,
+      `bootstrap/status` reports an existing account, the web app and SPA routes serve, OAuth
+      discovery advertises the public URL, unauthenticated API calls return 401, no errors in
+      the service log. Before that, the Go image ran the parity scenario on a throwaway Railway
+      service (fresh volume): API responses matched the Node golden apart from platform
+      differences (Railway edge `Vary` header, `Secure` cookies, forwarded-host handling, web
+      bundle hashes) and the two known 304 `content-type` diffs. No backup of the production
+      volume was taken (workspace is not Pro; SSH-based download was not set up). Logged-in
+      behaviour on the production data (login, vault reads, plugin sync) is NOT verified yet.
+      Production memory after the switch is about 297 MiB (Node: about 372 MiB before); an
+      identical image on an empty volume sits at about 41 MiB, so the difference is believed
+      (not confirmed) to be a running Obsidian Sync client process.
