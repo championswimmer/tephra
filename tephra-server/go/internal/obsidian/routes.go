@@ -51,24 +51,42 @@ func parseSetup(body any) (httpx.ObsidianSetup, error) {
 	return in, s.Err()
 }
 
-func parseEnabled(body any) (bool, error) {
+// parseUpdate accepts a strict partial settings update. At least one of
+// enabled/frequency must be present; omitted fields stay unchanged.
+func parseUpdate(body any) (httpx.ObsidianSettingsUpdate, error) {
 	var s httpx.Schema
-	enabled := false
-	if m := s.StrictObject(body, "enabled"); m != nil {
-		switch v := m["enabled"].(type) {
-		case bool:
-			enabled = v
-		case nil:
-			if _, present := m["enabled"]; present {
+	var in httpx.ObsidianSettingsUpdate
+	if m := s.StrictObject(body, "enabled", "frequency"); m != nil {
+		if raw, ok := m["enabled"]; ok {
+			switch v := raw.(type) {
+			case bool:
+				in.Enabled = &v
+			case nil:
 				s.Add("enabled", "Invalid input: expected boolean, received null")
-			} else {
-				s.Add("enabled", "Invalid input: expected boolean, received undefined")
+			default:
+				s.Add("enabled", "Invalid input: expected boolean")
 			}
-		default:
-			s.Add("enabled", "Invalid input: expected boolean")
+		}
+		if raw, ok := m["frequency"]; ok {
+			switch v := raw.(type) {
+			case string:
+				f := vm.ObsidianSyncFrequency(v)
+				if !f.Valid() {
+					s.Add("frequency", "Invalid option: expected one of \"continuous\"|\"6h\"|\"1h\"|\"30m\"|\"10m\"")
+				} else {
+					in.Frequency = &f
+				}
+			case nil:
+				s.Add("frequency", "Invalid input: expected string, received null")
+			default:
+				s.Add("frequency", "Invalid input: expected string")
+			}
+		}
+		if len(m) == 0 {
+			s.Add("", "Invalid input: supply enabled or frequency")
 		}
 	}
-	return enabled, s.Err()
+	return in, s.Err()
 }
 
 func readBody[T any](r *http.Request, parse func(any) (T, error)) (T, error) {
@@ -220,7 +238,7 @@ func RegisterObsidianRoutes(mux *http.ServeMux, d api.Dependencies) {
 		if err != nil {
 			return err
 		}
-		enabled, err := readBody(r, parseEnabled)
+		in, err := readBody(r, parseUpdate)
 		if err != nil {
 			return err
 		}
@@ -228,7 +246,7 @@ func RegisterObsidianRoutes(mux *http.ServeMux, d api.Dependencies) {
 		if err != nil {
 			return err
 		}
-		if err := svc.Enable(r.Context(), vault, enabled); err != nil {
+		if err := svc.UpdateSettings(r.Context(), vault, in); err != nil {
 			return err
 		}
 		return settings(w, r, svc, vault, http.StatusOK)

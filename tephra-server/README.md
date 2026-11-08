@@ -53,7 +53,7 @@ directory. The Docker profile instead uses absolute paths under `/data`.
 | `TEPHRA_OBSIDIAN_SYNC_PATH`          | Private CLI credentials, Sync state and vault checkouts (persistent)                                      | `obsidian-sync` beside the SQLite file; `/data/obsidian-sync` in Docker |
 | `TEPHRA_OBSIDIAN_CACHE_PATH`         | Disposable installation prefix for the pinned official CLI                                                | OS temp directory + `/tephra-obsidian-client`                           |
 | `TEPHRA_OBSIDIAN_MAX_VAULTS`         | Maximum enabled native Sync vaults                                                                        | `5`                                                                     |
-| `TEPHRA_OBSIDIAN_SCAN_INTERVAL_SECS` | Debounce interval for checkout changes; full scan every 60 seconds                                        | `2`                                                                     |
+| `TEPHRA_OBSIDIAN_SCAN_INTERVAL_SECS` | Continuous-mode checkout change debounce; full scan every 60 seconds                                      | `2`                                                                     |
 
 Never commit a real `.env`. Generate a high-entropy bootstrap token, for example with
 `openssl rand -hex 32`. Platform request limits can be lower
@@ -102,8 +102,34 @@ protocol or execute Obsidian plugins.
 4. Choose **Two-way** to send browser/agent edits back through Obsidian Sync, or
    **Download only** to browse/search while editing in Obsidian. Connect the vault
    to enable automatic sync and start the initial download.
-5. Use **Pause sync**, **Enable automatic sync**, or **Retry sync** in the vault's settings.
+5. Choose a **Sync frequency** (see below) and use **Pause sync**,
+   **Enable automatic sync**, or **Retry sync** in the vault's settings.
    Re-authenticate in global Settings if the account session expires.
+
+### Sync frequency
+
+Each native vault can choose how often Tephra syncs. **Continuous** is the
+default for new vaults and for stored settings created before this option
+existed.
+
+| Choice | Behavior |
+| --- | --- |
+| **Continuous** (default) | Runs `obsidian sync --continuous` as a long-lived process. Tephra watches the checkout, imports changed files after a short debounce, and also performs a full scan every 60 seconds. |
+| **Every 6 hours** | Runs one official-client sync and import pass every 6 hours. |
+| **Every hour** | Runs one official-client sync and import pass every hour. |
+| **Every 30 minutes** | Runs one official-client sync and import pass every 30 minutes. |
+| **Every 10 minutes** | Runs one official-client sync and import pass every 10 minutes. |
+
+Periodic choices run one-shot passes: each pass starts the official client to
+sync once and then imports the checkout into Tephra. They do not run
+`--continuous` and do not watch the checkout between passes. A pass that takes
+longer than its interval delays the next pass until a full interval after it
+finishes; passes never overlap or catch up in a burst.
+
+Changing the frequency of an enabled vault stops and restarts its sync worker,
+applying the new schedule immediately with the usual initial sync pass. Changing
+it while sync is paused saves the choice and applies it when sync is next
+enabled.
 
 ### Runtime installation and restart recovery
 
@@ -151,13 +177,15 @@ is stopped; do not restore its sync state independently of its files.
 
 ### Content and deployment behavior
 
-The official client runs continuously and Tephra watches for changed files,
-reconciling them after a short debounce plus a periodic full scan. Every import
-preserves the original bytes, stores SHA-256 verified immutable blobs, and
-commits file changes/deletions as a revision. Browser and agent Markdown writes
-pause the client, check the base hash, atomically replace the local file, import
-the change, and restart Sync. Stale edits return a conflict. Editing is disabled
-for paused, unhealthy, initial-sync or download-only native vaults.
+In Continuous mode, the official client runs continuously and Tephra watches
+for changed files, reconciling them after a short debounce plus a periodic full
+scan. Periodic frequencies instead run one-shot official-client sync/import
+passes at their configured interval. Every import preserves the original bytes,
+stores SHA-256 verified immutable blobs, and commits file changes/deletions as a
+revision. Browser and agent Markdown writes stop the sync worker, check the base
+hash, atomically replace the local file, import the change, and restart sync.
+Stale edits return a conflict. Editing is disabled for paused, unhealthy,
+initial-sync or download-only native vaults.
 
 Direct device sync requests (`POST .../sync/plan`, `PUT .../blobs/:hash`, and
 `POST .../sync/commit`) return HTTP 409 with code `VAULT_SYNC_MODE_MISMATCH`

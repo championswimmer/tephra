@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ const settings: ObsidianSyncSettings = {
   remoteVaultId: null,
   mode: 'bidirectional',
   phase: 'pending-login',
+  frequency: 'continuous',
   lastErrorCode: null,
   hasSynced: false,
   lastSyncedAt: null,
@@ -81,6 +82,7 @@ describe('Obsidian Sync settings', () => {
       '/settings?tab=sync',
     );
     expect(screen.queryByLabelText('Obsidian password')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Sync frequency')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Load remote vaults' }));
     await user.type(
       await screen.findByLabelText('Vault encryption password (for end-to-end encrypted vaults)'),
@@ -109,6 +111,184 @@ describe('Obsidian Sync settings', () => {
     await user.click(await screen.findByRole('button', { name: 'Pause sync' }));
     await waitFor(() => expect(pause).toHaveBeenCalledWith('native-vault', false));
     expect(await screen.findByText('Sync is paused')).toBeInTheDocument();
+  });
+  it('shows the persisted frequency and all choices for a connected vault', async () => {
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({
+      settings: {
+        ...settings,
+        remoteVaultId: 'remote-1',
+        enabled: true,
+        phase: 'running',
+        frequency: '6h',
+      },
+    });
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    expect(select).toHaveValue('6h');
+    expect(
+      Array.from((select as HTMLSelectElement).options).map((option) => [
+        option.value,
+        option.textContent,
+      ]),
+    ).toEqual([
+      ['continuous', 'Continuous'],
+      ['6h', 'Every 6 hours'],
+      ['1h', 'Every hour'],
+      ['30m', 'Every 30 minutes'],
+      ['10m', 'Every 10 minutes'],
+    ]);
+  });
+  it('treats a missing frequency as continuous', async () => {
+    const legacy = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: true,
+      phase: 'running' as const,
+    };
+    delete (legacy as Partial<ObsidianSyncSettings>).frequency;
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: legacy });
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    expect(await screen.findByLabelText('Sync frequency')).toHaveValue('continuous');
+  });
+  it('saves a frequency change while enabled without changing enabled state', async () => {
+    const user = userEvent.setup();
+    const running = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: true,
+      phase: 'running' as const,
+    };
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: running });
+    const update = vi.spyOn(api, 'obsidianUpdateSettings').mockResolvedValue({
+      settings: { ...running, phase: 'initial-sync', frequency: '10m' },
+    });
+    const enable = vi.spyOn(api, 'obsidianEnable');
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    expect(select).toHaveValue('continuous');
+    await user.selectOptions(select, '10m');
+    await waitFor(() => expect(update).toHaveBeenCalledWith('native-vault', { frequency: '10m' }));
+    expect(enable).not.toHaveBeenCalled();
+    await waitFor(() => expect(select).toHaveValue('10m'));
+    expect(await screen.findByText('Syncing your vault…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pause sync' })).toBeInTheDocument();
+  });
+  it('saves a frequency change while paused without enabling sync', async () => {
+    const user = userEvent.setup();
+    const paused = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: false,
+      phase: 'stopped' as const,
+      frequency: '30m' as const,
+    };
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: paused });
+    const update = vi.spyOn(api, 'obsidianUpdateSettings').mockResolvedValue({
+      settings: { ...paused, frequency: '1h' },
+    });
+    const enable = vi.spyOn(api, 'obsidianEnable');
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    expect(select).toHaveValue('30m');
+    await user.selectOptions(select, '1h');
+    await waitFor(() => expect(update).toHaveBeenCalledWith('native-vault', { frequency: '1h' }));
+    expect(enable).not.toHaveBeenCalled();
+    expect(select).toHaveValue('1h');
+    expect(screen.getByText('Sync is paused')).toBeInTheDocument();
+  });
+  it('applies the frequency returned by the server', async () => {
+    const user = userEvent.setup();
+    const running = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: true,
+      phase: 'running' as const,
+    };
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: running });
+    vi.spyOn(api, 'obsidianUpdateSettings').mockResolvedValue({
+      settings: { ...running, frequency: '6h' },
+    });
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    await user.selectOptions(select, '10m');
+    await waitFor(() => expect(select).toHaveValue('6h'));
+  });
+  it('disables the frequency select while saving', async () => {
+    const user = userEvent.setup();
+    const running = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: true,
+      phase: 'running' as const,
+    };
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: running });
+    let resolveUpdate!: (value: { settings: ObsidianSyncSettings }) => void;
+    vi.spyOn(api, 'obsidianUpdateSettings').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    await user.selectOptions(select, '10m');
+    await waitFor(() => expect(select).toBeDisabled());
+    await act(async () => resolveUpdate({ settings: { ...running, frequency: '10m' } }));
+    await waitFor(() => expect(select).not.toBeDisabled());
+  });
+  it('shows a frequency update failure and keeps the previous value', async () => {
+    const user = userEvent.setup();
+    const running = {
+      ...settings,
+      remoteVaultId: 'remote-1',
+      enabled: true,
+      phase: 'running' as const,
+    };
+    vi.spyOn(api, 'obsidianStatus').mockResolvedValue({ settings: running });
+    vi.spyOn(api, 'obsidianUpdateSettings').mockRejectedValue(new Error('Invalid sync frequency.'));
+    renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+    const select = await screen.findByLabelText('Sync frequency');
+    await user.selectOptions(select, '10m');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid sync frequency.');
+    expect(select).toHaveValue('continuous');
+  });
+  it('does not let a stale poll undo a frequency change', async () => {
+    vi.useFakeTimers();
+    try {
+      const running = {
+        ...settings,
+        remoteVaultId: 'remote-1',
+        enabled: true,
+        phase: 'running' as const,
+      };
+      let resolvePoll!: (value: { settings: ObsidianSyncSettings }) => void;
+      const status = vi
+        .spyOn(api, 'obsidianStatus')
+        .mockResolvedValueOnce({ settings: running })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolvePoll = resolve;
+            }),
+        );
+      const update = vi.spyOn(api, 'obsidianUpdateSettings').mockResolvedValue({
+        settings: { ...running, frequency: '10m' },
+      });
+      renderInRouter(<ObsidianVaultSyncPanel vaultId="native-vault" />);
+      await act(async () => {});
+      await act(async () => vi.advanceTimersByTime(3_000));
+      expect(status).toHaveBeenCalledTimes(2);
+      const select = screen.getByLabelText('Sync frequency');
+      await act(async () => {
+        fireEvent.change(select, { target: { value: '10m' } });
+      });
+      expect(update).toHaveBeenCalledWith('native-vault', { frequency: '10m' });
+      expect(select).toHaveValue('10m');
+      await act(async () => resolvePoll({ settings: running }));
+      expect(select).toHaveValue('10m');
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('stops polling the vault after unmount', async () => {
     vi.useFakeTimers();

@@ -1,6 +1,6 @@
 // Package sqlite is the pure-Go (modernc.org/sqlite, no CGO) implementation of
 // the db interfaces. It is a port of tephra-server/packages/database/sqlite and
-// reads/writes the very same database file format (PRAGMA user_version 7).
+// reads/writes the very same database file format (PRAGMA user_version 8).
 //
 // Concurrency model: one write connection (so writers are serialised, like the
 // TS SerialExecutor) opened with BEGIN IMMEDIATE transactions, plus a small

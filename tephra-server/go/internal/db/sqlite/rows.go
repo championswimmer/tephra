@@ -28,7 +28,7 @@ const (
 	noteMetaCols   = "file_id, vault_id, indexed_blob_hash, title, frontmatter_json, headings_json, tags_json, blocks_json, indexed_at"
 	noteLinkCols   = "id, vault_id, source_file_id, raw_text, link_path, subpath, display_text, is_embed, target_file_id, created_at"
 	graphCacheCols = "vault_id, revision, indexed_revision, etag, payload_json, updated_at"
-	obsidianCols   = "vault_id, enabled, remote_vault_id, mode, phase, last_error_code, has_synced, last_synced_at"
+	obsidianCols   = "vault_id, enabled, remote_vault_id, mode, phase, last_error_code, has_synced, last_synced_at, frequency"
 )
 
 type scanner interface{ Scan(dest ...any) error }
@@ -290,10 +290,10 @@ func scanObsidian(s scanner) (vm.ObsidianSyncSettings, error) {
 	var remote, lastErr sql.NullString
 	var enabled, synced int64
 	var lastSynced sql.NullInt64
-	var mode, phase string
-	err := s.Scan(&o.VaultID, &enabled, &remote, &mode, &phase, &lastErr, &synced, &lastSynced)
+	var mode, phase, frequency string
+	err := s.Scan(&o.VaultID, &enabled, &remote, &mode, &phase, &lastErr, &synced, &lastSynced, &frequency)
 	o.Enabled, o.HasSynced = enabled == 1, synced == 1
 	o.RemoteVaultID, o.LastErrorCode, o.LastSyncedAt = strPtr(remote), strPtr(lastErr), intPtr(lastSynced)
-	o.Mode, o.Phase = vm.ObsidianSyncMode(mode), vm.ObsidianSyncPhase(phase)
+	o.Mode, o.Phase, o.Frequency = vm.ObsidianSyncMode(mode), vm.ObsidianSyncPhase(phase), vm.ObsidianSyncFrequency(frequency)
 	return o, err
 }

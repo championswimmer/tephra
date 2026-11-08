@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import type { ObsidianRemote, ObsidianSyncSettings } from '../api/types';
+import type { ObsidianRemote, ObsidianSyncFrequency, ObsidianSyncSettings } from '../api/types';
 
 const phases: Record<ObsidianSyncSettings['phase'], string> = {
   'pending-login': 'Sign in to Obsidian to continue',
@@ -24,6 +24,19 @@ const errors: Record<string, string> = {
   OBSIDIAN_MFA_REQUIRED: 'Sign in again with a current two-factor code.',
   OBSIDIAN_LOGIN_FAILED: 'Sign in again with your Obsidian credentials.',
 };
+const frequencyOptions = [
+  { value: 'continuous', label: 'Continuous' },
+  { value: '6h', label: 'Every 6 hours' },
+  { value: '1h', label: 'Every hour' },
+  { value: '30m', label: 'Every 30 minutes' },
+  { value: '10m', label: 'Every 10 minutes' },
+] as const satisfies readonly { value: ObsidianSyncFrequency; label: string }[];
+
+/** A missing or unrecognized value from an older server means continuous. */
+function effectiveFrequency(frequency: ObsidianSyncFrequency | undefined): ObsidianSyncFrequency {
+  for (const option of frequencyOptions) if (option.value === frequency) return option.value;
+  return 'continuous';
+}
 
 export function ObsidianVaultSyncPanel({ vaultId }: { vaultId: string }) {
   const [settings, setSettings] = useState<ObsidianSyncSettings>();
@@ -151,6 +164,28 @@ export function ObsidianVaultSyncPanel({ vaultId }: { vaultId: string }) {
             </div>
           )}
         </div>
+      )}
+      {settings?.remoteVaultId && (
+        <>
+          <label htmlFor="obsidian-frequency">Sync frequency</label>
+          <select
+            id="obsidian-frequency"
+            value={effectiveFrequency(settings.frequency)}
+            disabled={busy}
+            onChange={(event) => {
+              const frequency = event.target.value as ObsidianSyncFrequency;
+              void action(async () =>
+                setSettings((await api.obsidianUpdateSettings(vaultId, { frequency })).settings),
+              );
+            }}
+          >
+            {frequencyOptions.map((option) => (
+              <option value={option.value} key={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </>
       )}
       <button type="button" disabled={busy || !settings} onClick={() => void action(loadRemotes)}>
         Load remote vaults

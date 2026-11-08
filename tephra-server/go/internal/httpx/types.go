@@ -40,6 +40,7 @@ type ObsidianSyncService interface {
 	Remotes(ctx context.Context, vault vm.Vault) ([]ObsidianRemote, error)
 	Setup(ctx context.Context, vault vm.Vault, in ObsidianSetup) error
 	Enable(ctx context.Context, vault vm.Vault, enabled bool) error
+	UpdateSettings(ctx context.Context, vault vm.Vault, in ObsidianSettingsUpdate) error
 	Remove(ctx context.Context, vault vm.Vault) error
 	WriteNote(ctx context.Context, vault vm.Vault, plan NotePlan, text string) (NoteCommitResult, error)
 }
@@ -54,6 +55,13 @@ type ObsidianSetup struct {
 	RemoteVaultID      string `json:"remoteVaultId"`
 	EncryptionPassword string `json:"encryptionPassword,omitempty"`
 	Mode               string `json:"mode"` // "bidirectional" | "pull-only"
+}
+
+// ObsidianSettingsUpdate is a strict partial settings update. Omitted fields are
+// unchanged; the route rejects a body that supplies neither.
+type ObsidianSettingsUpdate struct {
+	Enabled   *bool                     `json:"enabled,omitempty"`
+	Frequency *vm.ObsidianSyncFrequency `json:"frequency,omitempty"`
 }
 
 type ObsidianRemote struct {
@@ -89,8 +97,8 @@ type NoteCommitResult struct {
 // InitialObsidianSettings is initialObsidianSettings from obsidian/types.ts.
 func InitialObsidianSettings(vaultID string) vm.ObsidianSyncSettings {
 	return vm.ObsidianSyncSettings{
-		VaultID: vaultID, Enabled: false, Mode: vm.ObsidianModeBidirectional,
-		Phase: vm.PhasePendingLogin,
+		VaultID: vaultID, Enabled: false, Frequency: vm.FrequencyContinuous,
+		Mode: vm.ObsidianModeBidirectional, Phase: vm.PhasePendingLogin,
 	}
 }
 

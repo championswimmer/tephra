@@ -65,6 +65,9 @@ type Options struct {
 	ScanInterval time.Duration
 	// RetryInterval is the base of the supervisor's exponential backoff; <= 0 means 2s.
 	RetryInterval time.Duration
+	// FrequencyInterval overrides the periodic one-shot interval for a
+	// frequency. It exists for tests; production uses the fixed mapping below.
+	FrequencyInterval func(vm.ObsidianSyncFrequency) time.Duration
 }
 
 func (o Options) maxVaults() int {
@@ -86,6 +89,32 @@ func (o Options) retryInterval() time.Duration {
 		return 2 * time.Second
 	}
 	return o.RetryInterval
+}
+
+// defaultFrequencyInterval is the production periodic schedule. Continuous
+// has no periodic interval; it keeps its long-lived Sync(true) loop.
+func defaultFrequencyInterval(f vm.ObsidianSyncFrequency) time.Duration {
+	switch f {
+	case vm.Frequency6Hours:
+		return 6 * time.Hour
+	case vm.Frequency1Hour:
+		return time.Hour
+	case vm.Frequency30Minutes:
+		return 30 * time.Minute
+	case vm.Frequency10Minutes:
+		return 10 * time.Minute
+	default:
+		return 0
+	}
+}
+
+func (o Options) frequencyInterval(f vm.ObsidianSyncFrequency) time.Duration {
+	if o.FrequencyInterval != nil {
+		if d := o.FrequencyInterval(f); d > 0 {
+			return d
+		}
+	}
+	return defaultFrequencyInterval(f)
 }
 
 type worker struct {
@@ -407,6 +436,10 @@ func (s *NativeSyncService) Status(ctx context.Context, vault vm.Vault) (vm.Obsi
 
 // patch merges under the vault lock so a worker update cannot undo Pause.
 func (s *NativeSyncService) patch(ctx context.Context, vault vm.Vault, mutate func(*vm.ObsidianSyncSettings)) error {
+	// Keep this short settings transaction from being interrupted by a canceling
+	// worker context (e.g. stop), which can abandon the transaction and leave the
+	// next write with SQLITE_BUSY. Long sync/import work stays cancelable.
+	ctx = context.WithoutCancel(ctx)
 	return s.deps.Database.Transaction(ctx, func(repos db.TransactionRepositories) error {
 		if err := repos.LockVault(ctx, vault.ID); err != nil {
 			return err
@@ -629,8 +662,27 @@ func (s *NativeSyncService) setupLocked(ctx context.Context, vault vm.Vault, in 
 	return f
 }
 
-// Enable pauses (false) or resumes (true) background sync.
+// Enable pauses (false) or resumes (true) background sync. It is the
+// compatibility wrapper around UpdateSettings.
 func (s *NativeSyncService) Enable(ctx context.Context, vault vm.Vault, enabled bool) error {
+	return s.UpdateSettings(ctx, vault, httpx.ObsidianSettingsUpdate{Enabled: &enabled})
+}
+
+// UpdateSettings applies a partial settings update. Supplied fields are
+// validated and persisted; omitted fields keep their stored values. A
+// frequency-only change while paused never launches a worker. On an enabled
+// vault it shares Enable(true)'s setup guard: without a linked remote it fails
+// instead of clearing the recorded error and launching a worker that would
+// exit immediately. Otherwise the update restarts the worker through the usual
+// patch/stop/repatch/launch sequence so a stale worker cannot resurrect old
+// state.
+func (s *NativeSyncService) UpdateSettings(ctx context.Context, vault vm.Vault, in httpx.ObsidianSettingsUpdate) error {
+	if in.Enabled == nil && in.Frequency == nil {
+		return httpx.Fail(http.StatusBadRequest, protocol.CodeInvalidManifest, "Supply enabled or frequency.")
+	}
+	if in.Frequency != nil && !in.Frequency.Valid() {
+		return httpx.Fail(http.StatusBadRequest, protocol.CodeInvalidManifest, "Unsupported sync frequency.")
+	}
 	if err := s.assertOpen(&vault); err != nil {
 		return err
 	}
@@ -645,23 +697,27 @@ func (s *NativeSyncService) Enable(ctx context.Context, vault vm.Vault, enabled 
 			if err := s.assertOpen(&vault); err != nil {
 				return err
 			}
-			if enabled {
-				if err := s.capacity(ctx, vault); err != nil {
-					return err
-				}
-				st, err := s.Status(ctx, vault)
-				if err != nil {
-					return err
-				}
-				if st.RemoteVaultID == nil {
-					return NativeFailure(protocol.CodeObsidianSetupFailed)
-				}
+			if in.Enabled != nil {
+				return s.applyEnabledLocked(ctx, vault, *in.Enabled, in.Frequency)
 			}
-			phase := vm.PhaseStopped
-			if enabled {
-				phase = vm.PhaseInitialSync
+			st, err := s.Status(ctx, vault)
+			if err != nil {
+				return err
 			}
-			apply := func(c *vm.ObsidianSyncSettings) { c.Enabled = enabled; c.Phase = phase; c.LastErrorCode = nil }
+			if !st.Enabled {
+				return s.patch(ctx, vault, func(c *vm.ObsidianSyncSettings) { c.Frequency = *in.Frequency })
+			}
+			// An enabled row without a linked remote cannot sync. Fail exactly
+			// like Enable(true) before patching, rather than recording
+			// initial-sync and launching a worker that exits on its first read.
+			if err := s.requireEnabledSetup(ctx, vault); err != nil {
+				return err
+			}
+			apply := func(c *vm.ObsidianSyncSettings) {
+				c.Frequency = *in.Frequency
+				c.Phase = vm.PhaseInitialSync
+				c.LastErrorCode = nil
+			}
 			if err := s.patch(ctx, vault, apply); err != nil {
 				return err
 			}
@@ -672,12 +728,61 @@ func (s *NativeSyncService) Enable(ctx context.Context, vault vm.Vault, enabled 
 			if err := s.patch(ctx, vault, apply); err != nil {
 				return err
 			}
-			if enabled {
-				s.launch(vault)
-			}
+			s.launch(vault)
 			return nil
 		})
 	})
+}
+
+// requireEnabledSetup is the state guard shared by Enable(true) and frequency
+// updates of an enabled vault: the vault must be under the capacity limit and
+// linked to a remote vault.
+func (s *NativeSyncService) requireEnabledSetup(ctx context.Context, vault vm.Vault) error {
+	if err := s.capacity(ctx, vault); err != nil {
+		return err
+	}
+	st, err := s.Status(ctx, vault)
+	if err != nil {
+		return err
+	}
+	if st.RemoteVaultID == nil {
+		return NativeFailure(protocol.CodeObsidianSetupFailed)
+	}
+	return nil
+}
+
+func (s *NativeSyncService) applyEnabledLocked(ctx context.Context, vault vm.Vault, enabled bool, frequency *vm.ObsidianSyncFrequency) error {
+	if enabled {
+		if err := s.requireEnabledSetup(ctx, vault); err != nil {
+			return err
+		}
+	}
+	phase := vm.PhaseStopped
+	if enabled {
+		phase = vm.PhaseInitialSync
+	}
+	apply := func(c *vm.ObsidianSyncSettings) {
+		c.Enabled = enabled
+		c.Phase = phase
+		c.LastErrorCode = nil
+		if frequency != nil {
+			c.Frequency = *frequency
+		}
+	}
+	if err := s.patch(ctx, vault, apply); err != nil {
+		return err
+	}
+	if err := s.stop(vault); err != nil {
+		return err
+	}
+	// A finishing worker may have overwritten the phase while stopping.
+	if err := s.patch(ctx, vault, apply); err != nil {
+		return err
+	}
+	if enabled {
+		s.launch(vault)
+	}
+	return nil
 }
 
 // launch starts the supervised worker for a vault (no-op if closing,
@@ -838,7 +943,9 @@ func (s *NativeSyncService) supervise(ctx context.Context, vault vm.Vault) error
 	return nil
 }
 
-// cycle is one preflight -> initial sync -> import -> continuous run.
+// cycle is one preflight -> initial sync -> import -> steady state: the
+// periodic one-shot loop or the continuous long-lived run, selected by
+// EffectiveFrequency.
 func (s *NativeSyncService) cycle(ctx context.Context, vault vm.Vault, settings vm.ObsidianSyncSettings, failures *int) error {
 	paths, err := s.privatePaths(vault)
 	if err != nil {
@@ -892,6 +999,15 @@ func (s *NativeSyncService) cycle(ctx context.Context, vault vm.Vault, settings 
 		return err
 	}
 	started := time.Now()
+	if settings.EffectiveFrequency() != vm.FrequencyContinuous {
+		err = s.periodic(ctx, vault, paths, failures)
+		if time.Since(started) > 60*time.Second {
+			*failures = 0
+		}
+		// A nil result means the settings no longer call for this periodic
+		// worker (or the worker was cancelled); let the supervisor re-read.
+		return err
+	}
 	err = s.continuous(ctx, vault, paths)
 	if time.Since(started) > 60*time.Second {
 		*failures = 0
@@ -903,6 +1019,69 @@ func (s *NativeSyncService) cycle(ctx context.Context, vault vm.Vault, settings 
 		return NativeFailure(protocol.CodeObsidianSyncFailed)
 	}
 	return nil
+}
+
+// periodic runs one-shot sync passes for a non-continuous frequency. It waits
+// a full interval before each pass, re-reads the persisted status, runs the
+// same preflight used by the continuous path, then syncs and imports without
+// ever overlapping passes. Errors return to the supervisor for error state and
+// exponential retry; cancellation is always a clean stop.
+func (s *NativeSyncService) periodic(ctx context.Context, vault vm.Vault, paths VaultPaths, failures *int) error {
+	for {
+		st, err := s.Status(ctx, vault)
+		if err != nil {
+			return err
+		}
+		if !st.Enabled || st.RemoteVaultID == nil || st.EffectiveFrequency() == vm.FrequencyContinuous {
+			return nil
+		}
+		interval := s.opts.frequencyInterval(st.EffectiveFrequency())
+		if interval <= 0 {
+			return nil
+		}
+		if !sleep(ctx, interval) {
+			return nil
+		}
+		st, err = s.Status(ctx, vault)
+		if err != nil {
+			return err
+		}
+		if !st.Enabled || st.RemoteVaultID == nil || st.EffectiveFrequency() == vm.FrequencyContinuous {
+			return nil
+		}
+		if s.isClosing() {
+			return nil
+		}
+		if err := s.preflight(ctx, vault, st, paths); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if err := s.opts.Client.Sync(ctx, paths, false); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		if _, err := s.importLocked(ctx, vault, paths); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		now := s.deps.Clock.Now()
+		if err := s.patch(ctx, vault, func(c *vm.ObsidianSyncSettings) { c.LastSyncedAt = &now }); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		*failures = 0
+	}
 }
 
 // continuous runs the long-lived official sync and re-imports the checkout

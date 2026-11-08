@@ -379,6 +379,372 @@ func TestIgnoresConfigFilesRefusesSymlinksAndTraversal(t *testing.T) {
 	}
 }
 
+func TestFrequencyIntervalMappingHasSafeFallback(t *testing.T) {
+	o := Options{}
+	for frequency, want := range map[vm.ObsidianSyncFrequency]time.Duration{
+		vm.Frequency6Hours:                      6 * time.Hour,
+		vm.Frequency1Hour:                       time.Hour,
+		vm.Frequency30Minutes:                   30 * time.Minute,
+		vm.Frequency10Minutes:                   10 * time.Minute,
+		vm.FrequencyContinuous:                  0,
+		vm.ObsidianSyncFrequency("unsupported"): 0,
+	} {
+		if got := o.frequencyInterval(frequency); got != want {
+			t.Fatalf("frequencyInterval(%q) = %v, want %v", frequency, got, want)
+		}
+	}
+	o.FrequencyInterval = func(vm.ObsidianSyncFrequency) time.Duration { return 25 * time.Millisecond }
+	if got := o.frequencyInterval(vm.Frequency10Minutes); got != 25*time.Millisecond {
+		t.Fatalf("seam interval = %v", got)
+	}
+	o.FrequencyInterval = func(vm.ObsidianSyncFrequency) time.Duration { return 0 }
+	if got := o.frequencyInterval(vm.Frequency30Minutes); got != 30*time.Minute {
+		t.Fatalf("zero seam interval = %v, want production fallback", got)
+	}
+}
+
+func TestPeriodicFrequencySyncsImportsAndUpdatesTimestamp(t *testing.T) {
+	const interval = 15 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker running", func() bool {
+		st := n.status(t)
+		return st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency10Minutes
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("periodic mode started a continuous child")
+	}
+	initial := n.status(t)
+	if initial.LastSyncedAt == nil {
+		t.Fatal("initial one-shot did not record a timestamp")
+	}
+	base := n.client.count("sync")
+	n.Clock.Advance(1000)
+	eventually(t, "repeated periodic passes", func() bool {
+		return n.client.count("sync") >= base+2
+	})
+	eventually(t, "periodic timestamp update", func() bool {
+		st := n.status(t)
+		return st.LastSyncedAt != nil && *st.LastSyncedAt > *initial.LastSyncedAt
+	})
+
+	write(t, filepath.Join(n.paths.Vault, "Periodic.md"), "# Periodic\n")
+	eventually(t, "periodic import", func() bool {
+		f, err := n.DB.VaultFiles().FindByPath(bg, n.vault.ID, "Periodic.md")
+		return err == nil && f != nil
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("periodic mode started a continuous child")
+	}
+}
+
+func TestPeriodicPassesNeverOverlap(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+
+	release, started := n.client.gateOneShot()
+	defer release()
+	waitSignal(t, started, "gated one-shot pass")
+	atStart := n.client.count("sync")
+	time.Sleep(5 * interval)
+	if got := n.client.OneShotActive(); got != 1 {
+		t.Fatalf("active one-shot passes = %d, want 1", got)
+	}
+	if got := n.client.MaxOneShot(); got != 1 {
+		t.Fatalf("overlapping one-shot passes = %d, want 1", got)
+	}
+	if got := n.client.count("sync"); got != atStart {
+		t.Fatalf("sync started again while the previous pass was blocked: %d -> %d", atStart, got)
+	}
+	release()
+	eventually(t, "next periodic pass after release", func() bool {
+		return n.client.count("sync") > atStart
+	})
+}
+
+func TestWriteNoteRestartsPeriodicWorker(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+	file := n.files(t)[0]
+	res, err := n.svc.WriteNote(bg, n.vault, httpx.NotePlan{Kind: "update", FileID: file.FileID, BaseHash: file.BlobHash}, "# Periodic edit\n")
+	if err != nil || res.Status != "committed" {
+		t.Fatalf("%+v %v", res, err)
+	}
+	eventually(t, "periodic worker resumed", func() bool {
+		st := n.status(t)
+		return st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency10Minutes
+	})
+	base := n.client.count("sync")
+	eventually(t, "periodic passes resume after write", func() bool {
+		return n.client.count("sync") > base
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("write restarted continuous sync in periodic mode")
+	}
+}
+
+func TestFrequencyUpdateWhileEnabledRestartsWorkerAndReturnsToContinuous(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	if n.client.Active() != 1 {
+		t.Fatal("continuous worker is not running")
+	}
+	before := n.client.count("sync")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency6Hours)})
+	eventually(t, "periodic restart running", func() bool {
+		st := n.status(t)
+		return st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency6Hours
+	})
+	eventually(t, "periodic restart one-shot", func() bool { return n.client.count("sync") > before })
+	if n.client.Active() != 0 {
+		t.Fatal("periodic restart left a continuous child running")
+	}
+
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.FrequencyContinuous)})
+	eventually(t, "continuous worker restarted", func() bool { return n.client.Active() == 1 })
+	st := n.status(t)
+	if st.Frequency != vm.FrequencyContinuous || st.Phase != vm.PhaseRunning {
+		t.Fatalf("status after continuous restart: %+v", st)
+	}
+}
+
+func TestFrequencyUpdateWhilePausedPersistsWithoutLaunching(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	if err := n.svc.Enable(bg, n.vault, false); err != nil {
+		t.Fatal(err)
+	}
+	before := n.status(t)
+	if before.LastSyncedAt == nil {
+		t.Fatal("paused status lost its timestamp")
+	}
+	base := n.client.count("sync")
+	n.Clock.Advance(1000)
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency30Minutes)})
+	after := n.status(t)
+	if after.Enabled || after.Phase != vm.PhaseStopped {
+		t.Fatalf("paused frequency update changed enable/phase: %+v", after)
+	}
+	if after.Frequency != vm.Frequency30Minutes {
+		t.Fatalf("frequency = %q", after.Frequency)
+	}
+	if after.LastSyncedAt == nil || *after.LastSyncedAt != *before.LastSyncedAt {
+		t.Fatal("paused frequency update changed LastSyncedAt")
+	}
+	if after.HasSynced != before.HasSynced || !reflect.DeepEqual(after.LastErrorCode, before.LastErrorCode) {
+		t.Fatal("paused frequency update changed sync state")
+	}
+	if n.client.Active() != 0 || n.client.count("sync") != base {
+		t.Fatal("paused frequency update launched a worker")
+	}
+
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Enabled: boolPtr(true), Frequency: frequencyPtr(vm.Frequency1Hour)})
+	eventually(t, "combined enable and frequency", func() bool {
+		st := n.status(t)
+		return st.Enabled && st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency1Hour
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("combined enable started a continuous child in periodic mode")
+	}
+}
+
+func TestFrequencyUpdateOnEnabledVaultWithoutRemoteFailsWithoutMutation(t *testing.T) {
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(10 * time.Millisecond) }, nil)
+	code := string(protocol.CodeObsidianSetupFailed)
+	row := httpx.InitialObsidianSettings(n.vault.ID)
+	row.Enabled = true
+	row.Phase = vm.PhaseError
+	row.LastErrorCode = &code
+	if err := n.DB.ObsidianSync().Upsert(bg, row); err != nil {
+		t.Fatal(err)
+	}
+	before := n.status(t)
+	base := n.client.count("sync")
+
+	err := n.svc.UpdateSettings(bg, n.vault, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	wantCode(t, err, protocol.CodeObsidianSetupFailed)
+
+	after := n.status(t)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("failed frequency update mutated settings: %+v -> %+v", before, after)
+	}
+	if n.client.Active() != 0 || n.client.count("sync") != base {
+		t.Fatal("failed frequency update launched a worker")
+	}
+	// launch registers the worker before returning, so a worker started by
+	// this update would still be visible here in practice.
+	n.svc.mu.Lock()
+	workers := len(n.svc.workers)
+	n.svc.mu.Unlock()
+	if workers != 0 {
+		t.Fatalf("failed frequency update left %d worker(s) registered", workers)
+	}
+}
+
+func TestEnableOnlyPreservesFrequency(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency6Hours)})
+	eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+	if err := n.svc.Enable(bg, n.vault, false); err != nil {
+		t.Fatal(err)
+	}
+	if st := n.status(t); st.Frequency != vm.Frequency6Hours || st.Enabled || st.Phase != vm.PhaseStopped {
+		t.Fatalf("enable-only pause changed frequency/state: %+v", st)
+	}
+	if err := n.svc.Enable(bg, n.vault, true); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "enable-only resume", func() bool {
+		st := n.status(t)
+		return st.Enabled && st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency6Hours
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("enable-only resume used continuous sync")
+	}
+}
+
+func TestUpdateSettingsRejectsInvalidInputWithoutMutation(t *testing.T) {
+	n := nativeFixture(t, nil, nil)
+	n.connect(t, "bidirectional")
+	if err := n.svc.Enable(bg, n.vault, false); err != nil {
+		t.Fatal(err)
+	}
+	before := n.status(t)
+	bad := vm.ObsidianSyncFrequency("5m")
+	wantCode(t, n.svc.UpdateSettings(bg, n.vault, httpx.ObsidianSettingsUpdate{Frequency: &bad}), protocol.CodeInvalidManifest)
+	wantCode(t, n.svc.UpdateSettings(bg, n.vault, httpx.ObsidianSettingsUpdate{}), protocol.CodeInvalidManifest)
+	if after := n.status(t); !reflect.DeepEqual(after, before) {
+		t.Fatalf("invalid update mutated settings: %+v -> %+v", before, after)
+	}
+}
+
+func TestPeriodicCancellationDoesNotSetErrorPhase(t *testing.T) {
+	t.Run("waiting", func(t *testing.T) {
+		n := nativeFixture(t, func(o *Options) {
+			o.FrequencyInterval = func(vm.ObsidianSyncFrequency) time.Duration { return time.Hour }
+		}, nil)
+		n.connect(t, "bidirectional")
+		n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+		eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+		n.svc.Close()
+		st := n.status(t)
+		if st.Phase == vm.PhaseError || st.LastErrorCode != nil {
+			t.Fatalf("cancellation during wait recorded an error: %+v", st)
+		}
+		if n.client.Active() != 0 {
+			t.Fatal("child survived Close")
+		}
+	})
+
+	t.Run("syncing", func(t *testing.T) {
+		n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(10 * time.Millisecond) }, nil)
+		n.connect(t, "bidirectional")
+		n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+		eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+		release, started := n.client.gateOneShot()
+		defer release()
+		waitSignal(t, started, "gated one-shot pass")
+		n.svc.Close()
+		release()
+		st := n.status(t)
+		if st.Phase == vm.PhaseError || st.LastErrorCode != nil {
+			t.Fatalf("cancellation during sync recorded an error: %+v", st)
+		}
+		if n.client.Active() != 0 {
+			t.Fatal("child survived Close")
+		}
+	})
+}
+
+func TestPeriodicSyncErrorsReturnToSupervisorRetry(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) {
+		o.FrequencyInterval = frequencyInterval(interval)
+		o.RetryInterval = 10 * time.Millisecond
+	}, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+
+	n.client.setFailure(NativeFailure(protocol.CodeObsidianSyncFailed))
+	eventually(t, "periodic error phase", func() bool {
+		st := n.status(t)
+		return st.Enabled && st.Phase == vm.PhaseError && st.LastErrorCode != nil && *st.LastErrorCode == string(protocol.CodeObsidianSyncFailed)
+	})
+	n.client.setFailure(nil)
+	eventually(t, "supervisor retry recovered", func() bool {
+		st := n.status(t)
+		return st.Enabled && st.Phase == vm.PhaseRunning && st.LastErrorCode == nil
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("periodic retry started continuous sync")
+	}
+}
+
+func TestBootResumesPersistedPeriodicSettings(t *testing.T) {
+	const interval = 10 * time.Millisecond
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker running", func() bool { return n.status(t).Phase == vm.PhaseRunning })
+	n.svc.Close()
+	before := n.client.count("sync")
+
+	recovered := n.newService(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) })
+	if err := recovered.Boot(bg); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "boot resumed periodic passes", func() bool {
+		return n.client.count("sync") >= before+2
+	})
+	eventually(t, "boot resumed running state", func() bool {
+		st, err := recovered.Status(bg, n.vault)
+		return err == nil && st.Enabled && st.Phase == vm.PhaseRunning && st.Frequency == vm.Frequency10Minutes
+	})
+	if n.client.Active() != 0 {
+		t.Fatal("boot used continuous sync for a periodic vault")
+	}
+}
+
+func TestBootTreatsEmptyFrequencyAsContinuous(t *testing.T) {
+	n := nativeFixture(t, nil, func(d db.Database) db.Database { return emptyFrequencyDB{d} })
+	n.connect(t, "bidirectional")
+	n.svc.Close()
+	// The wrapper keeps the stored row intact and only hides the frequency on
+	// read, so this exercises EffectiveFrequency rather than Upsert normalizing
+	// an empty value before Boot ever sees it.
+	st, err := n.svc.Status(bg, n.vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Frequency != "" || st.EffectiveFrequency() != vm.FrequencyContinuous {
+		t.Fatalf("fixture did not expose a legacy blank frequency: %+v", st)
+	}
+	recovered := n.newService(t, nil)
+	if err := recovered.Boot(bg); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "empty frequency falls back to continuous", func() bool { return n.client.Active() == 1 })
+	got, err := recovered.Status(bg, n.vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Frequency != "" || got.EffectiveFrequency() != vm.FrequencyContinuous {
+		t.Fatalf("boot rewrote the legacy frequency: %+v", got)
+	}
+}
+
 func TestAtomicNoteWriteCreatesPrivateFilesWithoutLeavingTemporaries(t *testing.T) {
 	n := nativeFixture(t, nil, nil)
 	paths, err := n.svc.privatePaths(n.vault)

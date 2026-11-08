@@ -52,3 +52,47 @@ func TestVaultNameUniqueAndCascade(t *testing.T) {
 		t.Fatal("files cascade")
 	}
 }
+
+func TestObsidianSyncFrequencyNormalisation(t *testing.T) {
+	m := testutil.NewMemoryDatabase()
+	ctx := context.Background()
+	settings := vm.ObsidianSyncSettings{VaultID: "v1", Mode: vm.ObsidianModeBidirectional, Phase: vm.PhasePendingLogin}
+	if err := m.ObsidianSync().Upsert(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.ObsidianSync().Find(ctx, "v1")
+	if err != nil || got.Frequency != vm.FrequencyContinuous {
+		t.Fatalf("zero value = %q, %v", got.Frequency, err)
+	}
+	settings.Frequency = vm.Frequency30Minutes
+	if err := m.ObsidianSync().Upsert(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = m.ObsidianSync().Find(ctx, "v1")
+	if got.Frequency != vm.Frequency30Minutes {
+		t.Fatalf("frequency = %q", got.Frequency)
+	}
+}
+
+func TestObsidianSyncRejectsInvalidFrequency(t *testing.T) {
+	m := testutil.NewMemoryDatabase()
+	ctx := context.Background()
+	settings := vm.ObsidianSyncSettings{VaultID: "v1", Mode: vm.ObsidianModeBidirectional,
+		Phase: vm.PhasePendingLogin, Frequency: vm.Frequency10Minutes}
+	if err := m.ObsidianSync().Upsert(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty unsupported value is rejected like the SQLite CHECK constraint.
+	invalid := settings
+	invalid.Frequency = "15m"
+	if err := m.ObsidianSync().Upsert(ctx, invalid); err == nil {
+		t.Fatal("invalid frequency must be rejected")
+	}
+	got, err := m.ObsidianSync().Find(ctx, "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Frequency != vm.Frequency10Minutes {
+		t.Fatalf("frequency = %q", got.Frequency)
+	}
+}

@@ -41,6 +41,29 @@ func wantCode(t *testing.T, err error, code protocol.ApiErrorCode) {
 	}
 }
 
+func waitSignal(t *testing.T, ch <-chan struct{}, msg string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for: %s", msg)
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func frequencyPtr(f vm.ObsidianSyncFrequency) *vm.ObsidianSyncFrequency { return &f }
+
+// frequencyInterval opts every periodic frequency into a fixed test interval.
+func frequencyInterval(d time.Duration) func(vm.ObsidianSyncFrequency) time.Duration {
+	return func(f vm.ObsidianSyncFrequency) time.Duration {
+		if f == vm.FrequencyContinuous {
+			return 0
+		}
+		return d
+	}
+}
+
 // nodeBinary finds a real node for the subprocess-launcher tests.
 func nodeBinary(t *testing.T) string {
 	t.Helper()
@@ -72,6 +95,10 @@ type fakeClient struct {
 	ensureErrs      []error
 	counts          map[string]int
 	t               *testing.T
+	oneShotGate     chan struct{}
+	oneShotStarted  chan struct{}
+	oneShotActive   int
+	maxOneShot      int
 }
 
 func newFakeClient(t *testing.T) *fakeClient {
@@ -88,6 +115,39 @@ func (f *fakeClient) Events() []string {
 func (f *fakeClient) setFailure(err error) { f.mu.Lock(); f.failure = err; f.mu.Unlock() }
 func (f *fakeClient) bump(name string)     { f.mu.Lock(); f.counts[name]++; f.mu.Unlock() }
 func (f *fakeClient) event(e string)       { f.mu.Lock(); f.events = append(f.events, e); f.mu.Unlock() }
+
+// gateOneShot makes the next one-shot Sync block. The returned release closes
+// the gate; started receives once per one-shot that begins while the gate is
+// installed.
+func (f *fakeClient) gateOneShot() (release func(), started <-chan struct{}) {
+	gate := make(chan struct{})
+	events := make(chan struct{}, 16)
+	f.mu.Lock()
+	f.oneShotGate = gate
+	f.oneShotStarted = events
+	f.mu.Unlock()
+	release = func() {
+		f.mu.Lock()
+		if f.oneShotGate == gate {
+			close(gate)
+			f.oneShotGate = nil
+		}
+		f.mu.Unlock()
+	}
+	return release, events
+}
+
+func (f *fakeClient) OneShotActive() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.oneShotActive
+}
+
+func (f *fakeClient) MaxOneShot() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxOneShot
+}
 
 func (f *fakeClient) HasAuth(_ context.Context, p VaultPaths) (bool, error) {
 	info, err := os.Stat(filepath.Join(ClientStateRoot(p), "auth_token"))
@@ -160,6 +220,31 @@ func (f *fakeClient) Sync(ctx context.Context, p VaultPaths, continuous bool) er
 		return failure
 	}
 	if !continuous {
+		f.mu.Lock()
+		gate, started := f.oneShotGate, f.oneShotStarted
+		f.oneShotActive++
+		if f.oneShotActive > f.maxOneShot {
+			f.maxOneShot = f.oneShotActive
+		}
+		f.mu.Unlock()
+		defer func() {
+			f.mu.Lock()
+			f.oneShotActive--
+			f.mu.Unlock()
+		}()
+		if started != nil {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+		}
+		if gate != nil {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 		f.event("sync")
 		f.mu.Lock()
 		pending := f.pendingDownload
@@ -224,6 +309,37 @@ func (h hidingRepo) Find(ctx context.Context, id string) (*vm.ObsidianSyncSettin
 		return nil, nil
 	}
 	return h.ObsidianSyncRepository.Find(ctx, id)
+}
+
+// emptyFrequencyDB reports persisted rows with a blank frequency. Both
+// repositories normalize empty values on write, so this wrapper lets tests
+// exercise EffectiveFrequency's legacy-row fallback on read.
+type emptyFrequencyDB struct {
+	db.Database
+}
+
+func (d emptyFrequencyDB) ObsidianSync() db.ObsidianSyncRepository {
+	return emptyFrequencyRepo{d.Database.ObsidianSync()}
+}
+
+type emptyFrequencyRepo struct {
+	db.ObsidianSyncRepository
+}
+
+func (r emptyFrequencyRepo) Find(ctx context.Context, id string) (*vm.ObsidianSyncSettings, error) {
+	st, err := r.ObsidianSyncRepository.Find(ctx, id)
+	if st != nil {
+		st.Frequency = ""
+	}
+	return st, err
+}
+
+func (r emptyFrequencyRepo) List(ctx context.Context) ([]vm.ObsidianSyncSettings, error) {
+	rows, err := r.ObsidianSyncRepository.List(ctx)
+	for i := range rows {
+		rows[i].Frequency = ""
+	}
+	return rows, err
 }
 
 // gatedDB blocks NoteIndex().GetState until released (to hold an import open).
@@ -345,6 +461,13 @@ func (n *native) status(t *testing.T) vm.ObsidianSyncSettings {
 		t.Fatal(err)
 	}
 	return st
+}
+
+func (n *native) updateSettings(t *testing.T, in httpx.ObsidianSettingsUpdate) {
+	t.Helper()
+	if err := n.svc.UpdateSettings(bg, n.vault, in); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (n *native) connect(t *testing.T, mode string) {

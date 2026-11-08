@@ -103,13 +103,18 @@ func (s obsidianRepo) List(ctx context.Context) ([]vm.ObsidianSyncSettings, erro
 	return many(ctx, s.r, scanObsidian, "SELECT "+obsidianCols+" FROM obsidian_sync ORDER BY vault_id")
 }
 func (s obsidianRepo) Upsert(ctx context.Context, v vm.ObsidianSyncSettings) error {
-	_, err := s.w.ExecContext(ctx, `INSERT INTO obsidian_sync (`+obsidianCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	frequency := v.Frequency
+	if frequency == "" {
+		frequency = vm.FrequencyContinuous
+	}
+	_, err := s.w.ExecContext(ctx, `INSERT INTO obsidian_sync (`+obsidianCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(vault_id) DO UPDATE SET enabled=excluded.enabled,
 		remote_vault_id=excluded.remote_vault_id, mode=excluded.mode,
 		phase=excluded.phase, last_error_code=excluded.last_error_code,
-		has_synced=excluded.has_synced, last_synced_at=excluded.last_synced_at`,
+		has_synced=excluded.has_synced, last_synced_at=excluded.last_synced_at,
+		frequency=excluded.frequency`,
 		v.VaultID, boolInt(v.Enabled), nullStr(v.RemoteVaultID), string(v.Mode), string(v.Phase),
-		nullStr(v.LastErrorCode), boolInt(v.HasSynced), nullInt(v.LastSyncedAt))
+		nullStr(v.LastErrorCode), boolInt(v.HasSynced), nullInt(v.LastSyncedAt), string(frequency))
 	return err
 }
 

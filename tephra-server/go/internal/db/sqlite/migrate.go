@@ -24,6 +24,7 @@ var migrations = []migration{
 	{5, "005_revision_manifest_hash_index.sql"},
 	{6, "006_oauth_codes.sql"},
 	{7, "007_obsidian_sync.sql"},
+	{8, "008_obsidian_sync_frequency.sql"},
 }
 
 // migrateFile opens a private single-connection handle on a file database,
@@ -38,7 +39,7 @@ func migrateFile(path string) error {
 	return migrate(context.Background(), conn)
 }
 
-// migrate mirrors migrate.ts: user_version chain 1..7, foreign keys disabled
+// migrate mirrors migrate.ts: user_version chain 1..8, foreign keys disabled
 // for the whole run (005 drops a table that file_versions references; with
 // enforcement on, DROP TABLE would cascade-delete child rows, and the pragma
 // is a no-op inside a transaction), foreign_key_check before the stamp.

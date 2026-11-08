@@ -316,7 +316,8 @@
       "phase": "error",
       "lastErrorCode": "E1",
       "hasSynced": false,
-      "lastSyncedAt": 12345
+      "lastSyncedAt": 12345,
+      "frequency": "continuous"
     }
   ]
 }

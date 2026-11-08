@@ -97,14 +97,22 @@ export interface ObsidianAccount {
   lastErrorCode: string | null;
 }
 
+export type ObsidianSyncFrequency = 'continuous' | '6h' | '1h' | '30m' | '10m';
+
 export interface ObsidianSyncSettings {
   vaultId: string;
   enabled: boolean;
   remoteVaultId: string | null;
   mode: 'bidirectional' | 'pull-only';
   phase: 'pending-login' | 'pending-remote' | 'installing' | 'initial-sync' | 'running' | 'stopped' | 'error';
+  frequency: ObsidianSyncFrequency;
   lastErrorCode: string | null;
   hasSynced: boolean;
   lastSyncedAt: number | null;
 }
+
+/** Partial update accepted by the Obsidian sync settings endpoint. At least one field is required. */
+export type ObsidianSyncSettingsUpdate =
+  | { enabled: boolean; frequency?: ObsidianSyncFrequency }
+  | { enabled?: boolean; frequency: ObsidianSyncFrequency };
 export interface ObsidianRemote { id: string; name: string; region?: string }

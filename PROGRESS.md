@@ -300,3 +300,16 @@ workspace tests, all green) plus a live SQLite v1→v2 upgrade check.
       `npm run go:check`, and a `Dockerfile.go` build that serves `/healthz` and `/`.
       Deploy scripts, docs, CI and the Railway IaC now point at the Go image; the IaC volume
       size was corrected to the live 1000 MB (applying the old 512 MB value would have shrunk it).
+
+## Obsidian Sync frequency (plan 025)
+
+- [x] Per-vault official Obsidian Sync frequency (plan 025): **Continuous**
+      (default), every 6 hours, every hour, every 30 minutes, or every 10
+      minutes. Periodic choices run scheduled one-shot official-client
+      sync/import passes instead of `--continuous`; changing the frequency of an
+      enabled vault restarts its schedule, while paused changes apply on the next
+      enable. Migration 8 persists the setting with legacy rows defaulting to
+      continuous. Regression coverage spans model/API validation, SQLite
+      round-trip and fixture migration, cancellation and non-overlapping passes,
+      supervisor retries, worker restart, and web selection/stale-poll handling.
+      Full `npm run go:check` and `npm run check` pass.

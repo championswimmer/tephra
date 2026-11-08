@@ -595,7 +595,7 @@ func TestUpgradesOldDatabasesThroughLatest(t *testing.T) {
 			raw := rawDB(t, path)
 			var uv int
 			must(t, raw.QueryRow("PRAGMA user_version").Scan(&uv))
-			eq(t, uv, 7)
+			eq(t, uv, 8)
 			fk, err := raw.Query("PRAGMA foreign_key_check")
 			must(t, err)
 			if fk.Next() {
@@ -732,7 +732,7 @@ func TestObsidianSyncPersistence(t *testing.T) {
 	native := *existing
 	native.ID, native.Name, native.SyncMode = "native-vault", "Native", vm.SyncModeObsidian
 	must(t, d.Vaults().Insert(ctx, native))
-	settings := vm.ObsidianSyncSettings{VaultID: native.ID, Enabled: true, RemoteVaultID: ptr("remote-1"), Mode: vm.ObsidianModeBidirectional, Phase: vm.PhaseRunning, HasSynced: true, LastSyncedAt: ptr(int64(12345))}
+	settings := vm.ObsidianSyncSettings{VaultID: native.ID, Enabled: true, Frequency: vm.Frequency10Minutes, RemoteVaultID: ptr("remote-1"), Mode: vm.ObsidianModeBidirectional, Phase: vm.PhaseRunning, HasSynced: true, LastSyncedAt: ptr(int64(12345))}
 	must(t, d.ObsidianSync().Upsert(ctx, settings))
 	got, _ := d.ObsidianSync().Find(ctx, native.ID)
 	eq(t, *got, settings)
@@ -758,4 +758,46 @@ func TestObsidianSyncPersistence(t *testing.T) {
 	must(t, re.Vaults().Delete(ctx, native.ID))
 	list, _ = re.ObsidianSync().List(ctx)
 	eq(t, list, []vm.ObsidianSyncSettings{})
+}
+
+func TestObsidianSyncFrequencyDefaultRoundTripAndCheck(t *testing.T) {
+	d, path := openTemp(t)
+	seed(t, d)
+	existing, _ := d.Vaults().FindByID(ctx, "vault-1")
+	native := *existing
+	native.ID, native.Name, native.SyncMode = "native-vault", "Native", vm.SyncModeObsidian
+	must(t, d.Vaults().Insert(ctx, native))
+
+	// The Go zero value is persisted as continuous.
+	settings := vm.ObsidianSyncSettings{VaultID: native.ID, Mode: vm.ObsidianModeBidirectional, Phase: vm.PhasePendingLogin}
+	must(t, d.ObsidianSync().Upsert(ctx, settings))
+	got, _ := d.ObsidianSync().Find(ctx, native.ID)
+	eq(t, got.Frequency, vm.FrequencyContinuous)
+
+	for _, f := range []vm.ObsidianSyncFrequency{vm.FrequencyContinuous, vm.Frequency6Hours, vm.Frequency1Hour, vm.Frequency30Minutes, vm.Frequency10Minutes} {
+		settings.Frequency = f
+		must(t, d.ObsidianSync().Upsert(ctx, settings))
+		got, _ = d.ObsidianSync().Find(ctx, native.ID)
+		eq(t, got.Frequency, f)
+	}
+
+	// A non-empty unsupported value is rejected by the CHECK constraint.
+	invalid := settings
+	invalid.Frequency = "15m"
+	mustFail(t, d.ObsidianSync().Upsert(ctx, invalid), "")
+	got, _ = d.ObsidianSync().Find(ctx, native.ID)
+	eq(t, got.Frequency, vm.Frequency10Minutes)
+	must(t, d.Close())
+
+	// The migration default applies when SQL omits the column, and a fresh
+	// database is stamped at the current schema version.
+	raw := rawDB(t, path)
+	var version int
+	must(t, raw.QueryRow("PRAGMA user_version").Scan(&version))
+	eq(t, version, 8)
+	rawExec(t, raw, "INSERT OR REPLACE INTO obsidian_sync (vault_id) VALUES ('native-vault')")
+	var frequency string
+	must(t, raw.QueryRow("SELECT frequency FROM obsidian_sync WHERE vault_id='native-vault'").Scan(&frequency))
+	eq(t, frequency, string(vm.FrequencyContinuous))
+	must(t, raw.Close())
 }

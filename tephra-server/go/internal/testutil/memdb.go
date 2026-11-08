@@ -147,6 +147,7 @@ func (m *MemoryDatabase) GraphCache() db.GraphCacheRepository    { return graphR
 func ptr[T any](v T) *T { return &v }
 
 var errUnique = func(what string) error { return fmt.Errorf("UNIQUE constraint failed: %s", what) }
+var errCheck = func(what string) error { return fmt.Errorf("CHECK constraint failed: %s", what) }
 
 // ---- users ----
 type userRepo struct{ *MemoryDatabase }
@@ -757,6 +758,12 @@ func (r obsidianRepo) List(context.Context) ([]vm.ObsidianSyncSettings, error) {
 	return r.st.obsidian.values(), nil
 }
 func (r obsidianRepo) Upsert(_ context.Context, s vm.ObsidianSyncSettings) error {
+	if s.Frequency == "" {
+		s.Frequency = vm.FrequencyContinuous
+	}
+	if !s.Frequency.Valid() {
+		return errCheck("obsidian_sync")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.st.obsidian.set(s.VaultID, s)

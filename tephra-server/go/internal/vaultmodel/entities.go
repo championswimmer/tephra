@@ -198,13 +198,43 @@ const (
 	PhaseError         ObsidianSyncPhase = "error"
 )
 
+// ObsidianSyncFrequency controls how often an enabled headless vault syncs.
+type ObsidianSyncFrequency string
+
+const (
+	FrequencyContinuous ObsidianSyncFrequency = "continuous"
+	Frequency6Hours     ObsidianSyncFrequency = "6h"
+	Frequency1Hour      ObsidianSyncFrequency = "1h"
+	Frequency30Minutes  ObsidianSyncFrequency = "30m"
+	Frequency10Minutes  ObsidianSyncFrequency = "10m"
+)
+
+// Valid reports whether f is one of the supported frequencies.
+func (f ObsidianSyncFrequency) Valid() bool {
+	switch f {
+	case FrequencyContinuous, Frequency6Hours, Frequency1Hour, Frequency30Minutes, Frequency10Minutes:
+		return true
+	}
+	return false
+}
+
 type ObsidianSyncSettings struct {
-	VaultID       string            `json:"vaultId"`
-	Enabled       bool              `json:"enabled"`
-	RemoteVaultID *string           `json:"remoteVaultId"`
-	Mode          ObsidianSyncMode  `json:"mode"`
-	Phase         ObsidianSyncPhase `json:"phase"`
-	LastErrorCode *string           `json:"lastErrorCode"`
-	HasSynced     bool              `json:"hasSynced"`
-	LastSyncedAt  *int64            `json:"lastSyncedAt"`
+	VaultID       string                `json:"vaultId"`
+	Enabled       bool                  `json:"enabled"`
+	Frequency     ObsidianSyncFrequency `json:"frequency"`
+	RemoteVaultID *string               `json:"remoteVaultId"`
+	Mode          ObsidianSyncMode      `json:"mode"`
+	Phase         ObsidianSyncPhase     `json:"phase"`
+	LastErrorCode *string               `json:"lastErrorCode"`
+	HasSynced     bool                  `json:"hasSynced"`
+	LastSyncedAt  *int64                `json:"lastSyncedAt"`
+}
+
+// EffectiveFrequency returns Frequency, falling back to continuous for empty or
+// invalid values (legacy rows and defensive callers).
+func (s ObsidianSyncSettings) EffectiveFrequency() ObsidianSyncFrequency {
+	if s.Frequency.Valid() {
+		return s.Frequency
+	}
+	return FrequencyContinuous
 }

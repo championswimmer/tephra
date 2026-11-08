@@ -2,7 +2,9 @@ package obsidian
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/championswimmer/tephra/tephra-server/go/internal/api"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/blobstore"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/db"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/httpx"
@@ -47,6 +50,129 @@ func expectStatus(t *testing.T, r testutil.Response, status int) {
 	if r.Status != status {
 		t.Fatalf("status %d want %d: %s", r.Status, status, r.Text())
 	}
+}
+
+// routeObsidianStub implements only the settings calls the PUT route uses, so
+// validation tests stay independent of the native supervisor.
+type routeObsidianStub struct {
+	httpx.ObsidianSyncService
+	settings vm.ObsidianSyncSettings
+	updates  []httpx.ObsidianSettingsUpdate
+}
+
+func (s *routeObsidianStub) AccountStatus(context.Context, string) (httpx.ObsidianAccount, error) {
+	return httpx.ObsidianAccount{}, nil
+}
+
+func (s *routeObsidianStub) Status(context.Context, vm.Vault) (vm.ObsidianSyncSettings, error) {
+	return s.settings, nil
+}
+
+func (s *routeObsidianStub) UpdateSettings(_ context.Context, _ vm.Vault, in httpx.ObsidianSettingsUpdate) error {
+	s.updates = append(s.updates, in)
+	if in.Enabled != nil {
+		s.settings.Enabled = *in.Enabled
+		if !*in.Enabled {
+			s.settings.Phase = vm.PhaseStopped
+		}
+	}
+	if in.Frequency != nil {
+		s.settings.Frequency = *in.Frequency
+	}
+	return nil
+}
+
+// settingsRoute boots a fixture with the stub service and creates an Obsidian
+// vault through the public API.
+func settingsRoute(t *testing.T, stub *routeObsidianStub) (*testutil.Session, string) {
+	t.Helper()
+	s := testutil.Setup(t, func(d httpx.Dependencies) http.Handler { return api.NewApp(d) },
+		testutil.WithDeps(func(d *httpx.Dependencies) { d.ObsidianSync = stub }))
+	r := testutil.DoJSON(s.App, "POST", "/api/v1/vaults", s.BrowserHeaders, `{"name":"Native settings","syncMode":"obsidian"}`)
+	expectStatus(t, r, 201)
+	id := sub(decode(t, r), "vault")["id"].(string)
+	stub.settings = httpx.InitialObsidianSettings(id)
+	return s, id
+}
+
+func TestOwnerSettingsUpdateAcceptsFrequencyPartials(t *testing.T) {
+	stub := &routeObsidianStub{}
+	s, id := settingsRoute(t, stub)
+	prefix := "/api/v1/vaults/" + id + "/obsidian-sync"
+	for _, frequency := range []string{"continuous", "6h", "1h", "30m", "10m"} {
+		r := testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, `{"frequency":"`+frequency+`"}`)
+		expectStatus(t, r, 200)
+		settings := sub(decode(t, r), "settings")
+		if settings["frequency"] != frequency {
+			t.Fatalf("frequency response %s", r.Text())
+		}
+		if settings["enabled"] != false || settings["phase"] != "pending-login" {
+			t.Fatalf("frequency-only update changed state %s", r.Text())
+		}
+	}
+
+	// Legacy enable-only requests still work and leave frequency alone.
+	r := testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, `{"enabled":false}`)
+	expectStatus(t, r, 200)
+	last := stub.updates[len(stub.updates)-1]
+	if last.Enabled == nil || *last.Enabled || last.Frequency != nil {
+		t.Fatalf("enable update %+v", last)
+	}
+	if sub(decode(t, r), "settings")["frequency"] != "10m" {
+		t.Fatalf("enable cleared frequency %s", r.Text())
+	}
+
+	// Combined updates apply both fields.
+	r = testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, `{"enabled":true,"frequency":"6h"}`)
+	expectStatus(t, r, 200)
+	last = stub.updates[len(stub.updates)-1]
+	if last.Enabled == nil || !*last.Enabled || last.Frequency == nil || *last.Frequency != vm.Frequency6Hours {
+		t.Fatalf("combined update %+v", last)
+	}
+	settings := sub(decode(t, r), "settings")
+	if settings["enabled"] != true || settings["frequency"] != "6h" {
+		t.Fatalf("combined response %s", r.Text())
+	}
+}
+
+func TestOwnerSettingsUpdateRejectsInvalidPartialsWithoutMutation(t *testing.T) {
+	stub := &routeObsidianStub{}
+	s, id := settingsRoute(t, stub)
+	prefix := "/api/v1/vaults/" + id + "/obsidian-sync"
+	for _, body := range []string{
+		`{}`,
+		`null`,
+		`[]`,
+		`{"enabled":null}`,
+		`{"frequency":null}`,
+		`{"enabled":"yes"}`,
+		`{"frequency":2}`,
+		`{"frequency":"bogus"}`,
+		`{"frequency":""}`,
+		`{"unknown":true}`,
+		`{"enabled":true,"frequency":"1h","x":1}`,
+	} {
+		r := testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, body)
+		expectStatus(t, r, 400)
+	}
+	if len(stub.updates) != 0 {
+		t.Fatalf("invalid bodies mutated settings: %+v", stub.updates)
+	}
+	if stub.settings.Frequency != vm.FrequencyContinuous || stub.settings.Enabled {
+		t.Fatalf("invalid bodies mutated state: %+v", stub.settings)
+	}
+}
+
+func TestOwnerSettingsUpdateValidatesBeforeServiceAvailability(t *testing.T) {
+	stub := &routeObsidianStub{}
+	s, id := settingsRoute(t, stub)
+	prefix := "/api/v1/vaults/" + id + "/obsidian-sync"
+	s.Deps.ObsidianSync = nil
+	s.App = api.NewApp(s.Deps)
+	for _, body := range []string{`{}`, `{"frequency":"bogus"}`, `{"enabled":null}`} {
+		expectStatus(t, testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, body), 400)
+	}
+	expectStatus(t, testutil.DoJSON(s.App, "PUT", prefix, s.BrowserHeaders, `{"frequency":"10m"}`), 503)
 }
 
 func TestAccountSignInIsUserScopedCopiesOnlyAuthAndPreservesLegacyState(t *testing.T) {
