@@ -15,6 +15,7 @@ import (
 
 	"github.com/championswimmer/tephra/tephra-server/go/internal/blobstore"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/db"
+	"github.com/championswimmer/tephra/tephra-server/go/internal/fscache"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/httpx"
 	"github.com/championswimmer/tephra/tephra-server/go/internal/protocol"
 	vm "github.com/championswimmer/tephra/tephra-server/go/internal/vaultmodel"
@@ -120,6 +121,7 @@ func hashStableFile(root, p string, maxBytes int64) (ScannedFile, error) {
 		return ScannedFile{}, err
 	}
 	defer f.Close()
+	defer fscache.Drop(f)
 	before, err := f.Stat()
 	if err != nil {
 		return ScannedFile{}, err
@@ -296,6 +298,7 @@ func storeCheckoutBlob(ctx context.Context, d httpx.Dependencies, root string, f
 		return err
 	}
 	defer file.Close()
+	defer fscache.Drop(file)
 	info, err := file.Stat()
 	if err != nil {
 		return err

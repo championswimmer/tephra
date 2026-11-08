@@ -15,6 +15,7 @@ import (
 	"regexp"
 
 	"github.com/championswimmer/tephra/tephra-server/go/internal/blobstore"
+	"github.com/championswimmer/tephra/tephra-server/go/internal/fscache"
 )
 
 var hashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -120,6 +121,7 @@ func (s *Store) Put(ctx context.Context, in blobstore.PutInput) (err error) {
 	if err := f.Sync(); err != nil {
 		return err
 	}
+	fscache.Drop(f)
 	closed = true
 	if err := f.Close(); err != nil {
 		return err
