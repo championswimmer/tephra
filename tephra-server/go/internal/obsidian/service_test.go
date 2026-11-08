@@ -439,6 +439,21 @@ func TestPeriodicFrequencySyncsImportsAndUpdatesTimestamp(t *testing.T) {
 	}
 }
 
+// Periodic (non-continuous) mode must not keep any Obsidian headless process
+// alive between passes: each pass is a one-shot that exits, so idle memory is
+// released. Only continuous mode holds a long-lived child.
+func TestPeriodicModeLeavesNoHeadlessProcessBetweenPasses(t *testing.T) {
+	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(time.Hour) }, nil)
+	n.connect(t, "bidirectional")
+	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.Frequency10Minutes)})
+	eventually(t, "periodic worker idle after initial pass", func() bool {
+		return n.status(t).Phase == vm.PhaseRunning && n.client.count("sync") >= 1
+	})
+	if n.client.Active() != 0 || n.client.OneShotActive() != 0 {
+		t.Fatalf("headless process alive while idle: continuous=%d oneShot=%d", n.client.Active(), n.client.OneShotActive())
+	}
+}
+
 func TestPeriodicPassesNeverOverlap(t *testing.T) {
 	const interval = 10 * time.Millisecond
 	n := nativeFixture(t, func(o *Options) { o.FrequencyInterval = frequencyInterval(interval) }, nil)
@@ -509,8 +524,28 @@ func TestFrequencyUpdateWhileEnabledRestartsWorkerAndReturnsToContinuous(t *test
 	}
 
 	n.updateSettings(t, httpx.ObsidianSettingsUpdate{Frequency: frequencyPtr(vm.FrequencyContinuous)})
-	eventually(t, "continuous worker restarted", func() bool { return n.client.Active() == 1 })
-	st := n.status(t)
+	var st vm.ObsidianSyncSettings
+	eventually(t, "continuous worker restarted and running", func() bool {
+		if n.client.Active() != 1 {
+			return false
+		}
+		// The pooled read-only connections may still be pinned to a
+		// pre-restart snapshot, so read the row the worker just committed
+		// through the write connection.
+		if err := n.DB.Transaction(bg, func(repos db.TransactionRepositories) error {
+			row, err := repos.ObsidianSync().Find(bg, n.vault.ID)
+			if err != nil {
+				return err
+			}
+			if row != nil {
+				st = *row
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return st.Frequency == vm.FrequencyContinuous && st.Phase == vm.PhaseRunning
+	})
 	if st.Frequency != vm.FrequencyContinuous || st.Phase != vm.PhaseRunning {
 		t.Fatalf("status after continuous restart: %+v", st)
 	}
